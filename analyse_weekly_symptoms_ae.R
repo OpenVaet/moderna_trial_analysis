@@ -1,4 +1,4 @@
-# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.0.0
+# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.0.1
 # Stand-alone, R >= 4.3: save in the project root, then Select All / Run in RStudio.
 # CSV/JMP and charts: base R. XPT/SAS7BDAT: install.packages("haven").
 # No positivity filter. This measures documented symptoms, not COVID diagnoses.
@@ -181,16 +181,50 @@ ws_mapping <- function(root,path,out) {
   if(!all(need %in% names(x)))stop("Mapping lacks required fields: ",paste(setdiff(need,names(x)),collapse=", "))
   x[]<-lapply(x,ws_text);x$normalized_term<-ws_norm(x$normalized_term)
   x$match_field<-ws_norm(x$match_field);x$include_default<-ws_norm(x$include_default)
+  x$symptom_code<-ws_norm(x$symptom_code);x$symptom_group<-ws_norm(x$symptom_group)
+  x$match_class<-ws_norm(x$match_class)
+  if(any(!nzchar(x$normalized_term)))stop("Mapping has an empty normalized_term.")
   if(any(!x$include_default %in% c("TRUE","FALSE")))stop("Mapping include_default must be TRUE/FALSE.")
   x$include_default<-x$include_default=="TRUE"
   if(any(!x$match_field %in% c("AETERM","AELLT","AEDECOD")))stop("Unknown mapping match_field.")
   if(any(!x$symptom_code %in% names(ws_param_map)))stop("Unknown mapping symptom_code.")
   if(any(x$symptom_group!=unname(ws_param_map[x$symptom_code])))stop("Mapping symptom groups differ from the agreed 12-group classification.")
   if(any(x$include_default & x$match_class!="DIRECT"))stop("Review-only mapping rows cannot be included without explicit reclassification.")
-  x<-unique(x)
-  if(anyDuplicated(paste(x$match_field,x$normalized_term,x$symptom_code,sep="|")))stop("Conflicting/duplicate mapping entries.")
-  ws_csv(x,file.path(out,"ae_covid_symptom_mapping_used.csv"))
-  ws_csv(data.frame(path=source,md5=hash),file.path(out,"mapping_source.csv"));x
+  # Several verbatim spellings can define the SAME normalized matching rule.
+  # Keep the complete source rows; deduplicate by decisions, not by spelling,
+  # labels, notes or dictionary provenance. Never silently resolve disagreement.
+  key<-paste(x$match_field,x$normalized_term,x$symptom_code,sep="\r")
+  group<-match(key,unique(key));groups<-split(seq_len(nrow(x)),group)
+  x$mapping_source_row<-seq_len(nrow(x))
+  x$mapping_rule_id<-sprintf("MAP%04d",group)
+  ws_csv(x,file.path(out,"ae_covid_symptom_mapping_input.csv"))
+  # Duration/qualification metadata are retained and checked for agreement even
+  # though this burden analysis does not impose protocol-trigger eligibility.
+  decisions<-intersect(c("symptom_group","match_class","include_default",
+                        "min_duration_hours","qualification_check"),names(x))
+  conflicts<-vapply(groups,function(ix) {
+    z<-x[ix,decisions,drop=FALSE]
+    z[]<-lapply(z,function(v)if(is.logical(v))v else ws_norm(v))
+    nrow(unique(z))>1L
+  },logical(1))
+  bad<-unlist(groups[conflicts],use.names=FALSE)
+  conflict_file<-file.path(out,"ae_covid_symptom_mapping_conflicts.csv")
+  ws_csv(x[bad,,drop=FALSE],conflict_file)
+  if(length(bad))stop("Conflicting mapping decisions for ",sum(conflicts),
+    " normalized rule(s). Review ",normalizePath(conflict_file,winslash="/",mustWork=FALSE),
+    ". No conflicting rule was selected automatically.")
+  keep<-!duplicated(key);used<-x[keep,,drop=FALSE]
+  used$mapping_source_rows<-vapply(group[keep],function(g)paste(which(group==g),collapse=";"),character(1))
+  if("ae_term" %in% names(x))used$mapping_term_variants<-vapply(group[keep],function(g)
+    paste(unique(x$ae_term[group==g]),collapse=" | "),character(1))
+  collapsed<-x[duplicated(key)|duplicated(key,fromLast=TRUE),,drop=FALSE]
+  ws_csv(collapsed,file.path(out,"ae_covid_symptom_mapping_duplicates.csv"))
+  ws_csv(used,file.path(out,"ae_covid_symptom_mapping_used.csv"))
+  ws_csv(data.frame(path=source,md5=hash,input_rows=nrow(x),effective_rules=nrow(used),
+    equivalent_rows_collapsed=nrow(x)-nrow(used)),file.path(out,"mapping_source.csv"))
+  if(nrow(x)>nrow(used))message("Mapping: ",nrow(x)," source rows -> ",nrow(used),
+    " effective rules; ",nrow(x)-nrow(used)," equivalent duplicate row(s) collapsed. Original rows retained in mapping audit CSVs.")
+  used
 }
 ws_param_map <- c(FEVER="FEVER",CHILLS="CHILLS",COUGH="COUGH",DIBREATH="DYSPNEA",SHBREATH="DYSPNEA",
   FATIGUE="FATIGUE",BODYACHE="MYALGIA",MYALGIA="MYALGIA",HEADACHE="HEADACHE",NLSMELL="SMELL_TASTE",
@@ -434,7 +468,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
       covid_only=sum(z$covid_only),ae_only=sum(z$ae_only),both=sum(z$both),symptom_group_weeks=den,
       pct_ae_any=if(den>0)100*sum(z$ae_symptom_groups)/den else NA_real_)
   }));rownames(totals)<-NULL;ws_csv(totals,file.path(out,"window_totals.csv"))
-  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.0.0", "",
+  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.0.1", "",
     paste("Release:",release,"; source cutoff:",ws_iso(ctx$CUTOFFDT[1]),"; randomized population:",nrow(ctx)),
     paste("AE timing:",ae_timing,"; windows:",paste(windows,collapse=", ")),"",
     "COUNTING UNIT: a distinct participant x symptom group x Monday-Sunday week. Repeated records, days and related parameters within that group/week count once. One participant with three groups contributes three units. This is not a count of visits, raw AE records, clinical episodes or infections. Units in different weeks are not unique participants.",
@@ -446,7 +480,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
     "FOLLOW-UP: RANDFL Y, planned original arm TRT01P, from RANDDT. FULL ends at the earliest CUTOFFDT/EOSDT/DTHDT. BLINDED additionally ends at AP01EDT or the day before UBLDDT/AP02SDT/TR02SDT/EUAVACDT, whichever comes first. Missing individual boundaries fall back to the full endpoint and are exposed in the context CSV. EUA uses the blinded endpoint capped at the configured EUA date.",
     "FULL retains original randomization labels after unblinding/crossover; placebo-assigned participants may subsequently receive vaccine. It is a descriptive follow-up view. The blinded comparison also has changing follow-up: weekly subjects_in_followup and person_days are exported. No causal conclusion is established by these curves.",
     "DOSES: background columns show original DOSE1FL/TR01SDT and DOSE2FL/DOSE2DT administrations in the same population/window. Placebo injections are included. Crossover/outside doses are excluded. The left axis is unscaled weekly counts shared between arms; the right axis is a fixed 0-100% for the AE share. Bar and line heights use different units.",
-    "MAPPING: an external assets/ae_covid_symptom_mapping.csv takes precedence; otherwise the embedded field-specific v1.0.0 asset is used. Specific AETERM then AELLT evidence takes precedence over AEDECOD for each symptom parameter, before include_default is applied. Review-only matches are excluded. All matching evidence, excluded dates and unmapped terms are exported for review.",
+    "MAPPING: an external assets/ae_covid_symptom_mapping.csv takes precedence; otherwise the embedded field-specific v1.0.0 asset is used. Specific AETERM then AELLT evidence takes precedence over AEDECOD for each symptom parameter, before include_default is applied. Review-only matches are excluded. Equivalent normalized mapping rows are consolidated only when their classification, inclusion and qualification decisions agree. Original mapping rows, duplicate aliases and genuine conflicts are exported separately. All matching evidence, excluded dates and unmapped terms are exported for review.",
     "SCOPE: COVID forms plus mapped raw AE records, regardless of PCR/serology, severity or investigator causal attribution. Solicited reactogenicity diaries are a separate collection source and are not included. No duration/fever threshold for protocol-trigger eligibility is imposed. Compatible symptoms do not establish COVID-19 or a missed PCR test.",
     "SOURCE CONTROL: one selected snapshot per domain/release; duplicate files are not pooled. Matching submission identifiers are preferred when available. Conflicting snapshots require an explicit path. Selected file paths and MD5 checksums are exported; inspect them before publication. Raw AE and ADSYMP often have no cutoff field, so submission/date coverage should be reviewed using the source documents.",
     "OUTPUTS: print-ready PDF, PNG and SVG (when Cairo is available) for each window; weekly counts; participant-group-week membership; event-week links; original event evidence; mapping evidence; follow-up context; source discovery and methods.","",
