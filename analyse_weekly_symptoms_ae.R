@@ -1,4 +1,4 @@
-# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.0.1
+# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.0.2
 # Stand-alone, R >= 4.3: save in the project root, then Select All / Run in RStudio.
 # CSV/JMP and charts: base R. XPT/SAS7BDAT: install.packages("haven").
 # No positivity filter. This measures documented symptoms, not COVID diagnoses.
@@ -354,6 +354,7 @@ ws_window <- function(ctx,ev,window,eua_cutoff,release,out) {
       subjects_in_followup=tabulate(match(de$week,weeks),length(weeks)),person_days=days,stringsAsFactors=FALSE)
     out$total_symptom_groups<-out$covid_only+out$ae_only+out$both
     out$ae_symptom_groups<-out$ae_only+out$both
+    out$pct_covid_only<-ifelse(out$total_symptom_groups>0,100*out$covid_only/out$total_symptom_groups,NA_real_)
     out$pct_ae_any<-ifelse(out$total_symptom_groups>0,100*out$ae_symptom_groups/out$total_symptom_groups,NA_real_)
     out$pct_ae_only<-ifelse(out$total_symptom_groups>0,100*out$ae_only/out$total_symptom_groups,NA_real_)
     out$pct_both<-ifelse(out$total_symptom_groups>0,100*out$both/out$total_symptom_groups,NA_real_)
@@ -364,57 +365,113 @@ ws_window <- function(ctx,ev,window,eua_cutoff,release,out) {
   ws_csv(weekly,file.path(out,paste0(window,"_weekly_counts.csv")))
   list(weekly=weekly,units=units,population=pop)
 }
-ws_plot <- function(w,ctx,window,release,ae_timing) {
+# Keep every percentage readable, including short/zero-height stack segments.
+ws_pct_label <- function(x) ifelse(is.finite(x),sprintf("%.1f%%",x),"")
+ws_label_positions <- function(target,height,lower,upper,gap) {
+  if(!length(target))return(numeric())
+  ord<-order(target);t<-target[ord];h<-height[ord]/2;y<-t
+  if(sum(height)+gap*(length(y)-1)>upper-lower)stop("Not enough vertical space for percentage labels; enlarge the output page.")
+  y[1]<-max(y[1],lower+h[1])
+  if(length(y)>1)for(i in 2:length(y))y[i]<-max(y[i],y[i-1]+h[i-1]+h[i]+gap)
+  y[length(y)]<-min(y[length(y)],upper-h[length(y)])
+  if(length(y)>1)for(i in (length(y)-1):1)y[i]<-min(y[i],y[i+1]-h[i+1]-h[i]-gap)
+  if(y[1]<lower+h[1])y<-y+(lower+h[1]-y[1])
+  ans<-numeric(length(y));ans[ord]<-y;ans
+}
+ws_plot_arm <- function(w,ctx,window,release,ae_timing,arm) {
   old<-par(no.readonly=TRUE);on.exit({layout(1);par(old)})
-  layout(matrix(1:4,ncol=1),heights=c(.9,3.05,3.05,.7))
+  layout(matrix(1:3,ncol=1),heights=c(.92,6.0,.83))
   par(mar=c(0,.8,0,.8),family="sans");plot.new();plot.window(c(0,1),c(0,1))
-  text(.02,.84,"Moderna P301 | Weekly doses and documented symptom groups",adj=0,font=2,cex=1.15,col="#183746")
+  text(.02,.85,paste0("Moderna P301 | ",arm," | Weekly symptom documentation"),adj=0,font=2,cex=1.17,col="#183746")
   label<-switch(window,BLINDED="Individual blinded follow-up",EUA="Through the EUA data cutoff",FULL="Full follow-up by original randomized arm")
-  text(.02,.58,paste0(label," | ",release," | Source cutoff ",ws_iso(ctx$CUTOFFDT[1])),adj=0,cex=.8,col="#405865")
-  fill<-c("#E5EBEF","#EFE8DA","#418C99","#CB7849","#8B77A2",NA)
-  legend(.02,.38,legend=c("Dose 1","Dose 2","Symptom table only","AE only","Both sources","AE share (right axis)"),
+  text(.02,.57,paste0(label," | ",release," | Source cutoff ",ws_iso(ctx$CUTOFFDT[1])),adj=0,cex=.83,col="#405865")
+  fill<-c("#E5EBEF","#EFE8DA","#367E8A","#A65B31","#785E91",NA)
+  legend(.02,.36,legend=c("Dose 1","Dose 2","Symptom table only","AE only","Both sources","AE share (right axis)"),
     fill=fill,border=c("#A7B4BD","#B3A48F",rep(NA,4)),col=c(rep(NA,5),"#222838"),
-    lty=c(rep(NA,5),1),lwd=c(rep(NA,5),1.8),pch=c(rep(NA,5),16),pt.cex=.5,ncol=6,bty="n",cex=.70,x.intersp=.65,y.intersp=.8)
-  maxn<-max(c(1,w$dose_1,w$dose_2,w$total_symptom_groups));top<-max(pretty(c(0,maxn*1.08),n=4))
-  for(arm in c("mRNA-1273","Placebo")) {
-    q<-w[w$arm==arm,,drop=FALSE];n<-nrow(q);xx<-seq_len(n)
-    par(mar=c(2.4,4.8,1.8,4.8),mgp=c(2.7,.65,0),las=1,bty="n",xaxs="i",yaxs="i")
-    plot(c(.4,n+.6),c(0,top),type="n",axes=FALSE,xlab="",ylab="Weekly count",cex.lab=.8)
-    ticks<-pretty(c(0,top),n=4);abline(h=ticks,col="#DFE5E8",lwd=.55)
-    rect(xx-.46,0,xx-.02,q$dose_1,col=fill[1],border="#A7B4BD",lwd=.6)
-    rect(xx+.02,0,xx+.46,q$dose_2,col=fill[2],border="#B3A48F",lwd=.6)
-    base<-rep(0,n)
+    lty=c(rep(NA,5),1),lwd=c(rep(NA,5),1.8),pch=c(rep(NA,5),16),pt.cex=.6,ncol=6,bty="n",cex=.73,x.intersp=.65,y.intersp=.8)
+  maxn<-max(c(1,w$dose_1,w$dose_2,w$total_symptom_groups));top<-max(pretty(c(0,maxn*1.08),n=5))
+  q<-w[w$arm==arm,,drop=FALSE];q<-q[order(q$week_start),,drop=FALSE];n<-nrow(q);xx<-seq_len(n)
+  if(!n)stop("No weekly rows for arm ",arm)
+  par(mar=c(3.3,4.8,2.1,4.8),mgp=c(2.7,.65,0),las=1,bty="n",xaxs="i",yaxs="i")
+  plot(c(.35,n+.7),c(0,top),type="n",axes=FALSE,xlab="",ylab="Weekly count",cex.lab=.88)
+  ticks<-pretty(c(0,top),n=5);abline(h=ticks,col="#DFE5E8",lwd=.55)
+  rect(xx-.46,0,xx-.02,q$dose_1,col=fill[1],border="#A7B4BD",lwd=.6)
+  rect(xx+.02,0,xx+.46,q$dose_2,col=fill[2],border="#B3A48F",lwd=.6)
+  base<-rep(0,n);centers<-matrix(0,nrow=n,ncol=3)
+  for(i in 1:3) {
+    vals<-q[[c("covid_only","ae_only","both")[i]]]
+    rect(xx-.40,base,xx+.18,base+vals,col=fill[i+2],border=NA)
+    centers[,i]<-base+vals/2;base<-base+vals
+  }
+  axis(2,at=ticks,labels=ws_n(ticks),tick=FALSE,cex.axis=.8)
+  idx<-seq_len(n);dates<-as.Date(q$week_start[idx])
+  labs<-paste(format(dates,"%d"),month.abb[as.integer(format(dates,"%m"))],format(dates,"%y"))
+  axis(1,at=xx[idx],labels=FALSE,tck=-.012,col="#73818A")
+  text(xx[idx],-.025*top,labels=labs,srt=55,adj=1,xpd=NA,cex=.67,col="#3C515E")
+  lines(xx,q$pct_ae_any/100*top,col="#222838",lwd=1.6)
+  points(xx,q$pct_ae_any/100*top,pch=21,bg="white",col="#222838",cex=.52,lwd=.85)
+  axis(4,at=(0:4)*top/4,labels=paste0((0:4)*25,"%"),tick=FALSE,cex.axis=.8,col.axis="#222838")
+  mtext("Symptom groups recorded as AEs (%)",side=4,line=2.9,las=0,cex=.8)
+  title(main=paste0("Randomized N = ",ws_n(sum(ctx$arm==arm))," | ",ws_n(sum(q$total_symptom_groups))," symptom-group weeks"),
+    adj=0,line=.55,cex.main=.91,col.main="#183746")
+  # Rotated labels fit one lane for stack shares and a second for the AE line.
+  # Percentages always use the weekly union as denominator, not arm population.
+  cex_label<-1.05 # about 8.3 pt after base R layout scaling
+  inch_x<-diff(par("usr")[1:2])/par("pin")[1];inch_y<-diff(par("usr")[3:4])/par("pin")[2]
+  box_size<-function(labels)list(width=(strheight(labels,units="inches",cex=cex_label)+.025)*inch_x,
+    height=(strwidth(labels,units="inches",cex=cex_label)+.035)*inch_y)
+  draw_badge<-function(x,y,lab,col,text_col,border) {
+    sz<-box_size(lab);rect(x-sz$width/2,y-sz$height/2,x+sz$width/2,y+sz$height/2,col=col,border=border,lwd=.45)
+    text(x,y,lab,srt=90,cex=cex_label,col=text_col)
+  }
+  for(j in seq_len(n))if(q$total_symptom_groups[j]>0) {
+    counts<-unlist(q[j,c("covid_only","ae_only","both")],use.names=FALSE)
+    labs<-ws_pct_label(100*counts/q$total_symptom_groups[j]);sz<-box_size(labs)
+    yy<-ws_label_positions(centers[j,],sz$height,0,top,.022*inch_y)
     for(i in 1:3) {
-      vals<-q[[c("covid_only","ae_only","both")[i]]]
-      rect(xx-.22,base,xx+.22,base+vals,col=fill[i+2],border=NA);base<-base+vals
+      if(abs(yy[i]-centers[j,i])>.004*top) {
+        # Bent colored leaders link moved labels to the original segment center.
+        segments(xx[j]-.11,centers[j,i],xx[j]-.43,centers[j,i],col=fill[i+2],lwd=.7)
+        segments(xx[j]-.43,centers[j,i],xx[j]-.43,yy[i],col=fill[i+2],lwd=.7)
+        segments(xx[j]-.43,yy[i],xx[j]-.11,yy[i],col=fill[i+2],lwd=.7)
+      }
+      inside<-yy[i]-sz$height[i]/2>=centers[j,i]-counts[i]/2 && yy[i]+sz$height[i]/2<=centers[j,i]+counts[i]/2
+      # An offset badge stays white: its background must not visually extend
+      # the colored count bar beyond the actual observed count.
+      draw_badge(xx[j]-.11,yy[i],labs[i],if(inside)fill[i+2] else "white",
+        if(inside)"white" else fill[i+2],if(inside)"white" else fill[i+2])
     }
-    axis(2,at=ticks,labels=ws_n(ticks),tick=FALSE,cex.axis=.72)
-    idx<-unique(c(seq(1,n,by=max(1,ceiling(n/20))),n))
-    dates<-as.Date(q$week_start[idx]);labs<-paste(format(dates,"%d"),month.abb[as.integer(format(dates,"%m"))],format(dates,"%y"))
-    axis(1,at=xx[idx],labels=FALSE,tck=-.016,col="#73818A")
-    text(xx[idx],-.035*top,labels=labs,srt=40,adj=1,xpd=NA,cex=.63,col="#3C515E")
-    lines(xx,q$pct_ae_any/100*top,col="#222838",lwd=1.5)
-    points(xx,q$pct_ae_any/100*top,pch=21,bg="white",col="#222838",cex=.43,lwd=.8)
-    axis(4,at=(0:4)*top/4,labels=paste0((0:4)*25,"%"),tick=FALSE,cex.axis=.72,col.axis="#222838")
-    mtext("Symptom groups recorded as AEs (%)",side=4,line=2.9,las=0,cex=.72)
-    title(main=paste0(arm," | Randomized N = ",ws_n(sum(ctx$arm==arm))," | ",ws_n(sum(q$total_symptom_groups))," symptom-group weeks"),
-      adj=0,line=.45,cex.main=.9,col.main="#183746")
+  }
+  for(j in which(is.finite(q$pct_ae_any))) {
+    lab<-ws_pct_label(q$pct_ae_any[j]);sz<-box_size(lab);actual<-q$pct_ae_any[j]/100*top
+    yy<-min(top-sz$height/2,max(sz$height/2,actual));label_x<-xx[j]+.37
+    segments(xx[j],actual,label_x,yy,col="#222838",lwd=.6)
+    draw_badge(label_x,yy,lab,"white","#171D28","#A9B0B7")
   }
   par(mar=c(0,.8,0,.8));plot.new();plot.window(c(0,1),c(0,1))
-  text(.02,.77,"One participant x symptom group x week. AE share = (AE only + both) / all three categories. Empty weeks have no percentage.",adj=0,cex=.70,col="#405865")
-  text(.02,.45,paste0("Weeks begin Monday. AE timing: ",if(ae_timing=="interval")"known active intervals; unknown ends count at onset only" else "onset week only",
-    ". Symptom table: positive assessment days."),adj=0,cex=.70,col="#405865")
-  text(.02,.13,if(window=="FULL")"Original dose 1/2 only. Original-arm follow-up after crossover is descriptive; symptoms are not confirmed COVID-19 infections."
-    else "Original dose 1/2 only. Counts depend on documentation and follow-up; they are not confirmed COVID-19 infections.",adj=0,cex=.70,col="#405865")
+  notes<-c("Colored labels: % of that week's symptom-group total. Black labels: AE share = (AE only + both) / all three sources.",
+    "Small segments use offset labels with connecting lines. Values rounded to 0.1%; empty weeks have no percentage. One arm per page.",
+    paste0("One participant x symptom group x week; Monday start. AE timing: ",if(ae_timing=="interval")"known active intervals" else "onset week only",". Symptom table: positive assessments."),
+    if(window=="FULL")"Original doses 1/2 only. Follow-up after crossover remains grouped by original arm; these symptoms are not confirmed infections."
+      else "Original doses 1/2 only. Counts depend on documentation and follow-up; these symptoms are not confirmed infections.")
+  text(.02,seq(.87,.12,length.out=4),notes,adj=0,cex=.70,col="#405865")
+}
+ws_plot <- function(w,ctx,window,release,ae_timing,arm=NULL) {
+  arms<-if(is.null(arm))c("mRNA-1273","Placebo") else match.arg(arm,c("mRNA-1273","Placebo"))
+  for(a in arms)ws_plot_arm(w,ctx,window,release,ae_timing,a)
 }
 ws_export_plot <- function(draw,path,dpi) {
-  if(capabilities("cairo"))grDevices::cairo_pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,family="sans")
-  else grDevices::pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,paper="special",family="Helvetica")
+  if(capabilities("cairo"))grDevices::cairo_pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,family="sans",onefile=TRUE)
+  else grDevices::pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,paper="special",family="Helvetica",onefile=TRUE)
   tryCatch(draw(),finally=grDevices::dev.off())
-  grDevices::png(paste0(path,".png"),width=297/25.4,height=210/25.4,units="in",res=dpi,type=if(capabilities("cairo"))"cairo" else getOption("bitmapType"))
-  tryCatch(draw(),finally=grDevices::dev.off())
-  if(capabilities("cairo")) {grDevices::svg(paste0(path,".svg"),width=297/25.4,height=210/25.4);tryCatch(draw(),finally=grDevices::dev.off())}
+  for(arm in c("mRNA-1273","Placebo")) {
+    name<-paste0(path,if(arm=="mRNA-1273")"_mrna1273" else "_placebo")
+    grDevices::png(paste0(name,".png"),width=297/25.4,height=210/25.4,units="in",res=dpi,type=if(capabilities("cairo"))"cairo" else getOption("bitmapType"))
+    tryCatch(draw(arm),finally=grDevices::dev.off())
+    if(capabilities("cairo")) {grDevices::svg(paste0(name,".svg"),width=297/25.4,height=210/25.4);tryCatch(draw(arm),finally=grDevices::dev.off())}
+  }
 }
+
 analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_file="",symptoms_file="",mapping_file="",
   windows=c("BLINDED","EUA","FULL"),eua_cutoff="2020-11-25",ae_timing="interval",output_dir="",encoding="auto",
   numeric_date_origin="",min_randomized=30000L,png_dpi=300L,show_chart=FALSE) {
@@ -459,7 +516,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
   for(window in windows) {
     message("Aggregating ",window," ...")
     r<-ws_window(ctx,ev,window,cutoff,release,out);results[[window]]<-r$weekly
-    draw<-local({w<-r$weekly;win<-window;function()ws_plot(w,ctx,win,release,ae_timing)})
+    draw<-local({w<-r$weekly;win<-window;function(arm=NULL)ws_plot(w,ctx,win,release,ae_timing,arm)})
     ws_export_plot(draw,file.path(out,paste0("weekly_symptoms_ae_",tolower(window))),png_dpi)
   }
   all<-do.call(rbind,results);rownames(all)<-NULL;ws_csv(all,file.path(out,"weekly_counts_all_windows.csv"))
@@ -468,12 +525,13 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
       covid_only=sum(z$covid_only),ae_only=sum(z$ae_only),both=sum(z$both),symptom_group_weeks=den,
       pct_ae_any=if(den>0)100*sum(z$ae_symptom_groups)/den else NA_real_)
   }));rownames(totals)<-NULL;ws_csv(totals,file.path(out,"window_totals.csv"))
-  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.0.1", "",
+  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.0.2", "",
     paste("Release:",release,"; source cutoff:",ws_iso(ctx$CUTOFFDT[1]),"; randomized population:",nrow(ctx)),
     paste("AE timing:",ae_timing,"; windows:",paste(windows,collapse=", ")),"",
     "COUNTING UNIT: a distinct participant x symptom group x Monday-Sunday week. Repeated records, days and related parameters within that group/week count once. One participant with three groups contributes three units. This is not a count of visits, raw AE records, clinical episodes or infections. Units in different weeks are not unique participants.",
     "The 17 symptom parameters collapse to the same 12 groups used in the agreed AE mapping: breathing; muscle/body aches; smell/taste; nasal symptoms; and nausea/vomiting each share one group. Other groups remain separate. AE labels map by exact field plus normalized term, without automatic expansion of diagnoses.",
     "COLUMNS: symptom table only (COVID_FORM in CSV evidence), AE only and both sources are disjoint and sum to the union. ADSYMP includes COVID-form symptoms and qualifying vital-sign evidence, such as fever. BOTH means evidence in both sources for the same participant/group/week; it does not prove that the records refer to the same illness. Repeated separate episodes within a week are deliberately collapsed.",
+    "LABELS: all three weekly source shares and every defined AE-share point are displayed to one decimal place. Small stack segments have offset labels connected to the original segment. Independently rounded source shares may sum to 99.9% or 100.1%. Zero source shares are shown when the weekly total is positive; empty weeks have no percentage.",
     "LINE: 100 * (AE_ONLY + BOTH) / (COVID_ONLY + AE_ONLY + BOTH). An empty denominator is NA, so the line breaks. This is a documentation-route proportion, not the probability that a reported symptom was reclassified, not an adverse-event incidence rate and not a treatment effect. pct_ae_only is also exported separately.",
     "DATES: COVID_FORM evidence uses ADSYMP.ADT and AVALC Y/YES. ADT is the assessment/analysis date, not necessarily onset. Only mapped checklist parameters are counted. Contradictory positive/negative same-day records are logged; positive evidence is retained. Negative, unknown, unperformed or missing assessments do not count as positive.",
     "AE interval mode uses AESTDTC through a complete AEENDTC, inclusive, clipped to follow-up. Missing/partial end dates contribute only the onset day; ongoing duration is not imputed. Onset mode uses AESTDTC only. Missing/partial starts and end-before-start records are excluded and logged. Different collection frequencies and incomplete durations can affect the line.",
@@ -483,7 +541,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
     "MAPPING: an external assets/ae_covid_symptom_mapping.csv takes precedence; otherwise the embedded field-specific v1.0.0 asset is used. Specific AETERM then AELLT evidence takes precedence over AEDECOD for each symptom parameter, before include_default is applied. Review-only matches are excluded. Equivalent normalized mapping rows are consolidated only when their classification, inclusion and qualification decisions agree. Original mapping rows, duplicate aliases and genuine conflicts are exported separately. All matching evidence, excluded dates and unmapped terms are exported for review.",
     "SCOPE: COVID forms plus mapped raw AE records, regardless of PCR/serology, severity or investigator causal attribution. Solicited reactogenicity diaries are a separate collection source and are not included. No duration/fever threshold for protocol-trigger eligibility is imposed. Compatible symptoms do not establish COVID-19 or a missed PCR test.",
     "SOURCE CONTROL: one selected snapshot per domain/release; duplicate files are not pooled. Matching submission identifiers are preferred when available. Conflicting snapshots require an explicit path. Selected file paths and MD5 checksums are exported; inspect them before publication. Raw AE and ADSYMP often have no cutoff field, so submission/date coverage should be reviewed using the source documents.",
-    "OUTPUTS: print-ready PDF, PNG and SVG (when Cairo is available) for each window; weekly counts; participant-group-week membership; event-week links; original event evidence; mapping evidence; follow-up context; source discovery and methods.","",
+    "OUTPUTS: a two-page print-ready PDF per window (mRNA-1273 then placebo, matching scales), plus separate _mrna1273 and _placebo PNG/SVG images (SVG when Cairo is available); weekly counts; participant-group-week membership; event-week links; original event evidence; mapping evidence; follow-up context; source discovery and methods.","",
     "Source metadata: production P301 ADaM define.xml ADSYMP.ADT, AVALC and ADSL dosing/window variables; the previously reviewed analyst AE-to-symptom mapping.")
   writeLines(notes,file.path(out,"README.txt"));capture.output(sessionInfo(),file=file.path(out,"sessionInfo.txt"))
   if(show_chart)ws_plot(results[[1]],ctx,windows[1],release,ae_timing)
