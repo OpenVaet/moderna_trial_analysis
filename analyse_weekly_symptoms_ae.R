@@ -1,0 +1,924 @@
+# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.0.0
+# Stand-alone, R >= 4.3: save in the project root, then Select All / Run in RStudio.
+# CSV/JMP and charts: base R. XPT/SAS7BDAT: install.packages("haven").
+# No positivity filter. This measures documented symptoms, not COVID diagnoses.
+
+# ---- SETTINGS ----
+PHMPT_ROOT <- ""                 # Auto-detect, or D:/Projects/moderna_trial_analysis
+PHMPT_RELEASE <- "auto"          # Prod preferred; otherwise EUA. Never pools releases.
+PHMPT_ADSL_FILE <- ""            # Optional explicit path; CSV, XPT, SAS7BDAT or JMP
+PHMPT_AE_FILE <- ""              # Raw SDTM AE (not ADAE)
+PHMPT_SYMPTOMS_FILE <- ""        # ADaM ADSYMP: includes the COVID symptom checklist
+PHMPT_MAPPING_FILE <- ""         # Defaults to assets/ae_covid_symptom_mapping.csv
+# If no external mapping is present, the embedded, previously supplied v1.0.0
+# field-specific mapping is used and exported. No other R script is sourced.
+PHMPT_WINDOWS <- c("BLINDED", "EUA", "FULL")
+PHMPT_EUA_CUTOFF <- "2020-11-25" # EUA data cutoff, not authorization date
+PHMPT_AE_TIMING <- "interval"    # "interval": known active AE weeks; "onset": onset week only
+PHMPT_OUTPUT_DIR <- ""           # Default: analysis/weekly_symptoms_ae_<timestamp>
+PHMPT_CSV_ENCODING <- "auto"     # UTF-8-BOM then Windows-1252
+PHMPT_NUMERIC_DATE_ORIGIN <- "" # Unformatted numeric CSV dates: set documented origin
+PHMPT_MIN_RANDOMIZED <- 30000L   # Reject incomplete ADSL subsets
+PHMPT_PNG_DPI <- 300L
+PHMPT_SHOW_CHART <- interactive()
+# To load functions only: options(phmpt.autorun=FALSE) before source().
+
+ws_norm <- function(x) toupper(trimws(gsub("[[:space:]\\p{Z}]+"," ",ws_text(x),perl=TRUE)))
+ws_col <- function(x,n) if(n %in% names(x))ws_text(x[[n]]) else rep("",nrow(x))
+ws_week <- function(day) floor((as.numeric(day)+3)/7)*7-3
+ws_iso <- function(x) {z<-format(as.Date(x,origin="1970-01-01"),"%Y-%m-%d");z[is.na(z)]<-"";z}
+ws_n <- function(x)format(x,big.mark=",",scientific=FALSE,trim=TRUE)
+ws_sid <- function(x) {
+  z<-ws_norm(x);z<-sub("^.*(US[0-9]{3}-?[0-9]{4})$","\\1",z)
+  z<-gsub("-","",z,fixed=TRUE)
+  if(any(!grepl("^US[0-9]{7}$",z)))stop("Invalid P301 subject ID: ",paste(head(unique(z[!grepl("^US[0-9]{7}$",z)])),collapse=", "))
+  z
+}
+ws_dates <- function(x,field,origin="",strict=FALSE) {
+  s<-trimws(ws_text(x));s[s %in% c("NA",".")]<-"";out<-rep(NA_real_,length(s))
+  iso<-grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}($|T| )",s)
+  v<-substr(s[iso],1,10);d<-suppressWarnings(as.Date(v,"%Y-%m-%d"))
+  d[!is.na(d)&format(d,"%Y-%m-%d")!=v]<-as.Date(NA);out[iso]<-as.numeric(d)
+  sas<-grepl("^[0-9]{1,2}[A-Za-z]{3}[0-9]{4}$",s)
+  if(any(sas)) {
+    a<-toupper(s[sas]);dd<-as.integer(sub("[A-Z].*$","",a));mm<-match(sub("^[0-9]+([A-Z]{3}).*$","\\1",a),toupper(month.abb))
+    yy<-as.integer(substr(a,nchar(a)-3,nchar(a)));v<-sprintf("%04d-%02d-%02d",yy,mm,dd)
+    d<-suppressWarnings(as.Date(v,"%Y-%m-%d"));d[!is.na(d)&format(d,"%Y-%m-%d")!=v]<-as.Date(NA);out[sas]<-as.numeric(d)
+  }
+  num<-grepl("^-?[0-9]+([.][0-9]+)?$",s)&nzchar(s)
+  if(any(num)) {
+    if(!nzchar(origin))stop(field,": unformatted numeric dates. Set PHMPT_NUMERIC_DATE_ORIGIN from metadata, or use the original XPT/JMP.")
+    v<-as.numeric(s[num]);if(any(v!=floor(v)))stop(field,": fractional numeric dates are unsupported.")
+    out[num]<-as.numeric(as.Date(v,origin=origin))
+  }
+  if(strict&&any(nzchar(s)&!is.finite(out)))stop(field,": invalid/partial dates: ",paste(head(unique(s[nzchar(s)&!is.finite(out)]),4),collapse=", "))
+  out
+}
+ws_specs <- function(domain) switch(domain,
+  ADSL=list(required=c("STUDYID","USUBJID","RANDFL","TRT01P","RANDDT","DOSE1FL","DOSE2FL","TR01SDT","DOSE2DT","CUTOFFDT"),
+    optional=c("SUBJID","AP01EDT","UBLDDT","AP02SDT","TR02SDT","EUAVACDT","EOSDT","DTHDT")),
+  AE=list(required=c("STUDYID","USUBJID","AESEQ","AETERM","AEDECOD","AESTDTC"),
+    optional=c("AELLT","AEENDTC","AEENRF","AEOUT","AESER","AEREL")),
+  ADSYMP=list(required=c("STUDYID","USUBJID","PARAMCD","AVALC","ADT"),
+    optional=c("ASEQ","PARAM","ASTDT","AENDT","SRCDOM","SRCSEQ","SRCVAR","LNKID","SEV","CUTOFFDT")))
+ws_read <- function(path,domain,encoding="auto") {
+  spec<-ws_specs(domain);ext<-tolower(tools::file_ext(path))
+  if(ext=="jmp")x<-ws_read_jmp(path,spec$required,spec$optional)
+  else if(ext=="csv") {
+    x<-NULL;errors<-character()
+    for(enc in if(encoding=="auto")c("UTF-8-BOM","windows-1252") else encoding) {
+      z<-tryCatch(withCallingHandlers({
+        header<-read.csv(path,nrows=0,check.names=FALSE,fileEncoding=enc)
+        upper<-toupper(sub("^\ufeff","",names(header)))
+        if(anyDuplicated(upper))stop("Duplicate CSV column names.")
+        classes<-ifelse(upper %in% c(spec$required,spec$optional),"character","NULL")
+        read.csv(path,colClasses=classes,check.names=FALSE,na.strings=c("","NA"),fileEncoding=enc)
+      },warning=function(w)stop(conditionMessage(w))),error=function(e)e)
+      if(!inherits(z,"error")){x<-z;break};errors<-c(errors,conditionMessage(z))
+    }
+    if(is.null(x))stop("CSV read failed: ",paste(errors,collapse="; "))
+  } else if(ext %in% c("xpt","sas7bdat")) {
+    if(!requireNamespace("haven",quietly=TRUE))stop('Install haven: install.packages("haven")')
+    readfun<-if(ext=="xpt")haven::read_xpt else haven::read_sas
+    header<-readfun(path,n_max=0,.name_repair="minimal")
+    pick<-names(header)[toupper(names(header)) %in% c(spec$required,spec$optional)]
+    x<-as.data.frame(readfun(path,col_select=tidyselect::all_of(pick),.name_repair="minimal"))
+  } else stop("Unsupported source type: ",ext)
+  names(x)<-toupper(sub("^\ufeff","",names(x)))
+  if(anyDuplicated(names(x)))stop("Duplicate column names.")
+  missing<-setdiff(spec$required,names(x));if(length(missing))stop("Missing ",domain," fields: ",paste(missing,collapse=", "))
+  x[]<-lapply(x,ws_text)
+  x<-x[ws_norm(x$STUDYID)=="MRNA-1273-P301",,drop=FALSE]
+  if(!nrow(x))stop("No P301 rows in this table.")
+  for(n in setdiff(spec$optional,names(x)))x[[n]]<-rep("",nrow(x))
+  x<-x[c(spec$required,spec$optional)];x$subject<-ws_sid(x$USUBJID)
+  for(n in intersect(c("AESEQ","ASEQ","SRCSEQ"),names(x))) {
+    ok<-grepl("^[0-9]+([.]0+)?$",x[[n]]);x[[n]][ok]<-as.character(as.numeric(x[[n]][ok]))
+  }
+  if(domain=="ADSL"&&anyDuplicated(x$subject))stop("Duplicate subject in ADSL.")
+  if(domain=="AE") {
+    if(any(!nzchar(x$AESEQ)))stop("Missing AESEQ.")
+    x<-unique(x)
+    if(anyDuplicated(paste(x$subject,x$AESEQ,sep="|")))stop("Conflicting rows share subject/AESEQ.")
+  }
+  x
+}
+ws_candidates <- function(root,release,domain) {
+  p<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
+    pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
+  token<-if(domain=="ADSYMP")"(adsymp|adsy)" else tolower(domain)
+  p<-p[grepl(paste0("(^|[_ -])",token,"([_. -]|$)"),basename(p),ignore.case=TRUE)]
+  p<-p[!grepl("p101|p201|dmid",basename(p),ignore.case=TRUE)]
+  p[order(match(tolower(tools::file_ext(p)),c("csv","jmp","xpt","sas7bdat")),p)]
+}
+ws_submission <- function(p) {
+  z<-regmatches(tolower(basename(p)),regexpr("[0-9]+_s[0-9]+_m[0-9]+_mrna-1273-p301",tolower(basename(p))))
+  if(length(z))z else ""
+}
+ws_signature <- function(x,origin="") {
+  dates<-intersect(c("RANDDT","TR01SDT","DOSE2DT","CUTOFFDT","AP01EDT","UBLDDT","AP02SDT","TR02SDT","EUAVACDT","EOSDT","DTHDT","AESTDTC","AEENDTC","ADT","ASTDT","AENDT"),names(x))
+  for(n in dates) {
+    d<-ws_dates(x[[n]],n,origin)
+    x[[n]]<-ifelse(is.finite(d),ws_iso(d),trimws(x[[n]]))
+  }
+  x<-unique(x);x<-x[do.call(order,x),,drop=FALSE];rownames(x)<-NULL
+  p<-tempfile();on.exit(unlink(p));saveRDS(x,p,compress=FALSE,version=2);unname(tools::md5sum(p))
+}
+ws_pick <- function(root,release,domain,explicit,out,encoding,origin,min_randomized,submission="") {
+  if(nzchar(explicit))paths<-ws_path(root,explicit) else paths<-ws_candidates(root,release,domain)
+  if(!length(paths))stop("No ",release," ",domain," found. Set PHMPT_",switch(domain,ADSYMP="SYMPTOMS",domain),"_FILE.")
+  logs<-list();valid<-list();seen<-character()
+  for(i in seq_along(paths)) {
+    p<-paths[i];message("Checking ",release," ",domain,": ",basename(p))
+    h<-if(file.exists(p))unname(tools::md5sum(p)) else ""
+    other<-!nzchar(explicit)&&nzchar(submission)&&ws_submission(p)!=submission
+    duplicate<-nzchar(h)&&h %in% seen
+    x<-if(other||duplicate)NULL else tryCatch(ws_read(p,domain,encoding),error=function(e)e)
+    cutoff<-NA_real_
+    if(!other&&!duplicate&&!inherits(x,"error")&&domain=="ADSL") {
+      x<-tryCatch({
+        if(sum(ws_norm(x$RANDFL)=="Y")<min_randomized)stop("Incomplete randomized ADSL population.")
+        dc<-ws_dates(x$CUTOFFDT,"CUTOFFDT",origin,TRUE)
+        if(anyNA(dc)||length(unique(dc))!=1L)stop("ADSL has no unique complete cutoff.")
+        cutoff<-dc[1];x
+      },error=function(e)e)
+    }
+    good<-!other&&!duplicate&&!inherits(x,"error")
+    logs[[i]]<-data.frame(domain=domain,release=release,path=normalizePath(p,winslash="/",mustWork=FALSE),
+      md5=h,rows=if(good)nrow(x) else NA_integer_,cutoff=ws_iso(cutoff),
+      status=if(other)"OTHER_SUBMISSION" else if(duplicate)"IDENTICAL_BYTES" else if(good)"VALID" else "REJECTED",
+      detail=if(!other&&!duplicate&&!good)conditionMessage(x) else "",stringsAsFactors=FALSE)
+    if(good)valid[[length(valid)+1L]]<-list(x=x,index=i,cutoff=cutoff,signature=ws_signature(x,origin))
+    if(!other)seen<-c(seen,h)
+  }
+  log<-do.call(rbind,logs);logfile<-file.path(out,paste0("discovery_",domain,".csv"));ws_csv(log,logfile)
+  if(!length(valid))stop("No usable ",domain,". See ",logfile,". ",paste(unique(log$detail[nzchar(log$detail)]),collapse=" | "))
+  if(domain=="ADSL") {
+    latest<-max(vapply(valid,function(a)a$cutoff,numeric(1)))
+    valid<-Filter(function(a)a$cutoff==latest,valid)
+  }
+  if(length(unique(vapply(valid,function(a)a$signature,character(1))))>1L)
+    stop("Different ",domain," snapshots remain. Select one with PHMPT_",switch(domain,ADSYMP="SYMPTOMS",domain),"_FILE; see ",logfile,". Tables are never added together.")
+  # Unreadable alternative formats of a readable file are harmless. Other errors
+  # may hide a different snapshot and must be resolved explicitly.
+  stems<-tolower(tools::file_path_sans_ext(log$path))
+  unresolved<-log$status=="REJECTED" & !stems %in% stems[log$status %in% c("VALID","IDENTICAL_BYTES")]
+  if(any(unresolved))stop("Unresolved ",domain," candidates; see ",logfile,". Set the explicit input path to choose a reviewed source.")
+  chosen<-valid[[1]];log$status[log$status=="VALID"]<-"NOT_SELECTED";log$status[chosen$index]<-"SELECTED"
+  ws_csv(log,logfile);list(x=chosen$x,manifest=log[chosen$index,,drop=FALSE])
+}
+ws_mapping <- function(root,path,out) {
+  if(!nzchar(path)) {
+    p<-file.path(root,c("assets/ae_covid_symptom_mapping.csv","ae_covid_symptom_mapping.csv"))
+    path<-if(any(file.exists(p)))p[which(file.exists(p))[1]] else ""
+  } else path<-ws_path(root,path)
+  if(nzchar(path)) {
+    if(!file.exists(path))stop("Mapping asset not found: ",path)
+    x<-read.csv(path,colClasses="character",check.names=FALSE,fileEncoding="UTF-8-BOM",na.strings=c("","NA"))
+    source<-normalizePath(path,winslash="/");hash<-unname(tools::md5sum(path))
+  } else {x<-ws_embedded_mapping();source<-"Embedded field-specific mapping v1.0.0";hash<-"";message(source)}
+  need<-c("match_field","normalized_term","symptom_code","symptom_group","match_class","include_default")
+  if(!all(need %in% names(x)))stop("Mapping lacks required fields: ",paste(setdiff(need,names(x)),collapse=", "))
+  x[]<-lapply(x,ws_text);x$normalized_term<-ws_norm(x$normalized_term)
+  x$match_field<-ws_norm(x$match_field);x$include_default<-ws_norm(x$include_default)
+  if(any(!x$include_default %in% c("TRUE","FALSE")))stop("Mapping include_default must be TRUE/FALSE.")
+  x$include_default<-x$include_default=="TRUE"
+  if(any(!x$match_field %in% c("AETERM","AELLT","AEDECOD")))stop("Unknown mapping match_field.")
+  if(any(!x$symptom_code %in% names(ws_param_map)))stop("Unknown mapping symptom_code.")
+  if(any(x$symptom_group!=unname(ws_param_map[x$symptom_code])))stop("Mapping symptom groups differ from the agreed 12-group classification.")
+  if(any(x$include_default & x$match_class!="DIRECT"))stop("Review-only mapping rows cannot be included without explicit reclassification.")
+  x<-unique(x)
+  if(anyDuplicated(paste(x$match_field,x$normalized_term,x$symptom_code,sep="|")))stop("Conflicting/duplicate mapping entries.")
+  ws_csv(x,file.path(out,"ae_covid_symptom_mapping_used.csv"))
+  ws_csv(data.frame(path=source,md5=hash),file.path(out,"mapping_source.csv"));x
+}
+ws_param_map <- c(FEVER="FEVER",CHILLS="CHILLS",COUGH="COUGH",DIBREATH="DYSPNEA",SHBREATH="DYSPNEA",
+  FATIGUE="FATIGUE",BODYACHE="MYALGIA",MYALGIA="MYALGIA",HEADACHE="HEADACHE",NLSMELL="SMELL_TASTE",
+  NLTASTE="SMELL_TASTE",STHROAT="SORE_THROAT",NASALCON="NASAL",RUNNOSE="NASAL",NAUSEA="NAUSEA_VOMITING",
+  VOMIT="NAUSEA_VOMITING",DIARRHEA="DIARRHEA")
+ws_context <- function(x,origin="") {
+  for(n in c("RANDFL","DOSE1FL","DOSE2FL")) {
+    x[[n]]<-ws_norm(x[[n]]);if(any(!x[[n]] %in% c("Y","N")))stop(n,": missing/unexpected flag.")
+  }
+  dates<-c("RANDDT","TR01SDT","DOSE2DT","CUTOFFDT","AP01EDT","UBLDDT","AP02SDT","TR02SDT","EUAVACDT","EOSDT","DTHDT")
+  for(n in dates)x[[n]]<-ws_dates(x[[n]],n,origin,TRUE)
+  for(p in list(c("DOSE1FL","TR01SDT"),c("DOSE2FL","DOSE2DT")))
+    if(any((x[[p[1]]]=="Y")!=is.finite(x[[p[2]]])))stop(p[1]," and ",p[2]," disagree.")
+  if(any(x$DOSE2FL=="Y"&x$DOSE1FL!="Y")||any(x$DOSE2DT<x$TR01SDT,na.rm=TRUE))stop("Inconsistent dose chronology.")
+  x<-x[x$RANDFL=="Y",,drop=FALSE]
+  if(any(!is.finite(x$RANDDT))||any(x$RANDDT>x$CUTOFFDT))stop("Invalid randomized start dates.")
+  x$arm<-ifelse(ws_norm(x$TRT01P)=="MRNA-1273","mRNA-1273",ifelse(ws_norm(x$TRT01P)=="PLACEBO","Placebo","UNKNOWN"))
+  if(any(x$arm=="UNKNOWN"))stop("Unexpected randomized arm.")
+  if(any(x$TR01SDT<x$RANDDT|x$TR01SDT>x$CUTOFFDT|x$DOSE2DT>x$CUTOFFDT,na.rm=TRUE))stop("Doses outside randomization/cutoff dates.")
+  x$end_full<-x$CUTOFFDT
+  for(n in c("EOSDT","DTHDT"))x$end_full<-pmin(x$end_full,ifelse(is.finite(x[[n]]),x[[n]],Inf))
+  # Exclude the unblinding/crossover/outside-vaccination day when time is unavailable.
+  x$end_blinded<-x$end_full
+  x$has_blind_boundary<-is.finite(x$AP01EDT)|is.finite(x$UBLDDT)|is.finite(x$AP02SDT)|is.finite(x$TR02SDT)|is.finite(x$EUAVACDT)
+  x$end_blinded<-pmin(x$end_blinded,ifelse(is.finite(x$AP01EDT),x$AP01EDT,Inf))
+  for(n in c("UBLDDT","AP02SDT","TR02SDT","EUAVACDT"))x$end_blinded<-pmin(x$end_blinded,ifelse(is.finite(x[[n]]),x[[n]]-1,Inf))
+  x
+}
+ws_events <- function(ae,sy,mapping,origin,out,ae_timing) {
+  evidence<-list();unmatched<-list()
+  for(field in c("AETERM","AELLT","AEDECOD")) {
+    terms<-ws_norm(ae[[field]]);rules<-mapping[mapping$match_field==field,,drop=FALSE]
+    ix<-data.frame(row_id=seq_len(nrow(ae)),normalized_term=terms,stringsAsFactors=FALSE)
+    hit<-merge(ix,rules,by="normalized_term",sort=FALSE)
+    if(nrow(hit)) {hit$priority<-match(field,c("AETERM","AELLT","AEDECOD"));evidence[[length(evidence)+1L]]<-hit}
+    bad<-nzchar(terms)&!terms %in% rules$normalized_term
+    if(any(bad)) {
+      u<-as.data.frame(table(terms[bad]),stringsAsFactors=FALSE);names(u)<-c("normalized_term","records")
+      u$match_field<-field;unmatched[[length(unmatched)+1L]]<-u
+    }
+  }
+  if(length(unmatched))ws_csv(do.call(rbind,unmatched),file.path(out,"unmapped_ae_terms.csv"))
+  ev<-data.frame(subject=character(),source=character(),source_id=character(),source_domain=character(),source_sequence=character(),symptom_code=character(),symptom_group=character(),
+    lo=numeric(),hi=numeric(),date_quality=character(),term=character(),stringsAsFactors=FALSE)
+  if(length(evidence)) {
+    h<-do.call(rbind,evidence);h<-h[order(h$row_id,h$symptom_code,h$priority),,drop=FALSE]
+    h$selected_evidence<-!duplicated(paste(h$row_id,h$symptom_code,sep="|"))
+    h$USUBJID<-ae$USUBJID[h$row_id];h$AESEQ<-ae$AESEQ[h$row_id]
+    ws_csv(h,file.path(out,"ae_matching_evidence.csv"))
+    # Apply evidence priority BEFORE filtering include_default: a specific
+    # review-only term must not be overridden by a generic direct preferred term.
+    h<-h[h$selected_evidence & h$include_default,,drop=FALSE];j<-h$row_id
+    lo<-ws_dates(ae$AESTDTC,"AESTDTC",origin);ends<-ws_dates(ae$AEENDTC,"AEENDTC",origin)
+    quality<-ifelse(!is.finite(lo),"UNKNOWN_START",ifelse(is.finite(ends)&ends<lo,"END_BEFORE_START",
+      ifelse(is.finite(ends),"KNOWN_INTERVAL","START_ONLY_END_UNKNOWN")))
+    hi<-if(ae_timing=="onset")lo else ifelse(is.finite(ends),ends,lo)
+    hi[quality=="END_BEFORE_START"]<-NA_real_
+    ev<-data.frame(subject=ae$subject[j],source=rep("AE",length(j)),source_id=if(length(j))paste0("AE:",ae$AESEQ[j]) else character(),
+      source_domain=rep("AE",length(j)),source_sequence=ae$AESEQ[j],symptom_code=h$symptom_code,
+      symptom_group=h$symptom_group,lo=lo[j],hi=hi[j],date_quality=quality[j],term=ae$AETERM[j],stringsAsFactors=FALSE)
+  }
+  code<-ws_norm(sy$PARAMCD);value<-ws_norm(sy$AVALC);core<-code %in% names(ws_param_map)
+  inventory<-as.data.frame(table(parameter=code,result=value,source_domain=sy$SRCDOM),stringsAsFactors=FALSE);inventory<-inventory[inventory$Freq>0,]
+  inventory$in_mapping<-inventory$parameter %in% names(ws_param_map)
+  ws_csv(inventory,file.path(out,"symptom_parameter_inventory.csv"))
+  positive<-core & value %in% c("Y","YES");j<-which(positive)
+  date<-ws_dates(sy$ADT,"ADSYMP.ADT",origin)
+  # The same symptom/date can have disagreeing assessments. Retain positive
+  # evidence, flag the conflict, and never interpret missing/unknown as negative.
+  keys<-paste(sy$subject,code,ws_iso(date),sep="|")
+  conflict<-keys %in% keys[core & value %in% c("N","NO")]
+  if(any(positive&conflict))ws_csv(sy[positive&conflict,,drop=FALSE],file.path(out,"contradictory_symptom_assessments.csv"))
+  se<-data.frame(subject=sy$subject[j],source=rep("COVID_FORM",length(j)),source_id=if(length(j))paste0("ADSYMP:",ifelse(nzchar(sy$ASEQ[j]),sy$ASEQ[j],paste0("ROW_",j))) else character(),
+    source_domain=sy$SRCDOM[j],source_sequence=sy$SRCSEQ[j],
+    symptom_code=code[j],symptom_group=unname(ws_param_map[code[j]]),lo=date[j],hi=date[j],
+    date_quality=ifelse(is.finite(date[j]),ifelse(conflict[j],"POSITIVE_WITH_NEGATIVE_SAME_DAY","POSITIVE_ASSESSMENT_DAY"),"UNKNOWN_ASSESSMENT_DATE"),
+    term=sy$PARAM[j],stringsAsFactors=FALSE)
+  ev<-unique(rbind(ev,se));ev$event_id<-seq_len(nrow(ev));ev
+}
+ws_expand <- function(e) {
+  if(!nrow(e))return(data.frame(event_id=integer(),subject=character(),arm=character(),source=character(),symptom_group=character(),week=numeric()))
+  first<-ws_week(e$lo);n<-as.integer((ws_week(e$hi)-first)/7+1)
+  if(any(n<1)||sum(n)>1e7)stop("Implausible/oversized weekly expansion; inspect dates.")
+  j<-rep.int(seq_len(nrow(e)),n)
+  data.frame(event_id=e$event_id[j],subject=e$subject[j],arm=e$arm[j],source=e$source[j],symptom_group=e$symptom_group[j],
+    week=rep.int(first,n)+7*(sequence(n)-1),stringsAsFactors=FALSE)
+}
+ws_window <- function(ctx,ev,window,eua_cutoff,release,out) {
+  end<-switch(window,FULL=ctx$end_full,BLINDED=ctx$end_blinded,EUA=pmin(ctx$end_blinded,eua_cutoff))
+  if(window!="FULL"&&max(ctx$CUTOFFDT)>as.numeric(as.Date("2020-12-18"))&&!any(ctx$has_blind_boundary))
+    stop("Blinded follow-up requested but ADSL has no blinding/crossover boundary information. Supply complete ADSL or choose FULL only.")
+  pop<-data.frame(subject=ctx$subject,arm=ctx$arm,lo=ctx$RANDDT,hi=end,stringsAsFactors=FALSE)
+  pop<-pop[is.finite(pop$lo)&is.finite(pop$hi)&pop$hi>=pop$lo,,drop=FALSE]
+  if(!nrow(pop))stop("Empty follow-up window: ",window)
+  weeks<-seq(ws_week(min(pop$lo)),ws_week(max(pop$hi)),by=7)
+  d<-merge(ev,pop,by="subject",suffixes=c("","_followup"),sort=FALSE)
+  eligible<-is.finite(d$lo)&is.finite(d$hi)&d$hi>=d$lo&d$hi>=d$lo_followup&d$lo<=d$hi_followup
+  exclusions<-d[!eligible,,drop=FALSE]
+  exclusions$reason<-ifelse(!is.finite(exclusions$lo)|!is.finite(exclusions$hi),"UNKNOWN_OR_INVALID_DATE","OUTSIDE_WINDOW")
+  ws_csv(exclusions,file.path(out,paste0(window,"_excluded_events.csv")))
+  d<-d[eligible,,drop=FALSE];d$lo<-pmax(d$lo,d$lo_followup);d$hi<-pmin(d$hi,d$hi_followup)
+  links<-ws_expand(d);links$week_start<-ws_iso(links$week)
+  ws_csv(links,file.path(out,paste0(window,"_source_event_week_links.csv")))
+  k<-c("subject","arm","symptom_group","week")
+  if(nrow(links)) {
+    a<-unique(links[links$source=="AE",k,drop=FALSE]);a$ae<-rep(TRUE,nrow(a))
+    c<-unique(links[links$source=="COVID_FORM",k,drop=FALSE]);c$covid_form<-rep(TRUE,nrow(c))
+    units<-merge(a,c,by=k,all=TRUE,sort=FALSE);units$ae[is.na(units$ae)]<-FALSE;units$covid_form[is.na(units$covid_form)]<-FALSE
+    units$route<-ifelse(units$ae&units$covid_form,"BOTH",ifelse(units$ae,"AE_ONLY","COVID_ONLY"))
+  } else units<-data.frame(subject=character(),arm=character(),symptom_group=character(),week=numeric(),ae=logical(),covid_form=logical(),route=character())
+  units$week_start<-ws_iso(units$week)
+  ws_csv(units,file.path(out,paste0(window,"_subject_symptom_weeks.csv")))
+  denom<-ws_expand(transform(pop,event_id=seq_len(nrow(pop)),source="FOLLOWUP",symptom_group=""))
+  dx<-match(denom$subject,pop$subject)
+  denom$person_days<-pmin(pop$hi[dx],denom$week+6)-pmax(pop$lo[dx],denom$week)+1
+  rows<-lapply(c("mRNA-1273","Placebo"),function(arm) {
+    u<-units[units$arm==arm,,drop=FALSE];ct<-function(route)tabulate(match(u$week[u$route %in% route],weeks),length(weeks))
+    p<-pop[pop$arm==arm,,drop=FALSE];z<-ctx[ctx$arm==arm,,drop=FALSE];endz<-end[ctx$arm==arm]
+    dose<-function(flag,date) {keep<-z[[flag]]=="Y"&is.finite(z[[date]])&z[[date]]>=z$RANDDT&z[[date]]<=endz;tabulate(match(ws_week(z[[date]][keep]),weeks),length(weeks))}
+    de<-denom[denom$arm==arm,,drop=FALSE]
+    pd<-tapply(de$person_days,de$week,sum);days<-as.numeric(pd[match(as.character(weeks),names(pd))]);days[is.na(days)]<-0
+    subjects<-unique(u[c("subject","week")])
+    out<-data.frame(window=window,release=release,arm=arm,week_start=ws_iso(weeks),week_end=ws_iso(weeks+6),
+      dose_1=dose("DOSE1FL","TR01SDT"),dose_2=dose("DOSE2FL","DOSE2DT"),
+      covid_only=ct("COVID_ONLY"),ae_only=ct("AE_ONLY"),both=ct("BOTH"),
+      subjects_with_symptoms=tabulate(match(subjects$week,weeks),length(weeks)),
+      subjects_in_followup=tabulate(match(de$week,weeks),length(weeks)),person_days=days,stringsAsFactors=FALSE)
+    out$total_symptom_groups<-out$covid_only+out$ae_only+out$both
+    out$ae_symptom_groups<-out$ae_only+out$both
+    out$pct_ae_any<-ifelse(out$total_symptom_groups>0,100*out$ae_symptom_groups/out$total_symptom_groups,NA_real_)
+    out$pct_ae_only<-ifelse(out$total_symptom_groups>0,100*out$ae_only/out$total_symptom_groups,NA_real_)
+    out$pct_both<-ifelse(out$total_symptom_groups>0,100*out$both/out$total_symptom_groups,NA_real_)
+    out
+  })
+  weekly<-do.call(rbind,rows);rownames(weekly)<-NULL
+  if(sum(weekly$total_symptom_groups)!=nrow(units)||any(weekly$ae_symptom_groups>weekly$total_symptom_groups))stop("Weekly reconciliation failed.")
+  ws_csv(weekly,file.path(out,paste0(window,"_weekly_counts.csv")))
+  list(weekly=weekly,units=units,population=pop)
+}
+ws_plot <- function(w,ctx,window,release,ae_timing) {
+  old<-par(no.readonly=TRUE);on.exit({layout(1);par(old)})
+  layout(matrix(1:4,ncol=1),heights=c(.9,3.05,3.05,.7))
+  par(mar=c(0,.8,0,.8),family="sans");plot.new();plot.window(c(0,1),c(0,1))
+  text(.02,.84,"Moderna P301 | Weekly doses and documented symptom groups",adj=0,font=2,cex=1.15,col="#183746")
+  label<-switch(window,BLINDED="Individual blinded follow-up",EUA="Through the EUA data cutoff",FULL="Full follow-up by original randomized arm")
+  text(.02,.58,paste0(label," | ",release," | Source cutoff ",ws_iso(ctx$CUTOFFDT[1])),adj=0,cex=.8,col="#405865")
+  fill<-c("#E5EBEF","#EFE8DA","#418C99","#CB7849","#8B77A2",NA)
+  legend(.02,.38,legend=c("Dose 1","Dose 2","Symptom table only","AE only","Both sources","AE share (right axis)"),
+    fill=fill,border=c("#A7B4BD","#B3A48F",rep(NA,4)),col=c(rep(NA,5),"#222838"),
+    lty=c(rep(NA,5),1),lwd=c(rep(NA,5),1.8),pch=c(rep(NA,5),16),pt.cex=.5,ncol=6,bty="n",cex=.70,x.intersp=.65,y.intersp=.8)
+  maxn<-max(c(1,w$dose_1,w$dose_2,w$total_symptom_groups));top<-max(pretty(c(0,maxn*1.08),n=4))
+  for(arm in c("mRNA-1273","Placebo")) {
+    q<-w[w$arm==arm,,drop=FALSE];n<-nrow(q);xx<-seq_len(n)
+    par(mar=c(2.4,4.8,1.8,4.8),mgp=c(2.7,.65,0),las=1,bty="n",xaxs="i",yaxs="i")
+    plot(c(.4,n+.6),c(0,top),type="n",axes=FALSE,xlab="",ylab="Weekly count",cex.lab=.8)
+    ticks<-pretty(c(0,top),n=4);abline(h=ticks,col="#DFE5E8",lwd=.55)
+    rect(xx-.46,0,xx-.02,q$dose_1,col=fill[1],border="#A7B4BD",lwd=.6)
+    rect(xx+.02,0,xx+.46,q$dose_2,col=fill[2],border="#B3A48F",lwd=.6)
+    base<-rep(0,n)
+    for(i in 1:3) {
+      vals<-q[[c("covid_only","ae_only","both")[i]]]
+      rect(xx-.22,base,xx+.22,base+vals,col=fill[i+2],border=NA);base<-base+vals
+    }
+    axis(2,at=ticks,labels=ws_n(ticks),tick=FALSE,cex.axis=.72)
+    idx<-unique(c(seq(1,n,by=max(1,ceiling(n/20))),n))
+    dates<-as.Date(q$week_start[idx]);labs<-paste(format(dates,"%d"),month.abb[as.integer(format(dates,"%m"))],format(dates,"%y"))
+    axis(1,at=xx[idx],labels=FALSE,tck=-.016,col="#73818A")
+    text(xx[idx],-.035*top,labels=labs,srt=40,adj=1,xpd=NA,cex=.63,col="#3C515E")
+    lines(xx,q$pct_ae_any/100*top,col="#222838",lwd=1.5)
+    points(xx,q$pct_ae_any/100*top,pch=21,bg="white",col="#222838",cex=.43,lwd=.8)
+    axis(4,at=(0:4)*top/4,labels=paste0((0:4)*25,"%"),tick=FALSE,cex.axis=.72,col.axis="#222838")
+    mtext("Symptom groups recorded as AEs (%)",side=4,line=2.9,las=0,cex=.72)
+    title(main=paste0(arm," | Randomized N = ",ws_n(sum(ctx$arm==arm))," | ",ws_n(sum(q$total_symptom_groups))," symptom-group weeks"),
+      adj=0,line=.45,cex.main=.9,col.main="#183746")
+  }
+  par(mar=c(0,.8,0,.8));plot.new();plot.window(c(0,1),c(0,1))
+  text(.02,.77,"One participant x symptom group x week. AE share = (AE only + both) / all three categories. Empty weeks have no percentage.",adj=0,cex=.70,col="#405865")
+  text(.02,.45,paste0("Weeks begin Monday. AE timing: ",if(ae_timing=="interval")"known active intervals; unknown ends count at onset only" else "onset week only",
+    ". Symptom table: positive assessment days."),adj=0,cex=.70,col="#405865")
+  text(.02,.13,if(window=="FULL")"Original dose 1/2 only. Original-arm follow-up after crossover is descriptive; symptoms are not confirmed COVID-19 infections."
+    else "Original dose 1/2 only. Counts depend on documentation and follow-up; they are not confirmed COVID-19 infections.",adj=0,cex=.70,col="#405865")
+}
+ws_export_plot <- function(draw,path,dpi) {
+  if(capabilities("cairo"))grDevices::cairo_pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,family="sans")
+  else grDevices::pdf(paste0(path,".pdf"),width=297/25.4,height=210/25.4,paper="special",family="Helvetica")
+  tryCatch(draw(),finally=grDevices::dev.off())
+  grDevices::png(paste0(path,".png"),width=297/25.4,height=210/25.4,units="in",res=dpi,type=if(capabilities("cairo"))"cairo" else getOption("bitmapType"))
+  tryCatch(draw(),finally=grDevices::dev.off())
+  if(capabilities("cairo")) {grDevices::svg(paste0(path,".svg"),width=297/25.4,height=210/25.4);tryCatch(draw(),finally=grDevices::dev.off())}
+}
+analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_file="",symptoms_file="",mapping_file="",
+  windows=c("BLINDED","EUA","FULL"),eua_cutoff="2020-11-25",ae_timing="interval",output_dir="",encoding="auto",
+  numeric_date_origin="",min_randomized=30000L,png_dpi=300L,show_chart=FALSE) {
+  if(!release %in% c("auto","EUA","Prod"))stop("Release must be auto, EUA or Prod.")
+  if(!length(windows)||any(!windows %in% c("BLINDED","EUA","FULL")))stop("Invalid windows.")
+  windows<-unique(windows)
+  if(!ae_timing %in% c("interval","onset"))stop("AE timing must be interval or onset.")
+  if(length(png_dpi)!=1L||!is.finite(png_dpi)||png_dpi<72||png_dpi>1200)stop("PNG DPI must be between 72 and 1200.")
+  cutoff<-ws_dates(eua_cutoff,"EUA cutoff","",TRUE);if(length(cutoff)!=1L||!is.finite(cutoff))stop("Complete EUA cutoff required.")
+  root<-ws_root(root)
+  out<-if(nzchar(output_dir))ws_path(root,output_dir) else file.path(root,"analysis",paste0("weekly_symptoms_ae_",format(Sys.time(),"%Y%m%d_%H%M%S")))
+  dir.create(out,recursive=TRUE,showWarnings=FALSE)
+  if(release=="auto") {
+    release<-if(length(ws_candidates(root,"Prod","ADSL")))"Prod" else "EUA"
+    if(nzchar(adsl_file)) {
+      p<-tolower(gsub("\\\\","/",ws_path(root,adsl_file)))
+      if(grepl("/prod_data/",p,fixed=TRUE))release<-"Prod" else if(grepl("/eua_data/",p,fixed=TRUE))release<-"EUA"
+      else stop("For an explicit ADSL outside eua_data/prod_data, set PHMPT_RELEASE to EUA or Prod.")
+    }
+  }
+  a<-ws_pick(root,release,"ADSL",adsl_file,out,encoding,numeric_date_origin,min_randomized)
+  ctx<-ws_context(a$x,numeric_date_origin);submission<-ws_submission(a$manifest$path)
+  b<-ws_pick(root,release,"AE",ae_file,out,encoding,numeric_date_origin,min_randomized,submission)
+  c<-ws_pick(root,release,"ADSYMP",symptoms_file,out,encoding,numeric_date_origin,min_randomized,submission)
+  manifest<-rbind(a$manifest,b$manifest,c$manifest);ws_csv(manifest,file.path(out,"selected_inputs.csv"))
+  # If ADSYMP carries a cutoff, require agreement with the selected ADSL.
+  cd<-ws_dates(c$x$CUTOFFDT,"ADSYMP.CUTOFFDT",numeric_date_origin,TRUE)
+  if(any(is.finite(cd)&cd!=ctx$CUTOFFDT[1]))stop("ADSYMP and ADSL cutoffs disagree.")
+  mapping<-ws_mapping(root,mapping_file,out)
+  ev<-ws_events(b$x,c$x,mapping,numeric_date_origin,out,ae_timing)
+  ev$start_date<-ws_iso(ev$lo);ev$end_date<-ws_iso(ev$hi)
+  ev$in_randomized_population<-ev$subject %in% ctx$subject
+  ev$arm<-ctx$arm[match(ev$subject,ctx$subject)]
+  ws_csv(ev,file.path(out,"symptom_event_evidence.csv"))
+  ws_csv(ev[!is.finite(ev$lo)|!is.finite(ev$hi)|ev$hi<ev$lo,,drop=FALSE],file.path(out,"undated_or_invalid_symptom_events.csv"))
+  ws_csv(ev[!ev$in_randomized_population,,drop=FALSE],file.path(out,"events_outside_randomized_population.csv"))
+  # Arm is attached inside each window to avoid duplicate arm columns on merge.
+  ev$arm<-NULL
+  context<-ctx;for(n in c("RANDDT","TR01SDT","DOSE2DT","CUTOFFDT","AP01EDT","UBLDDT","AP02SDT","TR02SDT","EUAVACDT","EOSDT","DTHDT","end_full","end_blinded"))context[[n]]<-ws_iso(context[[n]])
+  ws_csv(context,file.path(out,"subject_followup_and_doses.csv"))
+  results<-list()
+  for(window in windows) {
+    message("Aggregating ",window," ...")
+    r<-ws_window(ctx,ev,window,cutoff,release,out);results[[window]]<-r$weekly
+    draw<-local({w<-r$weekly;win<-window;function()ws_plot(w,ctx,win,release,ae_timing)})
+    ws_export_plot(draw,file.path(out,paste0("weekly_symptoms_ae_",tolower(window))),png_dpi)
+  }
+  all<-do.call(rbind,results);rownames(all)<-NULL;ws_csv(all,file.path(out,"weekly_counts_all_windows.csv"))
+  totals<-do.call(rbind,lapply(split(all,paste(all$window,all$arm)),function(z) {
+    den<-sum(z$total_symptom_groups);data.frame(window=z$window[1],arm=z$arm[1],dose_1=sum(z$dose_1),dose_2=sum(z$dose_2),
+      covid_only=sum(z$covid_only),ae_only=sum(z$ae_only),both=sum(z$both),symptom_group_weeks=den,
+      pct_ae_any=if(den>0)100*sum(z$ae_symptom_groups)/den else NA_real_)
+  }));rownames(totals)<-NULL;ws_csv(totals,file.path(out,"window_totals.csv"))
+  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.0.0", "",
+    paste("Release:",release,"; source cutoff:",ws_iso(ctx$CUTOFFDT[1]),"; randomized population:",nrow(ctx)),
+    paste("AE timing:",ae_timing,"; windows:",paste(windows,collapse=", ")),"",
+    "COUNTING UNIT: a distinct participant x symptom group x Monday-Sunday week. Repeated records, days and related parameters within that group/week count once. One participant with three groups contributes three units. This is not a count of visits, raw AE records, clinical episodes or infections. Units in different weeks are not unique participants.",
+    "The 17 symptom parameters collapse to the same 12 groups used in the agreed AE mapping: breathing; muscle/body aches; smell/taste; nasal symptoms; and nausea/vomiting each share one group. Other groups remain separate. AE labels map by exact field plus normalized term, without automatic expansion of diagnoses.",
+    "COLUMNS: symptom table only (COVID_FORM in CSV evidence), AE only and both sources are disjoint and sum to the union. ADSYMP includes COVID-form symptoms and qualifying vital-sign evidence, such as fever. BOTH means evidence in both sources for the same participant/group/week; it does not prove that the records refer to the same illness. Repeated separate episodes within a week are deliberately collapsed.",
+    "LINE: 100 * (AE_ONLY + BOTH) / (COVID_ONLY + AE_ONLY + BOTH). An empty denominator is NA, so the line breaks. This is a documentation-route proportion, not the probability that a reported symptom was reclassified, not an adverse-event incidence rate and not a treatment effect. pct_ae_only is also exported separately.",
+    "DATES: COVID_FORM evidence uses ADSYMP.ADT and AVALC Y/YES. ADT is the assessment/analysis date, not necessarily onset. Only mapped checklist parameters are counted. Contradictory positive/negative same-day records are logged; positive evidence is retained. Negative, unknown, unperformed or missing assessments do not count as positive.",
+    "AE interval mode uses AESTDTC through a complete AEENDTC, inclusive, clipped to follow-up. Missing/partial end dates contribute only the onset day; ongoing duration is not imputed. Onset mode uses AESTDTC only. Missing/partial starts and end-before-start records are excluded and logged. Different collection frequencies and incomplete durations can affect the line.",
+    "FOLLOW-UP: RANDFL Y, planned original arm TRT01P, from RANDDT. FULL ends at the earliest CUTOFFDT/EOSDT/DTHDT. BLINDED additionally ends at AP01EDT or the day before UBLDDT/AP02SDT/TR02SDT/EUAVACDT, whichever comes first. Missing individual boundaries fall back to the full endpoint and are exposed in the context CSV. EUA uses the blinded endpoint capped at the configured EUA date.",
+    "FULL retains original randomization labels after unblinding/crossover; placebo-assigned participants may subsequently receive vaccine. It is a descriptive follow-up view. The blinded comparison also has changing follow-up: weekly subjects_in_followup and person_days are exported. No causal conclusion is established by these curves.",
+    "DOSES: background columns show original DOSE1FL/TR01SDT and DOSE2FL/DOSE2DT administrations in the same population/window. Placebo injections are included. Crossover/outside doses are excluded. The left axis is unscaled weekly counts shared between arms; the right axis is a fixed 0-100% for the AE share. Bar and line heights use different units.",
+    "MAPPING: an external assets/ae_covid_symptom_mapping.csv takes precedence; otherwise the embedded field-specific v1.0.0 asset is used. Specific AETERM then AELLT evidence takes precedence over AEDECOD for each symptom parameter, before include_default is applied. Review-only matches are excluded. All matching evidence, excluded dates and unmapped terms are exported for review.",
+    "SCOPE: COVID forms plus mapped raw AE records, regardless of PCR/serology, severity or investigator causal attribution. Solicited reactogenicity diaries are a separate collection source and are not included. No duration/fever threshold for protocol-trigger eligibility is imposed. Compatible symptoms do not establish COVID-19 or a missed PCR test.",
+    "SOURCE CONTROL: one selected snapshot per domain/release; duplicate files are not pooled. Matching submission identifiers are preferred when available. Conflicting snapshots require an explicit path. Selected file paths and MD5 checksums are exported; inspect them before publication. Raw AE and ADSYMP often have no cutoff field, so submission/date coverage should be reviewed using the source documents.",
+    "OUTPUTS: print-ready PDF, PNG and SVG (when Cairo is available) for each window; weekly counts; participant-group-week membership; event-week links; original event evidence; mapping evidence; follow-up context; source discovery and methods.","",
+    "Source metadata: production P301 ADaM define.xml ADSYMP.ADT, AVALC and ADSL dosing/window variables; the previously reviewed analyst AE-to-symptom mapping.")
+  writeLines(notes,file.path(out,"README.txt"));capture.output(sessionInfo(),file=file.path(out,"sessionInfo.txt"))
+  if(show_chart)ws_plot(results[[1]],ctx,windows[1],release,ae_timing)
+  message("Reports and CSV assets: ",normalizePath(out,winslash="/"));print(totals,row.names=FALSE)
+  invisible(list(output_dir=out,weekly=all,totals=totals,context=ctx))
+}
+
+# ---- EMBEDDED STAND-ALONE UTILITIES AND REFERENCE MAPPING ----
+ws_text <- function(x) {
+  if(inherits(x,"Date")) x<-format(x,"%Y-%m-%d")
+  else if(inherits(x,"POSIXt")) x<-format(x,"%Y-%m-%d",tz="UTC")
+  x<-as.character(x);x[is.na(x)]<-""
+  bad<-!validUTF8(x)
+  if(any(bad))x[bad]<-iconv(x[bad],from="windows-1252",to="UTF-8",sub=NA)
+  if(anyNA(x))stop("Undecodable input text. Set PHMPT_CSV_ENCODING.")
+  enc2utf8(x)
+}
+ws_csv <- function(x,path) {
+  con<-file(path,"wb");on.exit(close(con));writeBin(as.raw(c(239,187,191)),con)
+  write.table(x,con,sep=",",row.names=FALSE,quote=TRUE,na="",qmethod="double")
+}
+ws_path <- function(root,p) if(grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)",p))p else file.path(root,p)
+ws_root <- function(root="") {
+  if(nzchar(root))return(normalizePath(root,winslash="/",mustWork=TRUE))
+  cand<-getwd()
+  for(f in sys.frames())if(!is.null(f$ofile))cand<-c(cand,dirname(f$ofile))
+  a<-grep("^--file=",commandArgs(),value=TRUE)
+  if(length(a))cand<-c(cand,dirname(sub("^--file=","",a[1])))
+  if(interactive()&&requireNamespace("rstudioapi",quietly=TRUE)&&rstudioapi::isAvailable()) {
+    p<-tryCatch(rstudioapi::getActiveDocumentContext()$path,error=function(e)"")
+    if(nzchar(p))cand<-c(cand,dirname(p))
+  }
+  for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
+    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    parent<-dirname(p);if(parent==p)break;p<-parent
+  }
+  stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
+}
+
+ws_read_jmp <- function(path, fields, optional=character()) {
+  size <- file.info(path)$size
+  if (is.na(size) || size < 64 || size > .Machine$integer.max)
+    stop("Unsupported JMP file size: ", path)
+  b <- readBin(path, "raw", n = size)
+  take <- function(buf, at, n) {
+    if (length(at) != 1L || length(n) != 1L || !is.finite(at) || !is.finite(n) ||
+        at < 1 || n < 0 || at + n - 1 > length(buf)) stop("JMP byte range outside file/payload.")
+    if (n == 0) raw() else buf[seq.int(at, length.out = n)]
+  }
+  uint <- function(buf, at, width) {
+    z <- sum(as.integer(take(buf, at, width)) * 256^(seq_len(width) - 1L))
+    if (!is.finite(z) || z > 2^53 - 1) stop("JMP integer exceeds exact R representation.")
+    z
+  }
+  txt <- function(z) {
+    nonzero <- which(z != as.raw(0))
+    if (!length(nonzero)) return("")
+    s <- rawToChar(z[seq_len(tail(nonzero, 1L))])
+    if (!validUTF8(s)) stop("Invalid UTF-8 in JMP string.")
+    Encoding(s) <- "UTF-8"; s
+  }
+  if (!identical(b[1:8], as.raw(c(255,255,0,0,7,0,0,0))))
+    stop("Unsupported JMP signature. Supply an exported CSV/XPT/SAS7BDAT instead.")
+  header <- grepRaw(as.raw(c(7,0,8,0,0,0)), b, fixed = TRUE)[1]
+  if (is.na(header) || header < 33) stop("JMP dimensions not found.")
+  nr <- uint(b, header - 32, 8); nc <- uint(b, header - 24, 4)
+  if (nr < 1 || nr > .Machine$integer.max || nc < 1 || nc > 10000) stop("Invalid JMP dimensions.")
+  offsets <- NULL
+  # Column directory precedes column payloads; validate every pointer and name.
+  starts <- grepRaw(as.raw(c(255,255)), b, all = TRUE, fixed = TRUE)
+  starts <- starts[starts > 2]
+  for (at in starts) {
+    p <- at
+    while (p <= length(b) && b[p] == as.raw(255)) p <- p + 1L
+    p <- p + 10L
+    if (p + 15 > length(b)) next
+    if (uint(b, p, 4) + uint(b, p + 4, 4) != nc) next
+    p <- p + 16 + 6 * nc + 28
+    found <- tryCatch({
+      while (identical(take(b, p, 2), as.raw(c(253,255))) ||
+             identical(take(b, p, 2), as.raw(c(254,255))) ||
+             identical(take(b, p, 2), as.raw(c(255,255)))) p <- p + 10 + uint(b, p + 2, 8)
+      if (uint(b, p, 4) != nc) stop("Directory column count mismatch.")
+      off <- vapply(seq_len(nc), function(i) uint(b, p + 4 + (i - 1) * 8, 8) + 1, numeric(1))
+      if (any(diff(off) <= 0) || any(off <= p) || any(off + 8 > length(b))) stop("Invalid JMP column pointers.")
+      nm <- vapply(off, function(o) txt(take(b, o + 2, uint(b, o, 2))), character(1))
+      if (anyDuplicated(nm) || any(!nzchar(nm))) stop("Invalid JMP column names.")
+      list(offsets = off, names = nm)
+    }, error = function(e) NULL)
+    if (!is.null(found)) { offsets <- found$offsets; column_names <- found$names; break }
+  }
+  if (is.null(offsets)) stop("JMP column directory not found or unsupported.")
+  missing <- setdiff(fields, column_names)
+  if (length(missing)) stop("JMP missing required columns: ", paste(missing, collapse = ", "))
+  selected <- unique(c(fields, intersect(optional, column_names)))
+  values <- setNames(vector("list", length(selected)), selected)
+  for (name in selected) {
+    i <- match(name, column_names); p <- offsets[i] + 2 + uint(b, offsets[i], 2)
+    dt <- as.integer(take(b, p, 6)); p <- p + 6
+    end <- if (i < nc) offsets[i + 1] - 1 else length(b)
+    if (!dt[1] %in% c(9L,10L)) stop("Unsupported JMP encoding in ", name, "; export this table to CSV.")
+    h <- take(b, p, min(2048, end - p + 1))
+    marker <- grepRaw(as.raw(c(239,190,254,202)), h, fixed = TRUE)[1]
+    if (is.na(marker)) stop("JMP compression header missing in ", name)
+    q <- p + marker - 1 + 4
+    packed <- uint(b, q, 8); unpacked <- uint(b, q + 8, 8)
+    if (unpacked > .Machine$integer.max || q + 16 + packed - 1 > end)
+      stop("Invalid JMP compressed block length in ", name)
+    payload <- withCallingHandlers(memDecompress(take(b, q + 16, packed), type = "gzip"),
+      warning = function(w) stop("JMP decompression warning in ", name, ": ", conditionMessage(w)))
+    if (length(payload) != unpacked) stop("JMP decompressed size mismatch in ", name)
+    if (dt[1] == 9L && dt[2] %in% c(1L,2L) && all(dt[3:4] == 0L) && dt[5] > 0L) {
+      width <- dt[5]
+      if (length(payload) != nr * width) stop("Unsupported fixed-width JMP payload in ", name)
+      values[[name]] <- vapply(seq_len(nr), function(j) txt(take(payload, (j - 1) * width + 1, width)), character(1))
+    } else if (dt[1] == 10L && dt[6] == 8L && dt[4] == dt[5] && dt[4] %in% c(0L,3L,99L,114L)) {
+      if (length(payload) != nr * 8) stop("JMP numeric row count mismatch in ", name)
+      z <- readBin(payload, "double", n = nr, size = 8, endian = "little")
+      if (any(is.infinite(z))) stop("Non-finite JMP number in ", name)
+      missing <- is.na(z)
+      if (dt[4] == 114L) {
+        if (any(abs(z[!is.na(z)] / 86400 - round(z[!is.na(z)] / 86400)) > 1e-8))
+          stop("JMP date includes a time component in ", name)
+        z <- format(as.Date(z / 86400, origin = "1904-01-01"), "%Y-%m-%d")
+      } else z <- as.character(z)
+      z[missing | is.na(z)] <- ""; values[[name]] <- z
+    } else stop("Unsupported JMP column type in ", name, ": ", paste(dt, collapse = ", "))
+  }
+  as.data.frame(values, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+
+ws_embedded_mapping <- function() read.csv(text=paste(c(
+  "dictionary_version,match_field,normalized_term,symptom_code,symptom_label,symptom_group,match_class,include_default",
+  "1.0.0,AEDECOD,POST PROCEDURAL FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,FEBRILE REACTION,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,FEVER CHILLS,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,FEVER OF UNKNOWN ORIGIN,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,INTERMITTENT FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,POST PROCEDURAL FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,POSTOPERATIVE FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AELLT,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AETERM,FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AETERM,FEVER OF UNKNOWN ORIGIN,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AETERM,INTERMITTENT FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AETERM,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
+  "1.0.0,AEDECOD,BODY TEMPERATURE INCREASED,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,BODY TEMPERATURE INCREASED,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,FEVERISH,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,HIGH TEMPERATURE,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,LOW GRADE FEVER,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,SLIGHT TEMPERATURE,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,FEVERISH,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,LOW GRADE FEVER,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AELLT,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AELLT,FEVER CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AELLT,RIGORS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AETERM,CHILL,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AETERM,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AETERM,RIGORS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
+  "1.0.0,AEDECOD,ALLERGIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AEDECOD,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,ALLERGIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,CHRONIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,COUGH AGGRAVATED,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,COUGH INCREASED,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,COUGH NONPRODUCTIVE,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,COUGHING,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,DRUG-INDUCED COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,DRY COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,NOCTURNAL COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,PERSISTENT COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AELLT,SMOKER'S COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AETERM,CHRONIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AETERM,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AETERM,COUGHING,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AETERM,DRY COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AETERM,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DYSPNOEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DYSPNOEA EXERTIONAL,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DYSPNEA EXACERBATED,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DYSPNEA EXERTIONAL,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,EXERTIONAL DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,INCREASED SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,SHORT OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,EXERTIONAL DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,INCREASED SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,SHORT OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,BREATHING DIFFICULT,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DIFFICULTY BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AELLT,LABORED BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,DIFFICULT BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AETERM,DIFFICULTY BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
+  "1.0.0,AEDECOD,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AELLT,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AELLT,FATIGUE AGGRAVATED,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AELLT,FATIGUE EXTREME,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AELLT,TIREDNESS,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AETERM,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AETERM,TIREDNESS,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,ASTHENIA,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,ASTHENIA,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,WEAKNESS GENERALIZED,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,GENERALIZED WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,GENERALISED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,GENERALIZED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,LOCALISED MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,LOCALIZED MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MUSCLE ACHE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MUSCLE SORENESS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MUSCULAR PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MUSCULAR PAINS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MYALGIA AGGRAVATED,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MYALGIA OF LOWER EXTREMITIES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,MYALGIA UPPER EXTREMITIES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,PAIN MUSCLE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,POLYMYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,TENDERNESS MUSCLE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,GENERALIZED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MUSCLE ACHE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MUSCLE SORENESS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,GENERAL BODY PAIN,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AELLT,GENERALIZED ACHING,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,(WHOLE BODY) BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,ALL OVER BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,BODY ACHE,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,GENERAL BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
+  "1.0.0,AETERM,GENERALIZED PAIN,BODYACHE,Body aches,MYALGIA,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,GENERALIZED PAIN,BODYACHE,Body aches,MYALGIA,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,CLUSTER HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,EXERTIONAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,NEW DAILY PERSISTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,POST-TRAUMATIC HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PRIMARY COUGH HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PRIMARY HEADACHE ASSOCIATED WITH SEXUAL ACTIVITY,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PROCEDURAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,CLUSTER HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,COITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,DRUG-INDUCED HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,EXERTIONAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,FOREHEAD HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,FREQUENT HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,FRONTAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEAD PAIN,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE (EXCL MIGRAINE) AGGRAVATED,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE AGGRAVATED,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE DULL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE POST-TRAUMATIC,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE POSTOPERATIVE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE RECURRENT,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE SINUS,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE TEMPORAL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE TENSION,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,HEADACHE UNILATERAL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,INTERMITTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,MIGRAINE HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,NEW DAILY PERSISTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,OCCIPITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,PAIN HEAD,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,POST PROCEDURAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,POST-TRAUMATIC HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,PRIMARY COUGH HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,TEMPORAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AELLT,TENSION HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,CLUSTER HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,FRONTAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,HEAD PAIN,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,INTERMITTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,MIGRAINE HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,OCCIPITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AETERM,TENSION HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MIGRAINE WITH AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,MIGRAINE WITHOUT AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,VESTIBULAR MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,COMPLICATED MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MIGRAINE AGGRAVATED,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MIGRAINE AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MIGRAINE WITH AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,MIGRAINE WITHOUT AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,OPHTHALMIC MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,VESTIBULAR MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,COMPLICATED MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,MIGRAINE AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AELLT,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AELLT,LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,NEW LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,PAROSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,ALTERED SMELL SENSATION,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,DIMINISHED SENSE OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,PHANTOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,SMELL ALTERATION,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,SMELL CHANGE,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,DIMINISHED SENSE OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,PHANTOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AELLT,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AELLT,LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AETERM,NEW LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,TASTE DISORDER,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,IMPAIRED TASTE,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE ALTERATION,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE ALTERED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE BITTER,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE CHANGED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE DIMINISHED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE METALLIC,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TASTE SALTY,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,TASTE ALTERATION,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,OROPHARYNGEAL PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,CHRONIC SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,OROPHARYNGEAL PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,PAIN THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,STREPTOCOCCAL SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,THROAT PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AELLT,THROAT SORE,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AETERM,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AETERM,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AETERM,THROAT PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,OROPHARYNGEAL DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,PHARYNGEAL PARAESTHESIA,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,ITCHY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,OROPHARYNGEAL DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,PHARYNX IRRITATED SENSATION OF,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,THROAT DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,TINGLING THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,ITCHY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,THROAT DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,CHRONIC NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,CONGESTION NASAL,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NASAL SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NASAL STUFFINESS,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NOSE CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,CONGESTION NASAL,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,NOSE CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
+  "1.0.0,AEDECOD,RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,UPPER RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AELLT,UPPER RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AETERM,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
+  "1.0.0,AEDECOD,RHINORRHOEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NASAL DISCHARGE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,NASAL MUCUS INCREASED,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,RHINORRHEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AELLT,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,RHINORRHEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AETERM,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
+  "1.0.0,AEDECOD,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,NAUSEA AGGRAVATED,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,POST PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,POSTOPERATIVE NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,NAUSEA/VOMITING,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,POSTOPERATIVE NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AEDECOD,PROCEDURAL VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AEDECOD,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,EMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,HYPEREMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,PROCEDURAL VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,VOMITED,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AELLT,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,EMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,HYPEREMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,NAUSEA/VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,VOMITED,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AETERM,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
+  "1.0.0,AEDECOD,BACTERIAL DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AEDECOD,DIARRHOEA INFECTIOUS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AEDECOD,VIRAL DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,ACUTE DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,BACTERIAL DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DIARRHEA AGGRAVATED,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,LOOSE BOWEL,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,LOOSE BOWELS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,LOOSE STOOLS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,STOOLS WATERY,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,TRAVELLER'S DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,VIRAL DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AELLT,WATERY DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AETERM,ACUTE DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AETERM,DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
+  "1.0.0,AETERM,LOOSE STOOLS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE"
+),collapse="\n"),colClasses="character",check.names=FALSE)
+# ---- RUN: select and run the whole script in RStudio ----
+if(isTRUE(getOption("phmpt.autorun",TRUE))) {
+  analyse_weekly_symptoms_ae(root=PHMPT_ROOT,release=PHMPT_RELEASE,
+    adsl_file=PHMPT_ADSL_FILE,ae_file=PHMPT_AE_FILE,symptoms_file=PHMPT_SYMPTOMS_FILE,
+    mapping_file=PHMPT_MAPPING_FILE,windows=PHMPT_WINDOWS,eua_cutoff=PHMPT_EUA_CUTOFF,
+    ae_timing=PHMPT_AE_TIMING,output_dir=PHMPT_OUTPUT_DIR,encoding=PHMPT_CSV_ENCODING,
+    numeric_date_origin=PHMPT_NUMERIC_DATE_ORIGIN,min_randomized=PHMPT_MIN_RANDOMIZED,
+    png_dpi=PHMPT_PNG_DPI,show_chart=PHMPT_SHOW_CHART)
+}
