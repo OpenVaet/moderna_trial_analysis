@@ -1,15 +1,42 @@
-# Exploratory audit of the supplied symptom-testing heatmap export.
-# v1.1.0 | 2026-10-21: five vector PDF examples + site-specific high/low interactions.
-# Stand-alone base R >=4.3. In RStudio, set DATA_DIR below to the extracted
-# heatmap export folder, then run the whole script. No extra R packages needed.
-# Command line: Rscript this_file.R <extracted_export_folder> <output_folder>.
+# Moderna P301 - exploratory site testing audit | v1.2.0 | 2026-10-21
+# Stand-alone base R >=4.3: select all and run in RStudio from the project root.
+# Generates report_insert.html/txt, numbered prose, tables, references and five
+# illustrations as PDF/PNG (and SVG with Cairo). Does not modify the draft.
 # Primary high-positivity rule: county weekly NAAT positivity >=10%.
-# First eligible episode per participant within each specified subset prevents
-# repeated participants in the site Fisher tests. All-episode counts are also exported.
-args<-commandArgs(trailingOnly=TRUE)
-DATA_DIR<-if(length(args)>=1)args[1] else getwd() # folder containing episodes.csv
-OUTPUT_DIR<-if(length(args)>=2)args[2] else file.path(DATA_DIR,'positivity_audit')
-dir.create(OUTPUT_DIR,recursive=TRUE,showWarnings=FALSE)
+# Command line: Rscript analyse_site_testing_imbalance.R <export_folder> <output_folder>
+# To load functions without running: options(phmpt.autorun=FALSE).
+
+DATA_DIR <- getOption('phmpt.audit_data_dir','')   # blank: discover latest BLINDED heatmap export
+OUTPUT_DIR <- getOption('phmpt.audit_output_dir','') # blank: <export>/positivity_audit
+PHMPT_REPORT_START <- getOption('phmpt.report_start_paragraph',25L)
+PHMPT_REFERENCE_START <- getOption('phmpt.report_reference_start',32L)
+PHMPT_REPORT_ONLY <- getOption('phmpt.report_only',FALSE) # reuse existing, hash-matched model CSVs
+
+phmpt_find_export <- function(data_dir='',root=getwd()) {
+  required<-c('episodes.csv','site_background_used.csv','site_region_coverage.csv',
+    'subject_followup.csv','site_arm_weekly_testing.csv','pcr_records_reconciled.csv','illness_visits.csv','run_parameters.csv')
+  valid<-function(p)all(file.exists(file.path(p,required)))
+  if(nzchar(data_dir)) {
+    if(!valid(data_dir))stop('DATA_DIR must contain a complete heatmap CSV export: ',data_dir)
+    return(normalizePath(data_dir,winslash='/'))
+  }
+  if(valid(root))return(normalizePath(root,winslash='/'))
+  paths<-list.files(file.path(root,'analysis'),pattern='^episodes[.]csv$',recursive=TRUE,full.names=TRUE)
+  dirs<-unique(dirname(paths));dirs<-dirs[vapply(dirs,valid,logical(1))]
+  if(!length(dirs))stop('No complete heatmap export found. Run analyse_symptom_testing_heatmaps.R first, or set DATA_DIR to its output folder.')
+  blinded<-vapply(dirs,function(p){z<-read.csv(file.path(p,'run_parameters.csv'),stringsAsFactors=FALSE);any(z$parameter=='window'&z$value=='BLINDED')},logical(1))
+  if(any(blinded))dirs<-dirs[blinded]
+  chosen<-dirs[which.max(file.info(file.path(dirs,'episodes.csv'))$mtime)]
+  message('Using heatmap export: ',chosen)
+  normalizePath(chosen,winslash='/')
+}
+
+analyse_site_testing_imbalance <- function(data_dir='',output_dir='',report_only=FALSE,
+  start_paragraph=25L,reference_start=32L,audit_results_dir='') {
+  DATA_DIR<-phmpt_find_export(data_dir)
+  OUTPUT_DIR<-if(nzchar(output_dir))output_dir else file.path(DATA_DIR,'positivity_audit')
+  dir.create(OUTPUT_DIR,recursive=TRUE,showWarnings=FALSE)
+  if(!isTRUE(report_only)) {
 read<-function(n)read.csv(file.path(DATA_DIR,n),stringsAsFactors=FALSE,check.names=FALSE,fileEncoding='UTF-8-BOM',na.strings=c('','NA'))
 save_csv<-function(z,n)write.csv(z,file.path(OUTPUT_DIR,n),row.names=FALSE,na='')
 e<-read('episodes.csv');b<-read('site_background_used.csv');m<-read('site_region_coverage.csv');a<-read('subject_followup.csv');cells<-read('site_arm_weekly_testing.csv')
@@ -178,9 +205,15 @@ save_csv(standardized,'source_standardized_rates.csv')
 inputs<-c('episodes.csv','site_background_used.csv','site_region_coverage.csv','subject_followup.csv','site_arm_weekly_testing.csv','pcr_records_reconciled.csv','illness_visits.csv')
 save_csv(data.frame(file=inputs,md5=unname(tools::md5sum(file.path(DATA_DIR,inputs)))),'input_checksums.csv')
 message('Audit outputs written to: ',normalizePath(OUTPUT_DIR,winslash='/'))
+  }
+  if(!nzchar(audit_results_dir))audit_results_dir<-OUTPUT_DIR
+  phmpt_anomaly_examples(DATA_DIR,OUTPUT_DIR,high_cutoff=10)
+  result<-phmpt_report_insert(DATA_DIR,OUTPUT_DIR,start_paragraph,reference_start,audit_results_dir)
+  writeLines(c('COMPLETE',paste0('script_version=1.2.0'),paste0('report_only=',report_only)),file.path(OUTPUT_DIR,'REPORT_STATUS.txt'))
+  invisible(result)
+}
 
-
-# Embedded, package-free PDF example renderer; shared verbatim by both scripts.
+# Embedded, package-free figure example renderer; shared verbatim by both scripts.
 # Examples are selected for audit illustration, not a confirmatory test family.
 phmpt_anomaly_examples <- function(data_dir, output_dir=data_dir, high_cutoff=10,
   example_sites=c(coverage='US372',pcr='US325',source='US352',timing='US372',waves='US302')) {
@@ -356,19 +389,30 @@ phmpt_anomaly_examples <- function(data_dir, output_dir=data_dir, high_cutoff=10
     else grDevices::pdf(path,width=11.69,height=8.27,family='Helvetica',onefile=TRUE,useDingbats=FALSE,title='Moderna P301 - site anomaly examples')
     tryCatch(for(f in funs)f(),finally=grDevices::dev.off())}
   combined<-file.path(output_dir,'site_anomaly_examples.pdf');make_pdf(combined,plotters)
-  for(i in seq_along(plotters))make_pdf(file.path(figdir,filenames[i]),plotters[i])
+  dpi<-as.integer(getOption('phmpt.report_png_dpi',300L))
+  if(length(dpi)!=1L || is.na(dpi) || dpi<72L)stop('Invalid report PNG resolution.')
+  for(i in seq_along(plotters)) {
+    make_pdf(file.path(figdir,filenames[i]),plotters[i])
+    grDevices::png(file.path(figdir,sub('[.]pdf$','.png',filenames[i])),width=11.69,height=8.27,
+      units='in',res=dpi,type=if(capabilities('cairo'))'cairo' else getOption('bitmapType','Xlib'))
+    tryCatch(plotters[[i]](),finally=grDevices::dev.off())
+    if(capabilities('cairo')) {
+      grDevices::svg(file.path(figdir,sub('[.]pdf$','.svg',filenames[i])),width=11.69,height=8.27,family='sans')
+      tryCatch(plotters[[i]](),finally=grDevices::dev.off())
+    }
+  }
   selection<-data.frame(page=1:5,anomaly=required,SITEID=unname(example_sites[required]),file=filenames,
     rationale=c('Strongest nominal high-period Fisher signal with substantive denominators; not largest sparse percentage gap.',
-      'Four vaccine COVID-form episodes illustrate later PCR and a NOT DONE record in the supplied run.',
+      'Vaccine COVID-form episodes without a qualifying test illustrate record-level PCR timing.',
       'Strong contrast in onset recording source; source may itself be part of the mechanism.',
       'Early post-dose episodes contribute strongly; retain and partition rather than dismiss.',
       'Largest opposing absolute changes among supplied sites with at least ten episodes in all four cells.'),stringsAsFactors=FALSE)
   csv(selection,'example_selection.csv')
   csv(data.frame(parameter=c('module_version','high_positivity_threshold','onset_to_pcr_days','visit_to_pcr_days','window','visit_evidence','sites_in_multiplicity_family','episodes_missing_background','selection_type'),
-    value=c('1.1.0',high_cutoff,horizon,visit_days,window,visit_mode,M,missing_background,'Fixed illustrative sites from the reviewed export; not automatically reselected')),'figure_parameters.csv')
+    value=c('1.2.0',high_cutoff,horizon,visit_days,window,visit_mode,M,missing_background,'Fixed illustrative sites from the reviewed export; not automatically reselected')),'figure_parameters.csv')
   csv(data.frame(file=c('episodes.csv','site_background_used.csv','site_region_coverage.csv','subject_followup.csv'),
     md5=unname(tools::md5sum(file.path(data_dir,c('episodes.csv','site_background_used.csv','site_region_coverage.csv','subject_followup.csv'))))),'figure_input_checksums.csv')
-  writeLines(c('Five illustrative audit patterns; one vector plot per PDF page, plus separate single-page PDFs.',
+  writeLines(c('Five illustrative audit patterns; one vector plot per PDF page, plus separate single-page PDFs and PNGs; SVGs are added when Cairo is available.',
     'The examples are post hoc selections from the reviewed export, not a representative or confirmatory sample.',
     'Page 1 uses the first eligible high-period episode per participant. Pages 3-5 use all episodes; do not interchange the denominators.',
     'The main results retain post-dose days 0-6; the timing panel partitions them, without attributing their cause.',
@@ -380,6 +424,180 @@ phmpt_anomaly_examples <- function(data_dir, output_dir=data_dir, high_cutoff=10
   invisible(list(pdf=combined,selection=selection,screen=screen,interactions=interactions,cases=case,source=source_counts,timing=timing_counts))
 }
 
-# Draw reviewed examples from the same export; no separate plotting script needed.
-if(isTRUE(getOption('phmpt.write_anomaly_examples',TRUE)))
- PHMPT_ANOMALY_RESULT<-phmpt_anomaly_examples(DATA_DIR,OUTPUT_DIR,high_cutoff=10)
+# Shared report-insertion writer, embedded in both stand-alone scripts.
+# This formats existing calculations; no symptom, visit or PCR linkage is changed.
+phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
+  reference_start=32L, audit_results_dir=output_dir,
+  repo_url='https://github.com/OpenVaet/moderna_trial_analysis/blob/main') {
+  dir.create(output_dir,recursive=TRUE,showWarnings=FALSE)
+  if(length(start_paragraph)!=1L || is.na(start_paragraph) || start_paragraph<1)stop('Invalid starting paragraph')
+  if(length(reference_start)!=1L || is.na(reference_start) || reference_start<1)stop('Invalid starting footnote')
+  rd<-function(p)read.csv(p,stringsAsFactors=FALSE,check.names=FALSE,fileEncoding='UTF-8-BOM',na.strings=c('','NA'))
+  esc<-function(s){s<-gsub('&','&amp;',as.character(s),fixed=TRUE);s<-gsub('<','&lt;',s,fixed=TRUE);s<-gsub('>','&gt;',s,fixed=TRUE);gsub('"','&quot;',s,fixed=TRUE)}
+  nfmt<-function(n)format(n,big.mark=',',trim=TRUE,scientific=FALSE)
+  num<-function(n,d=1)ifelse(is.finite(n),formatC(n,format='f',digits=d,decimal.mark='.'),'not estimable')
+  rate<-function(k,n)if(n>0)paste0(nfmt(k),'/',nfmt(n),' (',num(100*k/n),'%)') else '0/0 (no eligible episodes)'
+  pf<-function(p){if(!is.finite(p))return('not estimable');for(v in c(1e-6,1e-5,1e-4,1e-3,1e-2))if(p<v)return(paste('<',formatC(v,format='f',digits=ceiling(-log10(v)))));formatC(p,format='f',digits=4)}
+  ptext<-function(p){s<-pf(p);paste0('p ',if(startsWith(s,'<'))'' else '= ',s)}
+  figdir<-file.path(output_dir,'anomaly_examples')
+  files<-c('first_high_episode_site_screen.csv','site_high_low_interactions.csv','pcr_episode_review.csv',
+    'recording_source_counts.csv','postdose_timing_counts.csv','example_selection.csv','figure_parameters.csv')
+  if(!all(file.exists(file.path(figdir,files))))stop('Generate phmpt_anomaly_examples() before the report insertion.')
+  e<-rd(file.path(data_dir,'episodes.csv'));b<-rd(file.path(data_dir,'site_background_used.csv'))
+  map<-rd(file.path(data_dir,'site_region_coverage.csv'));pars<-rd(file.path(data_dir,'run_parameters.csv'))
+  fp<-rd(file.path(figdir,'figure_parameters.csv'));sel<-rd(file.path(figdir,'example_selection.csv'))
+  getp<-function(p,k,default=''){v<-p$value[match(k,p$parameter)];if(!length(v)||is.na(v)||!nzchar(v))default else as.character(v)}
+  horizon<-as.integer(getp(pars,'onset_to_pcr_days','7'));visit_days<-as.integer(getp(pars,'visit_to_pcr_days','3'))
+  gap<-as.integer(getp(pars,'gap_days','7'));cut<-as.numeric(getp(fp,'high_positivity_threshold','10'))
+  window<-getp(pars,'window','selected window');mode<-getp(pars,'visit_evidence','RAW')
+  screen<-rd(file.path(figdir,files[1]));waves<-rd(file.path(figdir,files[2]));cases<-rd(file.path(figdir,files[3]))
+  sources<-rd(file.path(figdir,files[4]));timing<-rd(file.path(figdir,files[5]))
+  x<-merge(e[e$eligible,],b[c('SITEID','week','positivity')],by=c('SITEID','week'),all.x=TRUE,sort=FALSE)
+  if(nrow(x)!=sum(e$eligible)||anyDuplicated(b[c('SITEID','week')]))stop('Invalid background join')
+  missing_bg<-sum(!is.finite(x$positivity));M<-nrow(screen)
+  region<-function(s){v<-map$region_name[match(s,map$SITEID)];ifelse(is.na(v),s,paste(s,v,sep=' - '))}
+  pair<-function(d) {
+    v<-d[d$arm=='mRNA-1273',];p<-d[d$arm=='Placebo',]
+    c(vk=sum(v$tested),vn=nrow(v),pk=sum(p$tested),pn=nrow(p))
+  }
+  # Reuse adjusted models only if their input hashes match THIS source export.
+  model_file<-file.path(audit_results_dir,'adjusted_model_key_coefficients.csv')
+  check_file<-file.path(audit_results_dir,'input_checksums.csv');models<-NULL
+  checks_ok<-FALSE
+  if(all(file.exists(c(model_file,check_file)))) {
+    ch<-rd(check_file);required_hashes<-c('episodes.csv','site_background_used.csv','site_region_coverage.csv','subject_followup.csv','site_arm_weekly_testing.csv','pcr_records_reconciled.csv','illness_visits.csv')
+    if(all(required_hashes%in%ch$file) && all(file.exists(file.path(data_dir,required_hashes)))) {
+      checks_ok<-all(tolower(ch$md5[match(required_hashes,ch$file)])==tolower(unname(tools::md5sum(file.path(data_dir,required_hashes)))))
+    }
+    if(checks_ok)models<-rd(model_file)
+  }
+  modelrow<-function(model,term='vaccine') {
+    if(is.null(models))return(NULL)
+    q<-models[models$model==model & models$term==term & models$cluster_unit=='SITEID',,drop=FALSE]
+    if(nrow(q)!=1L || !is.finite(q$OR)||!isTRUE(q$converged))NULL else q
+  }
+  body<-character();plain<-character();number<-as.integer(start_paragraph);tables<-list();captions<-list();fig_index<-0L
+  addh<-function(s){body<<-c(body,paste0('<h2>',esc(s),'</h2>'));plain<<-c(plain,s,'')}
+  addp<-function(s,refs=integer()) {
+    marker<-if(length(refs))paste0(' <sup>',paste0('<a href="#ref-',refs,'">',refs,'</a>',collapse=', '),'</sup>') else ''
+    body<<-c(body,paste0('<p class="numbered"><span class="number">',number,'.</span> ',esc(s),marker,'</p>'))
+    plain<<-c(plain,paste0(number,'. ',s,if(length(refs))paste0(' [',paste(refs,collapse=', '),']') else ''),'')
+    number<<-number+1L
+  }
+  addtable<-function(title,headers,rows,note='') {
+    rows<-as.data.frame(rows,stringsAsFactors=FALSE);names(rows)<-headers
+    ht<-paste0('<table><caption>',esc(title),'</caption><thead><tr>',paste0('<th>',esc(headers),'</th>',collapse=''),'</tr></thead><tbody>',
+      paste(apply(rows,1,function(z)paste0('<tr>',paste0('<td>',esc(z),'</td>',collapse=''),'</tr>')),collapse=''),'</tbody></table>')
+    body<<-c(body,ht,if(nzchar(note))paste0('<p class="table-note">',esc(note),'</p>') else '')
+    plain<<-c(plain,title,paste(headers,collapse='\t'),apply(rows,1,paste,collapse='\t'),note,'')
+    name<-sprintf('report_table_%02d.csv',length(tables)+1L);write.csv(rows,file.path(output_dir,name),row.names=FALSE,na='');tables[[name]]<<-rows
+  }
+  b64<-function(path) {
+    raw<-readBin(path,'raw',n=file.info(path)$size);n<-length(raw);pad<-(3L-n%%3L)%%3L
+    v<-matrix(c(as.integer(raw),rep(0L,pad)),nrow=3L)
+    ix<-rbind(v[1,]%/%4L,(v[1,]%%4L)*16L+v[2,]%/%16L,(v[2,]%%16L)*4L+v[3,]%/%64L,v[3,]%%64L)
+    alphabet<-strsplit('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/','',fixed=TRUE)[[1]]
+    out<-alphabet[as.vector(ix)+1L];if(pad)out[(length(out)-pad+1L):length(out)]<-'=';paste0(out,collapse='')
+  }
+  figure<-function(anomaly,caption) {
+    s<-sel[sel$anomaly==anomaly,,drop=FALSE];if(nrow(s)!=1L)return(invisible(NULL))
+    fig_index<<-fig_index+1L;png<-sub('[.]pdf$','.png',s$file);path<-file.path(figdir,png)
+    label<-paste0('Figure ',fig_index,'. ',caption)
+    if(file.exists(path))body<<-c(body,paste0('<figure><img src="data:image/png;base64,',b64(path),'" alt="',esc(label),'"/><figcaption>',esc(label),'</figcaption></figure>'))
+    else body<<-c(body,paste0('<p class="figure-caption">',esc(label),' (Use ',esc(s$file),'.)</p>'))
+    plain<<-c(plain,label,paste0('[Insert image: anomaly_examples/',png,']'),'')
+    captions[[length(captions)+1L]]<<-data.frame(figure=fig_index,anomaly=anomaly,SITEID=s$SITEID,png=png,pdf=s$file,caption=label)
+  }
+  addh('Symptomatic episodes and COVID testing')
+  addp(sprintf('The next analysis examines whether COVID-compatible symptoms documented in either reporting channel were followed by an illness-visit association and a diagnostic PCR result. Symptoms recorded on COVID forms and the matched AE terms described above were combined into reconstructed episodes: overlapping intervals, or intervals separated by no more than %d unrecorded days, were grouped together. Each episode contributes once, in the week of its first recorded symptom. For COVID forms, the assessment date may differ from actual symptom onset; an AE with an unknown end date contributes its onset only. This differs from the participant-symptom-group-week observations used in the preceding charts. All eligible episodes, including those beginning during post-dose days 0-6, remain in the main analysis.',gap),c(reference_start,reference_start+1L))
+  addp(sprintf('For this audit, a tested episode requires a documented illness-visit association followed by a diagnostic PCR result on the same date or within %d calendar days, and no later than %d days after the first recorded symptom. Complete follow-up through that horizon is required for both arms. These are reconstruction and linkage rules, rather than a direct test of compliance with every protocol trigger, duration requirement or 72-hour deadline. In the %s visit-evidence setting, %s. The analysis uses the %s observation window, from %s to %s, subject to participant-specific follow-up boundaries.',
+    visit_days,horizon,mode,if(mode=='RAW')'an original illness-visit label on a laboratory record can establish the association; the measure does not independently prove physical attendance' else 'the association requires independent SV or FAOT visit documentation',
+    tolower(window),getp(pars,'display_start'),getp(pars,'display_end')))
+  if(window=='FULL')addp('The full observation window includes follow-up after unblinding and crossover. Original randomized-arm labels are retained, so comparisons over that window are descriptive and do not represent two consistently distinct treatments.')
+  rates<-lapply(list('All eligible episodes'=rep(TRUE,nrow(x)),'Lower positivity'=is.finite(x$positivity)&x$positivity<cut,'Higher positivity'=is.finite(x$positivity)&x$positivity>=cut),function(k)pair(x[k,]))
+  allp<-rates[[1]];hp<-rates[[3]]
+  addp(paste0('Across all sites, the documented visit-plus-PCR endpoint was met for ',rate(allp['vk'],allp['vn']),' of vaccine-arm episodes and ',rate(allp['pk'],allp['pn']),' of placebo-arm episodes. Local background positivity was then divided into lower (<',num(cut,0),'%) and higher (>=',num(cut,0),'%) periods. This threshold is an exploratory analytical choice, not a protocol criterion. County or state background testing is a contextual proxy for the site location, not a measure of infection in trial participants. During higher-positivity periods, the corresponding proportions were ',rate(hp['vk'],hp['vn']),' and ',rate(hp['pk'],hp['pn']),'.',if(missing_bg)paste0(' Background positivity was unavailable for ',missing_bg,' episodes, which remain in the overall totals but not in the high/low comparisons.') else ''))
+  rows<-do.call(rbind,lapply(seq_along(rates),function(i){z<-rates[[i]];c(names(rates)[i],rate(z['vk'],z['vn']),rate(z['pk'],z['pn']),paste0(num(100*(z['vk']/z['vn']-z['pk']/z['pn'])),' pp'))}))
+  addtable('Documented testing after symptomatic episodes',c('Period','mRNA-1273','Placebo','Difference'),rows,'Numerators are episodes meeting the documented visit-plus-PCR endpoint. Repeated episodes from one participant can contribute to this descriptive table. Differences are mRNA-1273 minus placebo.')
+  ma<-modelrow('HIGH10_SYMPTOMS_TIMING');ms<-modelrow('HIGH10_SOURCE_SENSITIVITY');mi<-modelrow('HIGH_LOW_INTERACTION','vaccine:high10')
+  # The existing model names specifically denote the 10% threshold.
+  if(cut==10 && !is.null(ma)) {
+    ptxt<-paste0('During higher-positivity periods, the odds of documented testing remained lower in the vaccine arm after adjustment for site, calendar week, symptom groups at onset and post-dose timing (odds ratio ',num(ma$OR,3),', 95% CI ',num(ma$ci_lower,3),' to ',num(ma$ci_upper,3),'; ',ptext(ma$p),'). Uncertainty estimates account for clustering within sites, including repeated episodes from the same participant.')
+    if(!is.null(ms))ptxt<-paste0(ptxt,' Including the initial recording source as an additional sensitivity adjustment gave an odds ratio of ',num(ms$OR,3),' (95% CI ',num(ms$ci_lower,3),' to ',num(ms$ci_upper,3),'; ',ptext(ms$p),'). Recording source may itself reflect the decision under review; this adjustment does not establish that the original difference was clinically justified. Severity and complete clinical presentation were not matched by these models.')
+    addp(ptxt,reference_start+1L)
+    specs<-c(HIGH10_SITE_WEEK='Site and calendar week',HIGH10_SYMPTOMS_TIMING='Plus onset symptoms and post-dose timing',HIGH10_SOURCE_SENSITIVITY='Plus onset recording source (sensitivity)',HIGH10_OUTSIDE_POSTDOSE_ADJUSTED='Outside days 0-6: site, week and symptoms')
+    mr<-lapply(names(specs),function(k){q<-modelrow(k);if(is.null(q))return(NULL);c(specs[[k]],num(q$OR,3),paste(num(q$ci_lower,3),num(q$ci_upper,3),sep=' to '),pf(q$p))})
+    addtable('Adjusted comparisons during higher background positivity',c('Comparison','Odds ratio','95% CI','p'),do.call(rbind,mr),'Odds ratios compare documented testing in vaccine versus placebo episodes. They are not vaccine-efficacy estimates. The post-dose restriction is a sensitivity analysis; early episodes remain in the main comparison.')
+  }
+  addh('Site-level imbalances and record review')
+  nominal<-screen[is.finite(screen$fisher_p)&screen$fisher_p<.05,,drop=FALSE];nominal<-nominal[order(nominal$fisher_p),]
+  corrected<-sum(screen$fisher_q_BH<.05,na.rm=TRUE)
+  addp(paste0('For the site-level screen, each participant contributes only their first eligible episode during higher-positivity periods. This avoids treating repeated episodes from the same person as independent observations in the Fisher exact tests. ',nrow(nominal),' of ',M,' sites had a nominal two-sided p-value below 0.05. After Benjamini-Hochberg correction across all ',M,' sites, ',if(corrected==0)'none remained below 0.05' else paste(corrected,'remained below 0.05'),'. The individual signals therefore identify records for further review rather than establish site-specific differential treatment.'))
+  if(nrow(nominal)) {
+    rows<-cbind(region(nominal$SITEID),mapply(rate,nominal$v_y,nominal$v_n),mapply(rate,nominal$p_y,nominal$p_n),vapply(nominal$fisher_p,pf,character(1)),num(nominal$fisher_q_BH,3))
+    addtable('Sites with nominal testing imbalances during higher positivity',c('Site / county','mRNA-1273','Placebo','Fisher p','BH q'),rows,paste0('First eligible higher-positivity episode per participant. Multiplicity correction includes all ',M,' sites. Small denominators, including US313, limit interpretation.'))
+  }
+  figure('coverage',paste0('Documented testing at ',region(sel$SITEID[sel$anomaly=='coverage']),', using each participant\'s first eligible episode during higher-positivity periods.'))
+  cs<-sel$SITEID[sel$anomaly=='pcr'];within<-cases[!is.na(cases$within_same_episode_span)&cases$within_same_episode_span & is.finite(cases$days_to_later_pcr),]
+  days<-sort(unique(within$days_to_later_pcr));nd<-sum(cases$not_done_in_horizon,na.rm=TRUE)
+  cp<-paste0('At ',region(cs),', ',nrow(cases),' vaccine-arm episodes beginning on COVID symptom forms during higher-positivity periods did not meet the visit-plus-PCR endpoint within ',horizon,' days.')
+  if(nrow(within))cp<-paste0(cp,' For ',nrow(within),' of these episodes, a later diagnostic PCR was documented within the reconstructed symptom interval, at ',paste(days,collapse=' and '),' days after the first recorded symptom; the recorded results were ',paste(tolower(unique(within$later_result)),collapse=' and '),'.')
+  if(nd)cp<-paste0(cp,' A NOT DONE record was present within the endpoint window for ',nd,' episode',if(nd==1)'' else 's','.')
+  addp(paste0(cp,' These observations distinguish delayed testing, testing recorded outside the reconstructed illness, and absence of a qualifying result. They do not establish that an untested episode was COVID-19, or that a later negative result excludes infection at the initial presentation.'))
+  figure('pcr',paste0('Recorded PCR timing for the selected vaccine-arm COVID-form episodes at ',cs,'. The shaded interval is the audit linkage window, not a restatement of the protocol deadline.'))
+  ss<-sel$SITEID[sel$anomaly=='source'];vn<-sum(sources$episodes[sources$arm=='mRNA-1273']);pn<-sum(sources$episodes[sources$arm=='Placebo'])
+  va<-sum(sources$episodes[sources$arm=='mRNA-1273'&sources$source=='AE']);pa<-sum(sources$episodes[sources$arm=='Placebo'&sources$source=='AE'])
+  addp(paste0('At ',region(ss),', the higher-positivity episodes differed substantially in their initial recording source: ',rate(va,vn),' in the vaccine arm began only in AE records, compared with ',rate(pa,pn),' in the placebo arm. The figure separates the composition of episodes from the proportion tested within each source category. Here, source means the record present at the first recorded symptom date; it differs from the preceding weekly both-source measure. This concentration of the testing difference warrants review of how complaints entered the COVID assessment pathway.'))
+  figure('source',paste0('Initial recording source and subsequent documented testing at ',ss,' during higher-positivity periods. The bars describe source composition; the lower table describes testing within each category.'))
+  ts<-sel$SITEID[sel$anomaly=='timing'];early<-timing[timing$group=='Days 0-6',];late<-timing[timing$group=='Outside days 0-6',]
+  tp<-paste0('The role of post-dose timing was examined without removing early symptoms from the main analysis. At ',region(ts),', among all higher-positivity episodes, ',rate(early$v_y,early$v_n),' of vaccine-arm and ',rate(early$p_y,early$p_n),' of placebo-arm episodes beginning on days 0-6 met the endpoint. Outside this interval, the proportions were ',rate(late$v_y,late$v_n),' and ',rate(late$p_y,late$p_n),'. This partition localizes the imbalance; it does not determine whether clinical differences, discretionary testing decisions or documentation explain it. The protocol\'s special provisions for early post-dose symptoms therefore remain relevant to record review.')
+  addp(tp);figure('timing',paste0('All eligible higher-positivity episodes at ',ts,', partitioned by onset during or outside post-dose days 0-6. Participants may contribute repeated episodes; these denominators differ from the first-episode Fisher screen.'))
+  addh('Testing across lower and higher local positivity')
+  w<-waves[waves$subset=='ALL_EPISODES',];chosen<-w[w$v_low_n>=10&w$v_high_n>=10&w$p_low_n>=10&w$p_high_n>=10&w$vaccine_change_pp<0&w$placebo_change_pp>0,]
+  chosen<-chosen[order(chosen$difference_in_changes_pp),]
+  ws<-sel$SITEID[sel$anomaly=='waves'];z<-w[w$SITEID==ws,]
+  addp(paste0('Within-site comparisons identified ',nrow(chosen),' sites with at least ten episodes in every arm-period cell where vaccine-arm testing was lower during higher background positivity while placebo-arm testing was higher. At ',region(ws),', the vaccine proportion changed from ',rate(z$v_low_y,z$v_low_n),' to ',rate(z$v_high_y,z$v_high_n),', while placebo changed from ',rate(z$p_low_y,z$p_low_n),' to ',rate(z$p_high_y,z$p_high_n),'. The vaccine change minus the placebo change was ',num(z$difference_in_changes_pp),' percentage points. These are comparisons between sets of weeks, not necessarily one chronological transition. The site-specific arm-by-period interaction had participant-clustered ',ptext(z$interaction_p),'; the descriptive pattern does not by itself establish an interaction.'))
+  if(nrow(chosen)) {
+    rows<-cbind(chosen$SITEID,mapply(rate,chosen$v_low_y,chosen$v_low_n),mapply(rate,chosen$v_high_y,chosen$v_high_n),mapply(rate,chosen$p_low_y,chosen$p_low_n),mapply(rate,chosen$p_high_y,chosen$p_high_n),vapply(chosen$interaction_p,pf,character(1)))
+    addtable('Sites with opposing changes across positivity periods',c('Site','mRNA low','mRNA high','Placebo low','Placebo high','Interaction p'),rows,'All eligible episodes, including post-dose days 0-6. Interaction p-values account for repeated participants but are nominal; the full site family and non-estimable cells are retained in the CSV audit.')
+  }
+  figure('waves',paste0('Testing at ',region(ws),' in lower and higher background positivity. Lines connect two pooled period categories, not successive calendar weeks.'))
+  conclusion<-'Taken together, these findings identify differences in documented case ascertainment that warrant examination of the original symptom descriptions, their timing, clinical severity, visit records and reasons for performing or omitting a swab. The early post-dose findings and the recording-source differences remain part of that investigation. Neither the figures nor the site screens alone establish failed blinding, investigator intent, the number of missed infections or a resulting bias in vaccine efficacy.'
+  if(cut==10 && !is.null(mi))conclusion<-paste0('Across sites, the adjusted arm-by-positivity interaction was ',num(mi$OR,3),' (95% CI ',num(mi$ci_lower,3),' to ',num(mi$ci_upper,3),'; ',ptext(mi$p),'). ',conclusion)
+  addp(conclusion)
+  notes<-data.frame(number=reference_start+0:1,title=c('Reconstruction of symptomatic episodes and weekly testing heatmaps','Site-level testing audit and reproducible comparisons'),
+    url=paste0(sub('/$','',repo_url),'/',c('analyse_symptom_testing_heatmaps.R','analyse_site_testing_imbalance.R')))
+  refs<-paste0('<h3>References to add</h3><div class="references">',paste0('<p id="ref-',notes$number,'">',notes$number,'. <a href="',esc(notes$url),'">',esc(notes$url),'</a></p>',collapse=''),'</div>')
+  body<-c(body,refs);plain<-c(plain,'References to add',paste0(notes$number,'. ',notes$url))
+  article<-paste(body,collapse='\n')
+  css<-'body{margin:28px auto;padding:0 24px;max-width:980px;color:#171717;font:19px/1.6 Georgia,serif}h1,h2,h3{font-family:Arial,sans-serif;line-height:1.2}h1{font-size:28px}h2{font-size:27px;margin:36px 0 20px}h3{font-size:20px}.numbered{padding-left:2.6em;position:relative}.number{position:absolute;left:0}table{border-collapse:collapse;width:100%;font:14px/1.4 Arial,sans-serif;margin:24px 0 8px}caption{text-align:left;font-weight:bold;margin-bottom:10px}th,td{padding:9px 7px;border-bottom:1px solid #ccc;text-align:left;vertical-align:top}th{background:#eee}tbody tr:nth-child(even){background:#fafafa}.table-note,figcaption{font:14px/1.45 Arial,sans-serif;color:#444}.references{font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}figure{margin:26px 0}img{max-width:100%;height:auto}.editor{font:15px/1.45 Arial,sans-serif;background:#f2f5f7;padding:18px;border:1px solid #d5dce1;margin-bottom:30px}.editor p{margin:8px 0}button{font:inherit;padding:8px 12px;margin:5px 8px 5px 0;cursor:pointer}a{color:#155fa0}.status{font-size:14px}sup{font-size:12px}@media print{.editor{display:none}body{margin:0;padding:0;font-size:12pt;max-width:none}table{font-size:9pt}h2{font-size:18pt}h2,h3{break-after:avoid}tr,figure{break-inside:avoid}a{color:inherit}}'
+  status<-if(!is.null(ma)&&cut==10)'Adjusted comparisons are included and their input hashes match this export.' else 'This insert contains descriptive and site-level comparisons. Run analyse_site_testing_imbalance.R to add the adjusted models; no earlier-run estimates have been substituted.'
+  guide<-paste0('<aside class="editor"><h1>Insert into the current draft</h1><p>Place after paragraph 24 and the US375 chart, before <b>Anti-N-Antibodies</b>. This section uses paragraphs <b>',start_paragraph,'-',number-1L,'</b>; renumber the following anti-N paragraph to <b>',number,'</b>. Add footnotes <b>',reference_start,' and ',reference_start+1L,'</b> after the existing reference 31. Figure numbers are local to this insertion.</p><p>',status,'</p><p>Copy the formatted text and tables, then insert the supplied PNG figures at their captions. You can also copy the whole section including embedded images; image-paste support depends on the destination editor. This HTML remains readable offline.</p><button onclick="copySection(false)">Copy text and tables</button><button onclick="copySection(true)">Copy including figures</button><button onclick="selectSection()">Select section</button><p id="copy-status" class="status" role="status"></p></aside>')
+  js<-"<script>function selectSection(){const r=document.createRange();r.selectNodeContents(document.getElementById('report-insert'));const s=getSelection();s.removeAllRanges();s.addRange(r);}async function copySection(images){const node=document.getElementById('report-insert').cloneNode(true);if(!images)node.querySelectorAll('img').forEach(x=>x.remove());node.querySelectorAll('table').forEach(x=>x.style.cssText='border-collapse:collapse;width:100%;font-family:Arial;font-size:11pt');node.querySelectorAll('td,th').forEach(x=>x.style.cssText='border:1px solid #cccccc;padding:6px;text-align:left');node.querySelectorAll('.numbered').forEach(x=>x.style.cssText='margin:0 0 14px 0');node.querySelectorAll('.number').forEach(x=>x.style.cssText='position:static');const html=node.innerHTML;const text=document.getElementById('report-plain').value;try{if(!navigator.clipboard||!window.ClipboardItem)throw new Error('Clipboard unavailable');await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([text],{type:'text/plain'})})]);document.getElementById('copy-status').textContent='Copied. Paste into your report editor.';}catch(e){selectSection();document.getElementById('copy-status').textContent='Section selected. Press Ctrl+C (or Cmd+C), then paste into your report editor.';}}</script>"
+  writeLines(paste0('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Moderna audit - section for the draft</title><style>',css,'</style></head><body>',guide,'<article id="report-insert">',article,'</article><textarea id="report-plain" hidden>',esc(paste(plain,collapse='\n')),'</textarea>',js,'</body></html>'),file.path(output_dir,'report_insert.html'),useBytes=TRUE)
+  file.copy(file.path(output_dir,'report_insert.html'),file.path(output_dir,'site_testing_positivity_findings.html'),overwrite=TRUE)
+  writeLines(plain,file.path(output_dir,'report_insert.txt'),useBytes=TRUE)
+  write.csv(notes,file.path(output_dir,'report_references.csv'),row.names=FALSE)
+  if(length(captions))write.csv(do.call(rbind,captions),file.path(output_dir,'report_figure_captions.csv'),row.names=FALSE)
+  writeLines(c('Integration into Moderna mRNA-1273 Trial - Why more Transparency is Required - v0.1',
+    paste0('Insert after the existing symptom-recording paragraph 24 and US375 illustration. New paragraphs ',start_paragraph,'-',number-1L,'. Renumber the following Anti-N paragraph to ',number,'.'),
+    'The draft has two paragraphs numbered 13 and two numbered 24; this insertion does not rewrite unrelated draft passages.',
+    'report_insert.html is self-contained. Use its copy controls; figures are also supplied as PNG (default 300 dpi), vector PDF and SVG when Cairo is available.',
+    'report_insert.txt contains the same text and tab-separated tables for plain-text workflows.',
+    'The heatmap script generates the descriptive insertion. The standalone site audit adds adjusted comparisons when their input checksums match.',
+    'Values, tables, captions and statements about multiplicity are rebuilt from the selected export. Fixed example sites remain identified as illustrative.',
+    'P-values retain full precision in the statistical CSVs; display thresholds run from <0.01 to <0.000001.',
+    status),file.path(output_dir,'REPORT_INTEGRATION.txt'),useBytes=TRUE)
+  message('Copy-ready report section: ',normalizePath(file.path(output_dir,'report_insert.html'),winslash='/'))
+  invisible(list(html=file.path(output_dir,'report_insert.html'),paragraph_start=start_paragraph,paragraph_end=number-1L,adjusted_models=!is.null(ma)&&cut==10))
+}
+
+
+# ---- RUN: selecting/running the whole script executes the analysis ----
+if(isTRUE(getOption('phmpt.autorun',TRUE))) {
+  args<-commandArgs(trailingOnly=TRUE)
+  if(length(args)>=1L)DATA_DIR<-args[1]
+  if(length(args)>=2L)OUTPUT_DIR<-args[2]
+  PHMPT_SITE_AUDIT_RESULT<-analyse_site_testing_imbalance(DATA_DIR,OUTPUT_DIR,
+    PHMPT_REPORT_ONLY,PHMPT_REPORT_START,PHMPT_REFERENCE_START)
+}
