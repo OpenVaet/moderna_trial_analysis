@@ -1,6 +1,6 @@
 # =============================================================================
 # Moderna P301: weekly county COVID-19 positivity map
-# analyse_background_covid_map.R | v1.0.0 | 22 October 2026
+# analyse_background_covid_map_sites_only.R | v1.1.0 | 22 October 2026
 # Standalone: put in the project root, select all and run in RStudio.
 # Run analyse_background_covid.R first. No other script is sourced or executed.
 # Reads analysis/background_covid/county_weekly.csv (or site_weekly.csv).
@@ -17,7 +17,7 @@
 PHMPT_MAP_ROOT <- normalizePath(getOption("phmpt.root", getwd()), winslash="/", mustWork=TRUE)
 PHMPT_MAP_INPUT <- getOption("phmpt.map.input", "") # empty = automatic standard input
 PHMPT_MAP_SITES <- file.path(PHMPT_MAP_ROOT, "clinical_trial_sites.csv")
-PHMPT_MAP_OUTPUT <- file.path(PHMPT_MAP_ROOT, "analysis", "county_pandemic_map")
+PHMPT_MAP_OUTPUT <- file.path(PHMPT_MAP_ROOT, "analysis", "county_pandemic_map_sites_only")
 PHMPT_MAP_START <- ""       # e.g. "2020-07-27"; empty = earliest supplied week
 PHMPT_MAP_END <- ""         # e.g. "2021-03-28"; only complete weeks up to this date
 PHMPT_MAP_SHOW_SITES <- TRUE
@@ -164,9 +164,22 @@ pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_point
   graphics::par(fig=c(0,1,0,1),new=TRUE,mar=c(0,0,0,0));graphics::plot.new();graphics::plot.window(xlim=c(0,1),ylim=c(0,1))
   colours<-c(pm_colours(),"#ffffff");labels<-c(pm_labels(),"No county value")
   for(k in seq_along(colours)){x<-.035+(k-1)*.12;graphics::rect(x,.153,x+.022,.176,col=colours[k],border="#687b88",lty=if(k==8)2 else 1);graphics::text(x+.029,.165,labels[k],adj=0,cex=.62)}
-  graphics::text(.035,.112,"Fixed scale across all weeks. Pale background counties are outside the supplied series; white dashed counties lack a weekly value.",adj=0,cex=.69,col="#455d6b")
-  graphics::text(.035,.080,"0% reported positivity does not establish absence of infection. County of site is not necessarily the participants' county of residence.",adj=0,cex=.69,col="#455d6b")
-  graphics::text(.035,.048,"Positivity: CDC county NAAT archive via analyse_background_covid.R. Boundaries: US Census 2020 (1:20m); dots: trial sites.",adj=0,cex=.67,col="#455d6b")
+  graphics::text(.035,.112,"Fixed scale. Pale counties: outside series; white dashed counties: no weekly value.",adj=0,cex=.69,col="#455d6b")
+  graphics::text(.035,.080,"Grey = 0% reported positivity, not absence of infection. Site county may differ from residence.",adj=0,cex=.69,col="#455d6b")
+  graphics::text(.035,.048,"CDC county NAAT archive; US Census 2020 boundaries (1:20m). Dots: trial sites.",adj=0,cex=.67,col="#455d6b")
+  # Animation position: first frame at the left, last frame at the right.
+  # Date labels describe the full observation window, including the last Sunday.
+  graphics::rect(.735,.025,.982,.123,col="#f4f7f9",border="#dce5eb",lwd=.7)
+  tx0<-.750;tx1<-.968;ty<-.075
+  progress<-if(length(weeks)>1L)(index-1)/(length(weeks)-1)else 1
+  cursor<-tx0+(tx1-tx0)*progress
+  graphics::text(tx0,.105,"Animation progress",adj=0,font=2,cex=.67,col="#174d67")
+  graphics::text(tx1,.105,paste0("Week ",index," / ",length(weeks)),adj=1,cex=.65,col="#455d6b")
+  graphics::segments(tx0,ty,tx1,ty,col="#d4dfe6",lwd=4,lend="round")
+  if(progress>0)graphics::segments(tx0,ty,cursor,ty,col="#174d67",lwd=4,lend="round")
+  graphics::points(cursor,ty,pch=21,cex=.85,col="white",bg="#174d67",lwd=1.1)
+  graphics::text(tx0,.044,format(min(weeks),"%d %b %Y"),adj=0,cex=.64,col="#455d6b")
+  graphics::text(tx1,.044,format(max(weeks)+6,"%d %b %Y"),adj=1,cex=.64,col="#455d6b")
   grDevices::dev.off(device);closed<-TRUE
   if(!file.exists(tmp)||is.na(file.info(tmp)$size)||file.info(tmp)$size<100)stop("PNG device failed for ",weeks[index])
   if(!file.copy(tmp,path,overwrite=TRUE))stop("Could not save PNG frame: ",path)
@@ -221,7 +234,7 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   manifest<-data.frame(role="background_input",file=source,md5=unname(tools::md5sum(source)),stringsAsFactors=FALSE)
   if(file.exists(pm_path(root,sites_file)))manifest<-rbind(manifest,data.frame(role="site_coordinates",file=normalizePath(pm_path(root,sites_file),winslash="/"),md5=unname(tools::md5sum(pm_path(root,sites_file)))))
   pm_csv(manifest,file.path(output,"input_manifest.csv"))
-  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("1.0.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
+  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("1.1.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
   payload<-list(weeks=I(as.character(weeks)),ends=I(as.character(weeks+6)),areas=areas,sites=s,values=matrices,
     colours=pm_colours(),labels=pm_labels(),delay=delay,background_input=basename(source),input_kind=norm$input_kind)
   text<-pm_asset("template")
@@ -247,6 +260,7 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   writeLines(c("Weekly county COVID-19 positivity map",paste("Input:",source),
     "HTML: offline Leaflet map with play/pause, previous/next week, slider, speed, county selection and site markers.",
     "GIF: same values and fixed bins, one frame per complete Monday-Sunday week; loops continuously.",
+    "GIF bottom-right timeline: first-to-last-frame progress, start/end dates and weekly counter.",
     "Grey: exactly 0% reported positivity. Red bins: >0-<5, 5-<10, 10-<15, 15-<20, 20-<30, 30-100%.",
     "White dashed counties: missing weekly value. Pale background: outside the supplied county series.",
     "Zero positivity is not proof of no infection; no interpolation or state substitution is performed.",

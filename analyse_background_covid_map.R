@@ -1,6 +1,6 @@
 # =============================================================================
 # Moderna P301: weekly county COVID-19 positivity map
-# analyse_background_covid_map.R | v2.0.0 | 22 October 2026
+# analyse_background_covid_map.R | v2.1.0 | 22 October 2026
 # Standalone: put in the project root, select all and run in RStudio.
 # National download is automatic. Existing background data supply dates/site links only.
 # Reads the national CDC archive and JHU cases; caches downloads with checksums.
@@ -179,9 +179,22 @@ pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_point
   for(j in seq_len(7))graphics::text((left[j]+right[j])/2,.337,rgs[[j+1]]$label,cex=.74,font=2,col="#244b5f")
   colours<-c(pm_colours(),"#ffffff");labels<-c(pm_labels(),"Missing / suppressed")
   for(j in seq_along(colours)){x<-.028+(j-1)*.12;graphics::rect(x,.139,x+.018,.155,col=colours[j],border="#687b88",lty=if(j==8)2 else 1);graphics::text(x+.024,.147,labels[j],adj=0,cex=.64)}
-  graphics::text(.028,.105,"Fixed scale across weeks; insets use different map scales. Grey = exactly 0% reported positivity, not absence of infection.",adj=0,cex=.72,col="#455d6b")
-  graphics::text(.028,.075,"White dashed areas have no county-level value. No state substitution or interpolation. Trial sites are optional markers only.",adj=0,cex=.72,col="#455d6b")
-  graphics::text(.028,.045,"Source: CDC nra9-vzzn, 7-day NAAT positivity at Sunday endpoint. Boundaries: US Census 2020; small territories from 1:500k.",adj=0,cex=.70,col="#455d6b")
+  graphics::text(.028,.105,"Fixed colour scale; inset scales differ. Grey = 0% reported positivity, not absence of infection.",adj=0,cex=.72,col="#455d6b")
+  graphics::text(.028,.075,"White dashed areas: no county value. No interpolation or state substitution. Dots: trial sites.",adj=0,cex=.72,col="#455d6b")
+  graphics::text(.028,.045,"CDC nra9-vzzn: 7-day NAAT positivity. US Census 2020 boundaries (1:20m; small territories 1:500k).",adj=0,cex=.70,col="#455d6b")
+  # Animation position: first frame at the left, last frame at the right.
+  # Date labels describe the full observation window, including the last Sunday.
+  graphics::rect(.735,.025,.982,.123,col="#f4f7f9",border="#dce5eb",lwd=.7)
+  tx0<-.750;tx1<-.968;ty<-.075
+  progress<-if(length(weeks)>1L)(index-1)/(length(weeks)-1)else 1
+  cursor<-tx0+(tx1-tx0)*progress
+  graphics::text(tx0,.105,"Animation progress",adj=0,font=2,cex=.67,col="#174d67")
+  graphics::text(tx1,.105,paste0("Week ",index," / ",length(weeks)),adj=1,cex=.65,col="#455d6b")
+  graphics::segments(tx0,ty,tx1,ty,col="#d4dfe6",lwd=4,lend="round")
+  if(progress>0)graphics::segments(tx0,ty,cursor,ty,col="#174d67",lwd=4,lend="round")
+  graphics::points(cursor,ty,pch=21,cex=.85,col="white",bg="#174d67",lwd=1.1)
+  graphics::text(tx0,.044,format(min(weeks),"%d %b %Y"),adj=0,cex=.64,col="#455d6b")
+  graphics::text(tx1,.044,format(max(weeks)+6,"%d %b %Y"),adj=1,cex=.64,col="#455d6b")
   grDevices::dev.off(device);closed<-TRUE
   if(!file.exists(tmp)||is.na(file.info(tmp)$size)||file.info(tmp)$size<100)stop("PNG device failed for ",weeks[index])
   if(!file.copy(tmp,path,overwrite=TRUE))stop("Could not save PNG frame: ",path)
@@ -339,7 +352,7 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   manifest<-data.frame(role="background_input",file=source,md5=unname(tools::md5sum(source)),stringsAsFactors=FALSE)
   if(file.exists(pm_path(root,sites_file)))manifest<-rbind(manifest,data.frame(role="site_coordinates",file=normalizePath(pm_path(root,sites_file),winslash="/"),md5=unname(tools::md5sum(pm_path(root,sites_file)))))
   pm_csv(manifest,file.path(output,"input_manifest.csv"))
-  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("2.0.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
+  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("2.1.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
   payload<-list(weeks=I(as.character(weeks)),ends=I(as.character(weeks+6)),areas=areas,sites=s,values=matrices,
     colours=pm_colours(),labels=pm_labels(),delay=delay,background_input=basename(source),input_kind=norm$input_kind,regions=lapply(pm_regions(),function(r){r$bounds<-I(r$bounds);r$states<-I(r$states);r}))
   text<-pm_asset("template")
@@ -365,6 +378,7 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   writeLines(c("Weekly county COVID-19 positivity map",paste("Input:",source),
     "HTML: offline Leaflet map with play/pause, previous/next week, slider, speed, county selection and site markers.",
     "GIF: same values and fixed bins, one frame per complete Monday-Sunday week; loops continuously.",
+    "GIF bottom-right timeline: frame progress from first to last week; endpoint labels show the full start/end date range.",
     "Grey: exactly 0% reported positivity. Red bins: >0-<5, 5-<10, 10-<15, 15-<20, 20-<30, 30-100%.",
     "White dashed counties: no reported county-level value. Every geographic county/equivalent is included, not just trial locations.",
     "Zero positivity is not proof of no infection; no interpolation or state substitution is performed.",
