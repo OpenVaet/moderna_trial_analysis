@@ -1,8 +1,11 @@
 # =============================================================================
 # Moderna P301: weekly county COVID-19 positivity map
-# analyse_background_covid_map.R | v2.1.0 | 22 October 2026
+# analyse_background_covid_map.R | v3.0.0 | 22 October 2026
 # Standalone: put in the project root, select all and run in RStudio.
-# National download is automatic. Existing background data supply dates/site links only.
+# National download is automatic over the full available source period.
+# v3 uses CDC jgk8-6dpn (the successor archive): actual Wednesday-ending weeks.
+# Existing background files supply optional site links, not date restrictions.
+# JHU case counts remain unavailable after their last observed date (2023-03-09).
 # Reads the national CDC archive and JHU cases; caches downloads with checksums.
 # Also accepts the reviewed heatmap export site_background_used.csv explicitly.
 # HTML is fully offline. Census 2020 boundaries and Leaflet are embedded below.
@@ -17,11 +20,12 @@
 PHMPT_MAP_ROOT <- normalizePath(getOption("phmpt.root", getwd()), winslash="/", mustWork=TRUE)
 PHMPT_MAP_INPUT <- getOption("phmpt.map.input", "") # optional old county/site series: dates + links
 PHMPT_MAP_NATIONAL_FILE <- getOption("phmpt.map.national_file", "") # optional previously downloaded national_county_weekly.csv
+PHMPT_MAP_CDC_DATASET <- "jgk8-6dpn" # updated weekly historical archive; nra9-vzzn reproduces the older archive
 PHMPT_MAP_REFRESH <- FALSE # TRUE forces fresh CDC/JHU downloads
 PHMPT_MAP_SITES <- file.path(PHMPT_MAP_ROOT, "clinical_trial_sites.csv")
 PHMPT_MAP_OUTPUT <- file.path(PHMPT_MAP_ROOT, "analysis", "county_pandemic_map")
-PHMPT_MAP_START <- ""       # e.g. "2020-07-27"; empty = earliest supplied week
-PHMPT_MAP_END <- ""         # e.g. "2021-03-28"; only complete weeks up to this date
+PHMPT_MAP_START <- ""       # empty = first source week with positivity; otherwise lower bound on week start
+PHMPT_MAP_END <- ""         # empty = last source endpoint; otherwise upper bound on week end
 PHMPT_MAP_SHOW_SITES <- TRUE
 PHMPT_MAP_WRITE_GIF <- TRUE
 PHMPT_MAP_GIF_WIDTH <- 1700L
@@ -91,7 +95,7 @@ pm_normalise <- function(d,output) {
   if(!nrow(z))stop("Empty background input.")
   if(anyNA(z$fips))stop("Missing/invalid county FIPS. Correct the geography input; rows were not silently discarded.")
   z$week_start<-pm_date(z$week_start,"week_start")
-  if(any(z$week_start!=pm_monday(z$week_start)))stop("Weeks must start on Monday, as in analyse_background_covid.R.")
+  # Source weeks may start on Monday (legacy) or Thursday (updated CDC archive).
   wend<-z$week_start+6
   if(any(!is.na(z$week_end)&nzchar(z$week_end))){ix<-!is.na(z$week_end)&nzchar(z$week_end);if(any(pm_date(z$week_end[ix],"week_end")!=wend[ix]))stop("week_end must be week_start + 6 days.")}
   z$week_end<-wend
@@ -144,9 +148,9 @@ pm_gif_engine <- function(engine,install) {
   if(install&&engine=="magick"){pm_require("magick",TRUE);return(list(type="magick"))}
   stop("No GIF encoder. Install gifski (install.packages('gifski')) or magick, then rerun. HTML remains available.")
 }
-pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_points,width,height){
+pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_points,width,height,dataset=PHMPT_MAP_CDC_DATASET){
   tmp<-tempfile("county_frame_",fileext=".png")
-  grDevices::png(tmp,width=width,height=height,res=125,pointsize=13,type=if(capabilities("cairo"))"cairo" else getOption("bitmapType","Xlib"))
+  grDevices::png(tmp,width=width,height=height,res=125,pointsize=13,bg="white",type=if(capabilities("cairo"))"cairo" else getOption("bitmapType","Xlib"))
   device<-grDevices::dev.cur();closed<-FALSE
   on.exit({if(!closed)try(grDevices::dev.off(device),silent=TRUE);unlink(tmp)},add=TRUE)
   graphics::par(mar=c(0,0,0,0),xaxs="i",yaxs="i",family="sans")
@@ -181,9 +185,9 @@ pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_point
   for(j in seq_along(colours)){x<-.028+(j-1)*.12;graphics::rect(x,.139,x+.018,.155,col=colours[j],border="#687b88",lty=if(j==8)2 else 1);graphics::text(x+.024,.147,labels[j],adj=0,cex=.64)}
   graphics::text(.028,.105,"Fixed colour scale; inset scales differ. Grey = 0% reported positivity, not absence of infection.",adj=0,cex=.72,col="#455d6b")
   graphics::text(.028,.075,"White dashed areas: no county value. No interpolation or state substitution. Dots: trial sites.",adj=0,cex=.72,col="#455d6b")
-  graphics::text(.028,.045,"CDC nra9-vzzn: 7-day NAAT positivity. US Census 2020 boundaries (1:20m; small territories 1:500k).",adj=0,cex=.70,col="#455d6b")
+  graphics::text(.028,.045,paste0("CDC ",dataset,": 7-day NAAT positivity. US Census 2020 boundaries (1:20m; small territories 1:500k)."),adj=0,cex=.70,col="#455d6b")
   # Animation position: first frame at the left, last frame at the right.
-  # Date labels describe the full observation window, including the last Sunday.
+  # Date labels describe the full observation window through the last source endpoint.
   graphics::rect(.735,.025,.982,.123,col="#f4f7f9",border="#dce5eb",lwd=.7)
   tx0<-.750;tx1<-.968;ty<-.075
   progress<-if(length(weeks)>1L)(index-1)/(length(weeks)-1)else 1
@@ -200,14 +204,64 @@ pm_frame <- function(path,index,weeks,grid,county_shapes,state_shapes,site_point
   if(!file.copy(tmp,path,overwrite=TRUE))stop("Could not save PNG frame: ",path)
 }
 
+# Memory-bounded ImageMagick fallback: quantize one opaque frame at a time,
+# then stream each image block with its own palette into a GIF89a container.
+# This avoids ImageMagick's all-frames pixel cache on long animations.
+pm_stream_gif <- function(frames,dest,exe,delay) {
+  temp<-tempfile("animation_",tmpdir=dirname(dest),fileext=".gif")
+  single<-tempfile("gif_frame_",fileext=".gif")
+  con<-file(temp,"wb");closed<-FALSE
+  on.exit({if(!closed)try(close(con),silent=TRUE);unlink(c(temp,single))},add=TRUE)
+  delay_cs<-max(1L,min(65535L,round(100*delay)))
+  gce<-as.raw(c(33,249,4,4,delay_cs%%256,delay_cs%/%256,0,0))
+  reference_size<-NULL
+  for(i in seq_along(frames)){
+    if(is.null(exe)){
+      im<-magick::image_read(frames[i]);magick::image_write(im,path=single,format="gif");rm(im);code<-0L
+    }else code<-system2(exe,c(shQuote(normalizePath(frames[i],winslash="/")),
+      "-background","white","-alpha","remove","-alpha","off","-colors","256",shQuote(single)))
+    if(!identical(code,0L)||!file.exists(single))stop("Single-frame GIF conversion failed: ",frames[i])
+    b<-readBin(single,"raw",n=file.info(single)$size);n<-length(b)
+    if(n<14L||!rawToChar(b[1:6])%in%c("GIF87a","GIF89a"))stop("Invalid intermediate GIF")
+    byte<-function(k)as.integer(b[k])
+    take<-function(a,z){if(a<1||z>n||a>z)stop("Truncated intermediate GIF");b[a:z]}
+    packed<-byte(11);gsize<-if(bitwAnd(packed,128L))3L*2L^(bitwAnd(packed,7L)+1L)else 0L
+    global<-if(gsize)take(14L,13L+gsize)else raw()
+    pos<-14L+gsize;images<-0L
+    size<-as.integer(b[7:10])
+    if(is.null(reference_size)){
+      reference_size<-size;header<-take(1L,13L+gsize);header[1:6]<-charToRaw("GIF89a");writeBin(header,con)
+      writeBin(c(as.raw(c(33,255,11)),charToRaw("NETSCAPE2.0"),as.raw(c(3,1,0,0,0))),con)
+    }else if(!identical(size,reference_size))stop("GIF frames have different dimensions")
+    skip_blocks<-function(p){repeat{if(p>n)stop("Truncated GIF blocks");len<-byte(p);p<-p+1L;if(len==0L)return(p);p<-p+len;if(p>n+1L)stop("Truncated GIF block")}}
+    while(pos<=n){
+      tag<-byte(pos)
+      if(tag==59L)break
+      if(tag==33L){pos<-skip_blocks(pos+2L);next}
+      if(tag!=44L)stop("Unexpected GIF block tag")
+      desc<-take(pos,pos+9L);ip<-as.integer(desc[10]);has_local<-bitwAnd(ip,128L)>0
+      if(any(as.integer(desc[2:5])!=0L)||!identical(as.integer(desc[6:9]),reference_size))stop("Expected a full-size opaque frame")
+      pos<-pos+10L
+      if(has_local){len<-3L*2L^(bitwAnd(ip,7L)+1L);palette<-take(pos,pos+len-1L);pos<-pos+len;palette_bits<-bitwAnd(ip,7L)}
+      else {if(!length(global))stop("Missing GIF palette");palette<-global;palette_bits<-bitwAnd(packed,7L)}
+      desc[10]<-as.raw(bitwOr(bitwAnd(ip,64L),bitwOr(128L,palette_bits)))
+      data_start<-pos;pos<-skip_blocks(pos+1L)
+      writeBin(gce,con);writeBin(desc,con);writeBin(palette,con);writeBin(take(data_start,pos-1L),con)
+      images<-images+1L
+    }
+    if(images!=1L)stop("Expected exactly one image in intermediate GIF")
+    if(i==1L||i%%20L==0L||i==length(frames))message("[GIF encode ",i,"/",length(frames),"]")
+  }
+  writeBin(as.raw(59L),con);close(con);closed<-TRUE
+  if(!file.copy(temp,dest,overwrite=TRUE))stop("Cannot save encoded GIF")
+}
+
 pm_write_gif <- function(frames,dest,encoder,width,height,delay){
   if(encoder$type=="gifski")gifski::gifski(frames,gif_file=dest,width=width,height=height,delay=delay,loop=TRUE)
   else if(encoder$type=="magick"){
-    im<-magick::image_read(frames);im<-magick::image_animate(im,delay=max(1L,round(100*delay)),loop=0,dispose="background")
-    magick::image_write(im,path=dest,format="gif")
+    pm_stream_gif(frames,dest,NULL,delay)
   }else{
-    args<-c("-delay",as.character(max(1L,round(100*delay))),shQuote(normalizePath(frames,winslash="/")),"-loop","0",shQuote(dest))
-    code<-system2(encoder$exe,args);if(!identical(code,0L))stop("ImageMagick GIF encoding failed (exit ",code,"). PNG frames and HTML remain available.")
+    pm_stream_gif(frames,dest,encoder$exe,delay)
   }
   if(!file.exists(dest)||file.info(dest)$size<100)stop("GIF file was not produced.")
 }
@@ -233,47 +287,71 @@ pm_fetch <- function(url,dest,refresh=FALSE) {
   m<-list(file=normalizePath(dest,winslash="/"),url=url,md5=unname(tools::md5sum(dest)),retrieved_utc=format(Sys.time(),"%Y-%m-%dT%H:%M:%SZ",tz="UTC"))
   saveRDS(m,mp);m
 }
-pm_national <- function(root,reference,start,end,output,national_file,refresh) {
-  ref<-NULL;ref_file<-NULL
+pm_national <- function(root,reference,start,end,output,national_file,refresh,dataset=PHMPT_MAP_CDC_DATASET) {
+  if(!dataset%in%c("jgk8-6dpn","nra9-vzzn"))stop("Unsupported CDC dataset: ",dataset)
+  ref<-NULL;ref_file<-NULL;logs<-list()
   if(nzchar(reference)){ref_file<-pm_path(root,reference);if(!file.exists(ref_file))stop("Reference file not found: ",ref_file)}
   else for(n in c("county_weekly.csv","site_weekly.csv")){p<-file.path(root,"analysis","background_covid",n);if(file.exists(p)){ref_file<-p;break}}
   if(!is.null(ref_file))ref<-pm_normalise(pm_read(ref_file),output)$data
-  if(!nzchar(start))start<-if(!is.null(ref))as.character(min(ref$week_start))else "2020-07-27"
-  if(!nzchar(end))end<-if(!is.null(ref))as.character(max(ref$week_end))else "2021-03-28"
-  start<-pm_date(start,"START");end<-pm_date(end,"END")
-  first<-pm_monday(start);if(first<start)first<-first+7
-  last<-pm_monday(end-6);if(first>last)stop("No full Monday-Sunday weeks in requested dates")
-  weeks<-seq(first,last,by="7 days");ends<-weeks+6
   cache<-file.path(root,"analysis","background_covid_national","cache");dir.create(cache,recursive=TRUE,showWarnings=FALSE)
+  cdc_first<-cdc_last<-as.Date(NA);jhu_first<-jhu_last<-as.Date(NA)
   if(nzchar(national_file)){
     source<-pm_path(root,national_file);d<-pm_normalise(pm_read(source),output)$data
-    d<-d[d$week_start%in%weeks,];if(!nrow(d))stop("No national observations in selected weeks")
+    if(!nrow(d))stop("Empty national file")
+    cdc_first<-min(d$week_end);cdc_last<-max(d$week_end)
+    if(nzchar(start))d<-d[d$week_start>=pm_date(start,"START"),]
+    if(nzchar(end))d<-d[d$week_end<=pm_date(end,"END"),]
+    if(!nrow(d))stop("No national observations in selected weeks")
+    weeks<-sort(unique(d$week_start));ends<-weeks+6
   }else{
+    base<-paste0("https://data.cdc.gov/resource/",dataset,".csv")
+    # Discover actual published endpoints. The updated archive uses Wednesdays;
+    # requesting Sundays would silently return no observations.
+    u<-pm_query(base,list("$select"="date,count(*) as rows,count(percent_test_results_reported) as with_positivity",
+      "$group"="date","$order"="date","$limit"=10000))
+    ep<-file.path(cache,paste0("cdc_",dataset,"_endpoints.csv"));logs[[length(logs)+1L]]<-pm_fetch(u,ep,refresh)
+    endpoints<-pm_read(ep);pm_need(endpoints,c("date","rows","with_positivity"),"CDC endpoints")
+    endpoints$endpoint<-pm_date(substr(endpoints$date,1,10),"CDC endpoint")
+    if(nrow(endpoints)>=10000L||anyDuplicated(endpoints$endpoint))stop("Unexpected endpoint inventory")
+    pm_csv(endpoints,file.path(output,"available_source_endpoints.csv"))
+    usable<-endpoints$endpoint[pm_num(endpoints$with_positivity)>0]
+    if(!length(usable))stop("No available county positivity values")
+    cdc_first<-min(usable);cdc_last<-max(usable)
+    ends<-sort(unique(usable))
+    if(dataset=="nra9-vzzn")ends<-ends[as.integer(format(ends,"%w"))==0L]
+    if(nzchar(start))ends<-ends[ends-6>=pm_date(start,"START")]
+    if(nzchar(end))ends<-ends[ends<=pm_date(end,"END")]
+    if(!length(ends))stop("No observed seven-day endpoints within the requested dates")
+    if(any(diff(as.numeric(ends))!=7))warning("Source endpoint gaps exist; no interpolation performed.",call.=FALSE)
+    weeks<-ends-6
     fields<-c("state_name","county_name","fips_code","date","cases_per_100k_7_day_count","percent_test_results_reported")
     where<-paste0("date in ('",paste0(ends,"T00:00:00",collapse="','"),"')")
-    pages<-list();logs<-list();offset<-0L;limit<-50000L
+    pages<-list();offset<-0L;limit<-50000L
     repeat{
-      message("[National CDC] offset ",offset,"; ",length(weeks)," weekly endpoints")
-      url<-pm_query("https://data.cdc.gov/resource/nra9-vzzn.csv",list("$select"=paste(fields,collapse=","),"$where"=where,"$order"="date,fips_code","$limit"=limit,"$offset"=offset))
-      p<-file.path(cache,paste0("cdc_national_",min(ends),"_",max(ends),"_",offset,".csv"))
+      message("[National CDC ",dataset,"] offset ",offset,"; ",length(weeks)," weekly endpoints")
+      url<-pm_query(base,list("$select"=paste(fields,collapse=","),"$where"=where,"$order"="date,fips_code","$limit"=limit,"$offset"=offset))
+      p<-file.path(cache,paste0("cdc_",dataset,"_",min(ends),"_",max(ends),"_",offset,".csv"))
       logs[[length(logs)+1L]]<-pm_fetch(url,p,refresh);z<-pm_read(p);pm_need(z,fields,"CDC national response")
       pages[[length(pages)+1L]]<-z;if(nrow(z)<limit)break
-      offset<-offset+limit;if(offset>2000000L)stop("Unexpectedly large national query; reduce the date range")
+      offset<-offset+limit;if(offset>2000000L)stop("Unexpectedly large national query")
     }
-    raw<-do.call(rbind,pages);if(!nrow(raw))stop("CDC returned no records for the chosen dates")
+    raw<-do.call(rbind,pages);expected<-sum(pm_num(endpoints$rows[endpoints$endpoint%in%ends]))
+    if(nrow(raw)!=expected)stop("CDC row count does not reconcile with endpoint inventory. Retry with REFRESH=TRUE.")
     raw$fips_code<-pm_fips(raw$fips_code);raw$endpoint<-pm_date(substr(raw$date,1,10),"CDC endpoint")
     if(anyNA(raw$fips_code)||any(!raw$endpoint%in%ends)||anyDuplicated(raw[c("fips_code","endpoint")]))stop("Invalid/duplicate CDC national records")
     v<-pm_num(raw$percent_test_results_reported);bad<-is.finite(v)&(v<0|v>100)
     if(any(bad))stop("Unexpected CDC positivity outside 0..100; no map generated")
     d<-data.frame(fips=raw$fips_code,week_start=raw$endpoint-6,week_end=raw$endpoint,
       positivity=v,cases=NA_real_,status=ifelse(is.finite(v),"reported","CDC missing or suppressed"),site_ids="",
-      source="CDC nra9-vzzn: 7-day NAAT percent positivity at Sunday endpoint",stringsAsFactors=FALSE)
-    # Retain raw CDC fields, including case rates, without treating a rate as a case count.
+      source=paste0("CDC ",dataset,": 7-day NAAT positivity at observed ",if(dataset=="jgk8-6dpn")"Wednesday" else "Sunday"," endpoint"),stringsAsFactors=FALSE)
     pm_csv(raw,file.path(output,"cdc_county_weekly_raw.csv"))
-    message("[National JHU] weekly reported case counts")
+    message("[National JHU] weekly reported case counts where both endpoint dates exist")
     ju<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"
     jp<-file.path(cache,"jhu_confirmed_US.csv");logs[[length(logs)+1L]]<-pm_fetch(ju,jp,refresh)
     j<-pm_read(jp);pm_need(j,c("FIPS","Country_Region"),"JHU national response");j$FIPS<-pm_fips(j$FIPS)
+    jd<-as.Date(names(j)[grepl("^[0-9]+/[0-9]+/[0-9]+$",names(j))],format="%m/%d/%y")
+    if(!length(jd)||anyNA(jd))stop("Cannot determine JHU observation period")
+    jhu_first<-min(jd);jhu_last<-max(jd)
     jf<-j$FIPS[!is.na(j$FIPS)];if(anyDuplicated(jf))stop("Duplicate county FIPS in JHU input")
     datecol<-function(dt)paste(as.integer(format(dt,"%m")),as.integer(format(dt,"%d")),format(dt,"%y"),sep="/")
     for(k in seq_along(weeks)){
@@ -281,20 +359,41 @@ pm_national <- function(root,reference,start,end,output,national_file,refresh) {
       ix<-which(d$week_start==weeks[k]);hit<-match(d$fips[ix],j$FIPS)
       d$cases[ix]<-pm_num(j[[b]][hit])-pm_num(j[[a]][hit])
     }
-    pm_csv(do.call(rbind,lapply(logs,as.data.frame,stringsAsFactors=FALSE)),file.path(output,"download_manifest.csv"))
     source<-file.path(output,"national_county_weekly.csv")
   }
-  # The old site series supplies site linkage, never national positivity values.
+  if(length(logs))pm_csv(do.call(rbind,lapply(logs,as.data.frame,stringsAsFactors=FALSE)),file.path(output,"download_manifest.csv"))
+  # Reference weeks are not shifted onto the new source calendar. Use only site
+  # linkage and comparisons for exactly matching intervals, if any.
   if(!is.null(ref)){
     links<-unique(ref[c("fips","site_ids")]);links<-links[!is.na(links$site_ids)&nzchar(links$site_ids),]
     if(nrow(links)){byf<-split(links$site_ids,links$fips);byf<-vapply(byf,function(x)paste(unique(trimws(unlist(strsplit(paste(x,collapse=";"),";")))),collapse="; "),"");h<-match(d$fips,names(byf));d$site_ids[!is.na(h)]<-byf[h[!is.na(h)]]}
-    h<-match(paste(ref$fips,ref$week_start),paste(d$fips,d$week_start));ix<-which(!is.na(h)&ref$week_start%in%weeks)
-    if(length(ix)){cmp<-data.frame(fips=ref$fips[ix],week_start=ref$week_start[ix],previous_positivity=ref$positivity[ix],national_positivity=d$positivity[h[ix]])
-      cmp$changed<-xor(is.na(cmp$previous_positivity),is.na(cmp$national_positivity))|(!is.na(cmp$previous_positivity)&!is.na(cmp$national_positivity)&abs(cmp$previous_positivity-cmp$national_positivity)>1e-7)
-      pm_csv(cmp,file.path(output,"comparison_with_previous_counties.csv"));message("Previous county positivity checks: ",sum(!cmp$changed),"/",nrow(cmp)," match")}
+    h<-match(paste(ref$fips,ref$week_start),paste(d$fips,d$week_start));ix<-which(!is.na(h))
+    cmp<-data.frame(fips=ref$fips[ix],week_start=ref$week_start[ix],previous_positivity=ref$positivity[ix],national_positivity=d$positivity[h[ix]])
+    cmp$changed<-xor(is.na(cmp$previous_positivity),is.na(cmp$national_positivity))|(!is.na(cmp$previous_positivity)&!is.na(cmp$national_positivity)&abs(cmp$previous_positivity-cmp$national_positivity)>1e-7)
+    pm_csv(cmp,file.path(output,"comparison_with_previous_counties.csv"))
+    if(!length(ix))message("Previous site data use a different weekly calendar; no shifted-date comparison performed.")
   }
   if(!nzchar(national_file))pm_csv(data.frame(geography_level="county",geography_id=d$fips,week_start=d$week_start,week_end=d$week_end,positivity_pct=d$positivity,new_reported_cases=d$cases,positivity_status=d$status,site_ids=d$site_ids,positivity_source=d$source),source)
-  list(data=d,source=normalizePath(source,winslash="/"),weeks=weeks,reference_file=ref_file)
+  case_ends<-sort(unique(d$week_end[is.finite(d$cases)]))
+  coverage<-data.frame(source=c(paste0("CDC ",dataset),"JHU CSSE"),
+    first_source_date=c(as.character(cdc_first),as.character(jhu_first)),
+    last_source_date=c(as.character(cdc_last),as.character(jhu_last)),
+    last_mapped_endpoint=c(as.character(max(ends)),if(length(case_ends))as.character(max(case_ends))else NA_character_),
+    note=c("Source endpoint calendar retained; no interpolation or resampling of percentages",
+           "Case counts require both cumulative boundaries; later weeks remain missing"))
+  pm_csv(coverage,file.path(output,"source_coverage.csv"))
+  list(data=d,source=normalizePath(source,winslash="/"),weeks=weeks,reference_file=ref_file,source_coverage=coverage,dataset=dataset)
+}
+pm_full_scope_template <- function(dataset="jgk8-6dpn") {
+  t<-pm_asset("template")
+  t<-gsub("All counties · Monday–Sunday weeks · fixed colour scale","All counties · source seven-day periods · fixed colour scale",t,fixed=TRUE)
+  if(dataset=="jgk8-6dpn")t<-gsub('<a href="https://data.cdc.gov/d/nra9-vzzn">CDC national historical 7-day NAAT archive</a>, sampled at exact Sunday endpoints.',
+    '<a href="https://data.cdc.gov/d/jgk8-6dpn">CDC updated historical 7-day NAAT archive</a>, using actual Wednesday endpoints. This successor archive includes historical revisions; its weeks differ from the earlier Sunday-based map. No percentages are shifted or interpolated.',t,fixed=TRUE)
+  t<-gsub('No county positivity is available in this archive for American Samoa, Guam, the Northern Mariana Islands or the US Virgin Islands during the selected 2020–2021 period.',
+    'Areas without a source observation remain missing throughout the selected period.',t,fixed=TRUE)
+  t<-gsub('<div id="coverage" class="status"></div>', '<div id="coverage" class="status"></div><div id="source-coverage" class="status"></div>',t,fixed=TRUE)
+  t<-gsub("el('input-source').textContent=", "el('source-coverage').textContent='Positivity through '+D.source_coverage[0].last_source_date+'. JHU cases through '+(D.source_coverage[1].last_source_date||'the supplied file')+'; later case counts are unavailable.';\nel('input-source').textContent=",t,fixed=TRUE)
+  t
 }
 pm_regions <- function() list(
   list(key="US",label="Contiguous US + DC",states=character(),bounds=c(-126,-66,24,50)),
@@ -311,16 +410,16 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   show_sites=PHMPT_MAP_SHOW_SITES,write_gif=PHMPT_MAP_WRITE_GIF,width=PHMPT_MAP_GIF_WIDTH,
   height=PHMPT_MAP_GIF_HEIGHT,delay=PHMPT_MAP_SECONDS_PER_WEEK,gif_engine=PHMPT_MAP_GIF_ENGINE,
   keep_frames=PHMPT_MAP_KEEP_FRAMES,install_missing=PHMPT_MAP_INSTALL_MISSING,open_html=PHMPT_MAP_OPEN_HTML,
-  national_file=PHMPT_MAP_NATIONAL_FILE,refresh=PHMPT_MAP_REFRESH){
+  national_file=PHMPT_MAP_NATIONAL_FILE,refresh=PHMPT_MAP_REFRESH,dataset=PHMPT_MAP_CDC_DATASET){
   root<-normalizePath(root,winslash="/",mustWork=TRUE);output<-pm_path(root,output);dir.create(output,recursive=TRUE,showWarnings=FALSE)
   output<-normalizePath(output,winslash="/",mustWork=TRUE)
   complete<-FALSE;on.exit(if(!complete)writeLines("INCOMPLETE: see the R error. Any existing outputs may be from a partial or earlier run.",file.path(output,"RUN_STATUS.txt")),add=TRUE)
   if(length(width)!=1L||length(height)!=1L||!is.finite(width)||!is.finite(height)||width<1000||height<650)stop("GIF dimensions must be at least 1000 x 650.")
   if(length(delay)!=1L||!is.finite(delay)||delay<.1)stop("Seconds per week must be >= 0.1.")
   pm_require("jsonlite",install_missing)
-  national<-pm_national(root,input,start,end,output,national_file,refresh)
+  national<-pm_national(root,input,start,end,output,national_file,refresh,dataset)
   source<-national$source;d<-national$data;weeks<-national$weeks
-  norm<-list(input_kind="national CDC/JHU county series",input_rows=nrow(d),duplicate_rows_removed=0L)
+  norm<-list(input_kind=paste0("national CDC ",dataset," / JHU county series"),input_rows=nrow(d),duplicate_rows_removed=0L)
   counties<-jsonlite::fromJSON(pm_asset("counties"),simplifyVector=FALSE)
   states<-jsonlite::fromJSON(pm_asset("states"),simplifyVector=FALSE)
   cf<-vapply(counties$features,function(f)f$properties$fips,"")
@@ -352,10 +451,10 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   manifest<-data.frame(role="background_input",file=source,md5=unname(tools::md5sum(source)),stringsAsFactors=FALSE)
   if(file.exists(pm_path(root,sites_file)))manifest<-rbind(manifest,data.frame(role="site_coordinates",file=normalizePath(pm_path(root,sites_file),winslash="/"),md5=unname(tools::md5sum(pm_path(root,sites_file)))))
   pm_csv(manifest,file.path(output,"input_manifest.csv"))
-  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("2.1.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
+  pm_csv(data.frame(parameter=c("version","input_kind","input_rows","duplicate_site_rows_removed","first_week","last_week_end","seconds_per_week","county_boundary_source","county_boundary_zip_md5"),value=c("3.0.0",norm$input_kind,norm$input_rows,norm$duplicate_rows_removed,as.character(min(weeks)),as.character(max(weeks)+6),delay,"https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_20m.zip",pm_asset("county_zip_md5"))),file.path(output,"run_parameters.csv"))
   payload<-list(weeks=I(as.character(weeks)),ends=I(as.character(weeks+6)),areas=areas,sites=s,values=matrices,
-    colours=pm_colours(),labels=pm_labels(),delay=delay,background_input=basename(source),input_kind=norm$input_kind,regions=lapply(pm_regions(),function(r){r$bounds<-I(r$bounds);r$states<-I(r$states);r}))
-  text<-pm_asset("template")
+    colours=pm_colours(),labels=pm_labels(),delay=delay,background_input=basename(source),input_kind=norm$input_kind,source_coverage=national$source_coverage,regions=lapply(pm_regions(),function(r){r$bounds<-I(r$bounds);r$states<-I(r$states);r}))
+  text<-pm_full_scope_template(dataset)
   replace<-function(token,value){pos<-regexpr(token,text,fixed=TRUE);if(pos<0)stop("Template token missing: ",token);text<<-paste0(substr(text,1,pos-1),value,substring(text,pos+nchar(token),nchar(text)))}
   replace("__LEAFLET_CSS__",pm_asset("leaflet_css"));replace("__LEAFLET_JS__",pm_asset("leaflet_js"));replace("__PAYLOAD__",pm_json(payload))
   replace("__COUNTIES__",pm_asset("counties"));replace("__STATES__",pm_asset("states"))
@@ -368,7 +467,7 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
     cs<-pm_shapes(counties);ss<-pm_shapes(states)
     for(i in seq_along(weeks)){
       message("[Frame ",i,"/",length(weeks),"] ",weeks[i])
-      pm_frame(frames[i],i,weeks,grid,cs,ss,s,width,height)
+      pm_frame(frames[i],i,weeks,grid,cs,ss,s,width,height,dataset)
       if(!file.exists(frames[i])||is.na(file.info(frames[i])$size)||file.info(frames[i])$size<100)
         stop("PNG rendering failed for ",weeks[i],"; GIF was not encoded. Rerun with a working PNG graphics device.")
     }
@@ -377,21 +476,22 @@ analyse_background_covid_map <- function(root=PHMPT_MAP_ROOT,input=PHMPT_MAP_INP
   }
   writeLines(c("Weekly county COVID-19 positivity map",paste("Input:",source),
     "HTML: offline Leaflet map with play/pause, previous/next week, slider, speed, county selection and site markers.",
-    "GIF: same values and fixed bins, one frame per complete Monday-Sunday week; loops continuously.",
+    "GIF: same values and fixed bins, one frame per observed source seven-day period; loops continuously.",
     "GIF bottom-right timeline: frame progress from first to last week; endpoint labels show the full start/end date range.",
     "Grey: exactly 0% reported positivity. Red bins: >0-<5, 5-<10, 10-<15, 15-<20, 20-<30, 30-100%.",
     "White dashed counties: no reported county-level value. Every geographic county/equivalent is included, not just trial locations.",
     "Zero positivity is not proof of no infection; no interpolation or state substitution is performed.",
-    "CDC national download is paginated; every exact Sunday endpoint is selected. No percentages are averaged. Cached files have URL, date and MD5 records.",
+    "CDC national download is paginated; every observed weekly endpoint is selected. No percentages are averaged. Cached files have URL, date and MD5 records.",
     "Trial markers do not restrict geographic coverage. Insets use different map scales. Hawaii inset shows the main inhabited islands; the HTML county selection can zoom to remote island portions.",
-    "Cases in tooltips are weekly net reported case changes; negative corrections are retained.",
+    "Cases in tooltips are weekly net reported case changes; negative corrections are retained. JHU observations end on 2023-03-09; subsequent weekly counts remain missing.",
+    "Updated default: CDC jgk8-6dpn Wednesday endpoints, with historical revisions. The previous map used Sunday endpoints from nra9-vzzn; do not compare mismatched seven-day windows.",
     "Boundaries: US Census 2020, 1:20 million plus 1:500,000 for small territories, rounded to 4 decimals; all 50 states, DC and inhabited territories.",
     "County shapes are generalized; narrow coastline or border differences do not revise the input site-to-county assignment.",
     "Leaflet 1.9.4: BSD-2-Clause; license retained in HTML. Census geography: US government public data.",
     "The clinical_trial_sites.csv and screening_map_template.html from the demographic workflow are not modified.",
     "The static original screening template is not required; this script supplies its own offline animation shell.",
-    "The old county series is used only for dates, site links and a comparison CSV; positivity is sourced from the national archive.",
-    "No county records were supplied for AS, GU, MP or VI in the 2020-2021 CDC extraction. Those areas remain missing.",
+    "The old county series is used only for site links and exact-interval comparisons; positivity is sourced from the national archive.",
+    "All county shapes are retained; unavailable observations stay missing. Source coverage is reported in source_coverage.csv.",
     "Historical unmatched FIPS with missing positivity are logged, never copied onto modern areas. A nonmissing unmatched positivity value stops the run."),file.path(output,"README.txt"))
   capture.output(sessionInfo(),file=file.path(output,"sessionInfo.txt"))
   writeLines(if(write_gif)"COMPLETE: HTML and GIF" else "COMPLETE: HTML only (GIF disabled)",file.path(output,"RUN_STATUS.txt"));complete<-TRUE
