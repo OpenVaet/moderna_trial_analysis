@@ -1,11 +1,16 @@
 # =============================================================================
-# Moderna P301 | Local / central PCR testing by arm and site | v1.1.1
-# 2026-10-21 | Standalone R >= 4.3: select all and run in RStudio.
+# Moderna P301 | Local / central PCR testing by arm and site | v1.2.0
+# 2026-10-22 | Standalone R >= 4.3: select all and run in RStudio.
 # Reads local PHMPT eua_data / prod_data; never downloads trial data or installs.
 # CSV and supported PHMPT JMP: base R. XPT/SAS7BDAT: install.packages('haven').
 # JMP supports compressed production ADSL and uncompressed EUA ADSL, including
 # variable-length character columns, fixed-width characters and numeric dates.
 # No JMP application, Julia installation, or manual CSV conversion is required.
+# Equivalent CSV/XPT/JMP inputs are compared on analysis values, independently
+# of import labels and row/column order. Genuine conflicts produce a detailed
+# candidate_differences_DOMAIN.csv; the script never concatenates candidates.
+# Symptom discovery accepts both _adsymp and the EUA release's shortened _adsy
+# filename (CSV/XPT/JMP/SAS7BDAT), with the same required ADSYMP columns.
 # PRIMARY: unique subjects with COVID-form symptoms, and the union of subjects
 # with COVID-form symptoms or matched symptom-like AEs. Linked PCR within 0-7 days
 # of positive assessment / AE onset; cohort-level results remain secondary.
@@ -14,10 +19,16 @@
 # These are source-stream classifications, NOT proven physical lab locations.
 # Blank LOCALFL alone is NEVER central; Viracor in group 003 remains local-source.
 # Distinct MBSEQ rows are records, not necessarily distinct physical assays.
+# v1.2.0: data-focused main HTML, recording-source breakdown, BH site signals,
+# linked-date post-dose sensitivity, route-availability warnings and embedded CSVs.
+# Comprehensive symptom/cohort tables remain available as secondary HTML reports.
 # Load functions only: options(phmpt.autorun=FALSE) before source().
 # =============================================================================
 PHMPT_ROOT <- getOption('phmpt.root', '')
 PHMPT_OUTPUT_DIR <- getOption('phmpt.output_dir', '')
+# Optional: set this to an existing COMPLETE results folder to rebuild HTML only.
+# Leave blank for the normal standalone analysis of local EUA / production files.
+PHMPT_REBUILD_REPORT_DIR <- getOption('phmpt.rebuild_report_dir', '')
 PHMPT_RELEASES <- c('EUA','Prod')
 PHMPT_FILES <- list(EUA=list(ADSL='',MB='',ADMB='',SUPPMB='',AE='',ADSYMP='',EVENTS=''),
                     Prod=list(ADSL='',MB='',ADMB='',SUPPMB='',AE='',ADSYMP='',EVENTS=''))
@@ -300,17 +311,74 @@ pt_submission <- function(p) {
  z<-tolower(basename(p));m<-regexpr('[0-9]+_s[0-9]+_m[0-9]+_mrna-1273-p301',z)
  v<-rep('',length(p));ok<-m>0;v[ok]<-substring(z[ok],m[ok],m[ok]+attr(m,'match.length')[ok]-1L);v
 }
+pt_domain_aliases <- function(domain) {
+ # PHMPT EUA filename ends in _A_adsy although define.xml names the dataset
+ # ADSYMP. Accept this exact alias; retain the full ADSYMP schema validation.
+ if(domain=='ADSYMP')c('adsymp','adsy') else tolower(domain)
+}
 pt_candidates <- function(root,release,domain) {
  folder<-file.path(root,if(release=='Prod')'prod_data' else 'eua_data')
  p<-list.files(folder,recursive=TRUE,full.names=TRUE,pattern='\\.(csv|xpt|sas7bdat|jmp)$',ignore.case=TRUE)
- p<-p[grepl(paste0('(^|[_ -])',tolower(domain),'([_. -]|$)'),basename(p),ignore.case=TRUE)]
+ tokens<-paste(pt_domain_aliases(domain),collapse='|')
+ p<-p[grepl(paste0('(^|[_ -])(',tokens,')([_. -]|$)'),basename(p),ignore.case=TRUE)]
  p<-p[!grepl('p101|p201|dmid',basename(p),ignore.case=TRUE)]
  if(release=='Prod'&&any(grepl('_s3_m[0-9]+_',basename(p),ignore.case=TRUE)))p<-p[grepl('_s3_m[0-9]+_',basename(p),ignore.case=TRUE)]
  unique(p[order(match(tolower(tools::file_ext(p)),c('csv','jmp','xpt','sas7bdat')),p)])
 }
+pt_canonical <- function(x) {
+ # Compare analysis values, not SAS table labels, import attributes or column/
+ # row order. Build a fresh base data.frame: subsetting the imported frame can
+ # preserve its dataset-level label. Repeated rows retain their multiplicity.
+ nm<-sort(setdiff(names(x),'.source_row'),method='radix')
+ cols<-setNames(lapply(nm,function(n){v<-ws_text(x[[n]]);attributes(v)<-NULL;v}),nm)
+ z<-as.data.frame(cols,stringsAsFactors=FALSE,check.names=FALSE)
+ if(nrow(z))z<-z[do.call(order,c(unname(z),list(method='radix'))),,drop=FALSE]
+ rownames(z)<-NULL;z
+}
 pt_signature <- function(x) {
- x$.source_row<-NULL;x<-unique(x);x<-x[do.call(order,x),,drop=FALSE];rownames(x)<-NULL
+ x<-pt_canonical(x)
  f<-tempfile();on.exit(unlink(f));saveRDS(x,f,compress=FALSE,version=2);unname(tools::md5sum(f))
+}
+pt_candidate_diff <- function(x,y,domain,file_a,file_b,max_examples=200L) {
+ a<-pt_canonical(x);b<-pt_canonical(y)
+ keys<-switch(domain,ADSL='USUBJID',AE=c('USUBJID','AESEQ'),MB=c('USUBJID','MBSEQ'),
+  ADMB=c('USUBJID','MBSEQ','PARAMCD','DTYPE'),ADSYMP=c('USUBJID','ASEQ'),
+  SUPPMB=c('USUBJID','IDVAR','IDVARVAL','QNAM'))
+ key<-function(z)do.call(paste,c(z[keys],sep=' | '))
+ keyed<-length(keys)>0&&all(keys%in%intersect(names(a),names(b)))
+ if(keyed){ka<-key(a);kb<-key(b);keyed<-!anyDuplicated(ka)&&!anyDuplicated(kb)}
+ ans<-list();used<-0L
+ add<-function(kind,field,n,ids='',va='',vb='') {
+  # Each discrepancy has its full count; record examples are capped.
+  keep<-seq_len(min(length(ids),max(1L,max_examples-used)))
+  ans[[length(ans)+1L]]<<-data.frame(file_a=file_a,file_b=file_b,kind=kind,field=field,
+   n_differences=n,record_key=ids[keep],value_a=va[keep],value_b=vb[keep],stringsAsFactors=FALSE)
+  used<<-used+length(keep)
+ }
+ only_a<-setdiff(names(a),names(b));only_b<-setdiff(names(b),names(a))
+ if(length(only_a))add('COLUMN_ONLY_IN_A',paste(only_a,collapse=';'),length(only_a))
+ if(length(only_b))add('COLUMN_ONLY_IN_B',paste(only_b,collapse=';'),length(only_b))
+ if(keyed) {
+  ia<-which(!ka%in%kb);ib<-which(!kb%in%ka)
+  if(length(ia))add('RECORD_ONLY_IN_A','',length(ia),ka[ia],rep('present',length(ia)),rep('absent',length(ia)))
+  if(length(ib))add('RECORD_ONLY_IN_B','',length(ib),kb[ib],rep('absent',length(ib)),rep('present',length(ib)))
+  aa<-which(ka%in%kb);bb<-match(ka[aa],kb)
+  for(n in intersect(names(a),names(b))) {
+   ix<-which(a[[n]][aa]!=b[[n]][bb])
+   if(length(ix))add('VALUE_DIFFERENCE',n,length(ix),ka[aa[ix]],a[[n]][aa[ix]],b[[n]][bb[ix]])
+  }
+ } else {
+  add('NO_UNIQUE_RECORD_KEY','',max(nrow(a),nrow(b)),
+   'No unambiguous row pairing; counts below compare value frequencies, not paired records.',as.character(nrow(a)),as.character(nrow(b)))
+  for(n in intersect(names(a),names(b))) {
+   ta<-table(a[[n]]);tb<-table(b[[n]]);vv<-union(names(ta),names(tb));ca<-as.integer(ta[vv]);cb<-as.integer(tb[vv]);ca[is.na(ca)]<-0L;cb[is.na(cb)]<-0L
+   ix<-which(ca!=cb)
+   if(length(ix))add('VALUE_FREQUENCY_DIFFERENCE',n,length(ix),vv[ix],as.character(ca[ix]),as.character(cb[ix]))
+  }
+ }
+ if(!length(ans))add('ROW_COMBINATION_DIFFERENCE','',max(nrow(a),nrow(b)),
+  'Marginal values match, but joint row combinations differ; inspect the source tables.')
+ do.call(rbind,ans)
 }
 pt_pick <- function(root,release,domain,explicit,out,submission='',optional=FALSE) {
  paths<-if(nzchar(explicit))ws_path(root,explicit) else pt_candidates(root,release,domain)
@@ -339,11 +407,19 @@ pt_pick <- function(root,release,domain,explicit,out,submission='',optional=FALS
  }
  log<-do.call(rbind,logs);logfile<-file.path(out,paste0('discovery_',domain,'.csv'));ws_csv(log,logfile)
  if(!length(valid))stop('No usable ',release,' ',domain,'; see ',logfile,': ',paste(unique(log$detail[nzchar(log$detail)]),collapse=' | '))
- if(length(unique(vapply(valid,function(a)a$signature,character(1))))>1)stop('Different ',domain,' snapshots remain. Select PHMPT_FILES$',release,'$',domain,'; tables are never concatenated.')
+ if(length(unique(vapply(valid,function(a)a$signature,character(1))))>1) {
+  first<-valid[[1]];different<-Filter(function(a)a$signature!=first$signature,valid[-1])
+  diffs<-lapply(different,function(a)pt_candidate_diff(first$x,a$x,domain,log$path[first$index],log$path[a$index]))
+  diff_file<-file.path(out,paste0('candidate_differences_',domain,'.csv'));ws_csv(do.call(rbind,diffs),diff_file)
+  stop('Different ',domain,' analysis values remain after ignoring import metadata and row/column order. See ',diff_file,
+   '. Review the differences before selecting PHMPT_FILES$',release,'$',domain,'; tables are never concatenated.')
+ }
  stems<-tolower(tools::file_path_sans_ext(log$path))
  unresolved<-log$status=='REJECTED'&!stems%in%stems[log$status%in%c('VALID','IDENTICAL_BYTES')]
  if(any(unresolved)&&!nzchar(explicit))stop('Unresolved ',domain,' candidates; select one explicit reviewed path. See ',logfile)
- chosen<-valid[[1]];log$status[log$status=='VALID']<-'NOT_SELECTED';log$status[chosen$index]<-'SELECTED';ws_csv(log,logfile)
+ chosen<-valid[[1]];ok<-log$status=='VALID';log$status[ok]<-'EQUIVALENT_ANALYSIS_VALUES'
+ log$detail[ok]<-'Analysis cell values compared without import metadata or row/column order; duplicate-row counts retained.'
+ log$status[chosen$index]<-'SELECTED';ws_csv(log,logfile)
  list(data=chosen$x,manifest=log[chosen$index,,drop=FALSE])
 }
 pt_dates_write <- function(x,path) {
@@ -514,7 +590,7 @@ pt_summary <- function(x,meta=NULL,sites=NULL) {
    j<-j+1L;rows[[j]]<-data.frame(release=meta$release[1],period=meta$period[1],scope=meta$scope[1],stratum=meta$stratum[1],
     granularity=if(site=='ALL')'GLOBAL' else 'SITE',site=site,arm=ar,endpoint=labels[e],n_eligible=n,n_tested=k,
     pct=if(n)100*k/n else NA_real_,ci95_low=ci[1],ci95_high=ci[2],PCR_records=nr,unique_PCR_days=nd,
-    person_days=pd,records_per_100_subjects=if(n)100*nr/n else NA_real_,records_per_100_person_days=if(pd)100*nr/pd else NA_real_,stringsAsFactors=FALSE)
+    person_days=pd,records_per_100_subjects=if(n)100*nr/n else NA_real_,records_per_100_person_days=if(is.finite(pd)&&pd>0)100*nr/pd else NA_real_,stringsAsFactors=FALSE)
   }
  };do.call(rbind,rows)
 }
@@ -563,15 +639,16 @@ pt_display <- function(t,site=FALSE) {
   Test=t$method,p=pt_p(t$p_value),`BH-adjusted p`=pt_p(t$p_BH),check.names=FALSE)
  if(site)x<-cbind(Site=t$site,x);x
 }
-pt_report <- function(s,t,flow,release_status,out) {
+pt_report <- function(s,t,flow,release_status,out,route_status=pt_r_classification(out,unique(t$release)),filename='pcr_testing_report.html',eua_cutoff=PHMPT_EUA_CUTOFF,bla_cutoff=PHMPT_BLA_CUTOFF) {
+ display<-function(x,site=FALSE)pt_r_mask(pt_display(x,site),x,route_status)
  parts<-c('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Moderna P301 — local and central PCR testing</title>',
  '<style>body{font:16px/1.55 Georgia,serif;color:#17212a;background:#fafaf8;margin:0}main{max-width:1200px;margin:25px auto;padding:30px;background:white}h1,h2,h3{font-family:Arial,sans-serif;line-height:1.25}h1{font-size:29px}h2{font-size:23px;margin-top:32px}h3{font-size:18px}p{max-width:100ch}.note{padding:15px 18px;background:#edf3f7;border-left:4px solid #42637e}.warning{background:#fff5df;border-left-color:#bc8829}table{width:100%;border-collapse:collapse;font:12px/1.4 Arial,sans-serif}th{text-align:left;background:#e5eaee}th,td{padding:8px;border-bottom:1px solid #dbe0e4;vertical-align:top}tr:nth-child(even){background:#f5f7f8}.scroll{overflow:auto}details{margin:20px 0}summary{font:700 17px Arial,sans-serif;cursor:pointer}a{color:#185182}button{padding:8px 12px;margin:8px 8px 8px 0}.muted{color:#52606a;font:13px/1.5 Arial,sans-serif}code{overflow-wrap:anywhere}section.view{border-top:1px solid #c9d0d6;margin-top:28px}@media print{body{background:white}main{max-width:none;margin:0;padding:0}button{display:none}.scroll{overflow:visible}table{font-size:8pt}th,td{padding:5pt}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}section.view{break-before:page}p{font-size:10pt}details{display:block}summary{display:none}details>*{display:block!important}a{color:inherit}h1{font-size:20pt}}@page{size:A4 landscape;margin:14mm}</style></head><body><main>',
  '<h1>Local and central PCR testing by randomized arm</h1>',
- paste0('<p class="muted">Moderna P301 · script v1.1.1 · Generated ',pt_escape(format(Sys.time(),tz='UTC',usetz=TRUE)),'.</p>'),
+ paste0('<p class="muted">Moderna P301 · script v1.2.0 · Generated ',pt_escape(format(Sys.time(),tz='UTC',usetz=TRUE)),'.</p>'),
  '<p class="note"><strong>Denominator:</strong> all randomized participants with an observable window, by original treatment assignment. The headline rate is the percentage with at least one completed PCR record in that window. It is not the probability of testing after symptoms: that requires linking the COVID forms and AE episodes. No baseline infection-negative restriction or per-protocol exclusion is applied.</p>',
  '<p><strong>Source-route definitions:</strong> local-source means MBGRPID=003 or LOCALFL=Y. This denotes the COVID Diagnostic Test reporting route. Central-source requires the configured central group (default 001), an expected central-laboratory name (Viracor), and no conflicting local flag. Neither a blank local flag nor a brand name alone establishes the route. Viracor-labelled records in group 003 remain local-source. Unclassified and conflicting records are retained as separate audit categories; these labels do not establish the physical place where an assay was performed.</p>',
  '<p><strong>Completed PCR:</strong> an explicit PCR method plus a documented positive, negative, or nonbinary result, including SeeComment/inconclusive records, without a NOT DONE/cancelled status. The raw MB collection date must be complete and agree with the corresponding ADMB collection date when both exist. Positive/negative discrepancies still document testing but are flagged; a contradiction involving NOT DONE is excluded. Raw MB subject/MBSEQ is the record key. ADMB and SUPPMB enrich it and are never added as additional tests.</p>',
- paste0('<p><strong>Windows:</strong> EUA = ',PHMPT_EUA_CUTOFF,'; BLA = ',PHMPT_BLA_CUTOFF,'. The actual EUA release and a retrospective EUA-date restriction of the production release are labelled separately. STRICT_BLINDED also censors at Part A end, unblinding, participant decision, crossover/outside vaccination, death or study end; it excludes decision/open-label-labelled records. Unblinding/decision/crossover days are excluded when times are unavailable. CALENDAR follows the original randomized groups through the date cutoff and can include post-unblinding/crossover observations; it is descriptive.</p>'),
+ paste0('<p><strong>Windows:</strong> EUA = ',eua_cutoff,'; BLA = ',bla_cutoff,'. The actual EUA release and a retrospective EUA-date restriction of the production release are labelled separately. STRICT_BLINDED also censors at Part A end, unblinding, participant decision, crossover/outside vaccination, death or study end; it excludes decision/open-label-labelled records. Unblinding/decision/crossover days are excluded when times are unavailable. CALENDAR follows the original randomized groups through the date cutoff and can include post-unblinding/crossover observations; it is descriptive.</p>'),
  '<p><strong>Baseline separation:</strong> ALL_POST_RANDOMIZATION starts on randomization day and includes baseline/day-1 tests. FOLLOW_UP_EXCL_BASELINE starts the day after dose 1 (the day after randomization if undosed) and excludes baseline-labelled records. This still includes scheduled Day 29 testing. ILLNESS_LABELLED restricts the same follow-up window to records explicitly labelled as illness visits in MB or ADMB; records without that label are not assumed to be illness-related. Both denominators require at least one eligible follow-up day, regardless of whether symptoms were reported. For a post-EUA strict window, participants lacking all Part A/unblinding/decision/crossover boundary dates are excluded unless death or study end preceded the EUA date. They are separately inventoried, not silently counted as untested. The calendar view retains them when observable. Person-days use these participant-specific windows; record rates are descriptive.</p>',
  '<p><strong>Inference:</strong> two-sided Pearson chi-square when every expected 2×2 cell is at least five; otherwise two-sided Fisher exact. No-variation comparisons have p=1; a missing arm is not estimable. Tests use participants, not repeated assays. BH and Holm adjustments are exported within each release/cutoff/scope/stratum, with global comparisons separated from the family of all site×endpoint comparisons. Different views are not independent replications. Differences in illness burden, follow-up, visit scheduling or recording route can explain testing differences; these comparisons alone do not establish unequal investigator handling.</p>',
  '<button onclick="window.print()">Print report</button><button onclick="document.querySelectorAll(\'details\').forEach(x=>x.open=true)">Expand site tables</button>',
@@ -585,14 +662,14 @@ pt_report <- function(s,t,flow,release_status,out) {
   g<-t[take&t$granularity=='GLOBAL',];sites<-t[take&t$granularity=='SITE',]
   sites<-sites[order(sites$endpoint,sites$p_value,sites$site,na.last=TRUE),]
   title<-paste(v,collapse=' · ')
-  parts<-c(parts,paste0('<section class="view"><h2>',pt_escape(title),'</h2>'),pt_table(pt_display(g)),
+  parts<-c(parts,paste0('<section class="view"><h2>',pt_escape(title),'</h2>'),pt_table(display(g)),
    '<p class="muted">Local and central percentages overlap: a participant may have both. Both-source is a participant history, not proof of paired testing of the same specimen. “Unclassified/conflicting” may overlap either known route. Exact p values and Holm-adjusted values are in the CSV.</p>',
-   '<details><summary>Site-level comparisons — all sites and all endpoints</summary>',pt_table(pt_display(sites,TRUE)),'</details></section>')
+   '<details><summary>Site-level comparisons — all sites and all endpoints</summary>',pt_table(display(sites,TRUE)),'</details></section>')
  }
  parts<-c(parts,'<h2>Audit assets</h2><p>Each input release has its own folder with the randomized roster, one-row-per-MBSEQ PCR audit, quality-review rows, laboratory inventory, exact duplicates, discovery decisions and optional ADMB-only records. The subjects/ folder contains one participant-level file per analysis window. No files from different submissions are silently stacked. PCR record counts may include separate reports of the same physical assay; repeated specimen references are flagged rather than merged without evidence.</p>',
  '<p class="muted">Definition references: P301 Clinical Study Data Reviewer’s Guide, section 3.4.18 (LOCALFL: From COVID Diag Test); P301 Analysis Data Reviewer’s Guide, section 5.2.10 (ADMB derives from MB); reviewed PHMPT PCR metadata export v1.9.0. The operational central-stream rule is editable and should be checked against each release’s Define metadata. <a href="https://www.fda.gov/media/144673/download">FDA EUA review memorandum</a>, section 5.5, identifies Viracor as the contracted RT-qPCR laboratory; this does not imply that every Viracor-labelled result is a central-route record.</p>',
  '<script>let previouslyOpen=[];addEventListener("beforeprint",()=>{previouslyOpen=[...document.querySelectorAll("details")].map(x=>x.open);document.querySelectorAll("details").forEach(x=>x.open=true)});addEventListener("afterprint",()=>document.querySelectorAll("details").forEach((x,i)=>x.open=previouslyOpen[i]));</script></main></body></html>')
- writeLines(enc2utf8(parts),file.path(out,'pcr_testing_report.html'),useBytes=TRUE)
+ writeLines(enc2utf8(parts),file.path(out,filename),useBytes=TRUE)
 }
 
 ws_mapping <- function(root,path,out) {
@@ -1163,15 +1240,16 @@ pt_conditional_subjects <- function(w,source,opportunity,test_selection,release,
    subjects_excluded_by_followup=length(setdiff(unique(z$subject),unique(u$subject))))}))
  list(summary=s,flow=f)
 }
-pt_symptom_report <- function(s,t,f,out) {
+pt_symptom_report <- function(s,t,f,out,route_status=pt_r_classification(out,unique(t$release)),eua_cutoff=PHMPT_EUA_CUTOFF,bla_cutoff=PHMPT_BLA_CUTOFF,link_days=PHMPT_TEST_LINK_DAYS) {
+ display<-function(x,site=FALSE)pt_r_mask(pt_display(x,site),x,route_status)
  header<-c('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PCR testing among subjects reporting symptoms</title>',
  '<style>body{font:16px/1.55 Georgia,serif;color:#17212a;margin:0;background:#f7f7f4}main{max-width:1200px;padding:30px;margin:auto;background:white}h1,h2,h3,summary{font-family:Arial,sans-serif;line-height:1.25}h1{font-size:29px}h2{font-size:22px}.note{padding:16px;background:#eef4f7;border-left:4px solid #42637e}table{border-collapse:collapse;width:100%;font:12px/1.4 Arial,sans-serif}th{background:#e6ebef;text-align:left}th,td{padding:8px;border-bottom:1px solid #d8dfe5}tr:nth-child(even){background:#f5f7f8}.scroll{overflow:auto}summary{cursor:pointer;font-weight:bold}details{margin:20px 0}section{border-top:1px solid #ccd5de;margin-top:26px;padding-top:8px}a{color:#185182}button{padding:8px;margin:8px}.muted{font:13px/1.5 Arial,sans-serif;color:#54616c}@media print{body{background:white}main{padding:0}button{display:none}section{break-before:page}thead{display:table-header-group}tr{break-inside:avoid}.scroll{overflow:visible}table{font-size:8pt}h2{font-size:15pt}p{font-size:10pt}}@page{size:A4 landscape;margin:14mm}</style><body><main>',
  '<h1>PCR testing among subjects reporting symptoms</h1>',
- paste0('<p class="muted">Moderna P301 · v1.1.1 · EUA cutoff ',PHMPT_EUA_CUTOFF,' · BLA cutoff ',PHMPT_BLA_CUTOFF,'.</p>'),
+ paste0('<p class="muted">Moderna P301 · v1.2.0 · EUA cutoff ',eua_cutoff,' · BLA cutoff ',bla_cutoff,'.</p>'),
  '<p class="note"><strong>Two nested populations:</strong> COVID_FORM_ONLY includes every eligible subject with a positive COVID-form symptom assessment, whether or not that subject also has an AE. COVID_FORM_PLUS_AE includes subjects with a positive assessment or an AE matching the agreed symptom dictionary. A subject appearing in both sources is counted once in the combined denominator.</p>',
- paste0('<p><strong>Temporally linked testing:</strong> a subject is counted as tested if at least one qualifying completed PCR falls between a recorded symptom-evidence date and ',PHMPT_TEST_LINK_DAYS,' days later, inclusive, within that subject’s follow-up and the selected cutoff. COVID-form dates are positive ADSYMP assessment dates, not necessarily illness onset. AE dates are AESTDTC onset dates; ongoing AEs do not create a new anchor every day. Repeated assessments may link to the same PCR; participant and record totals are deduplicated. Evidence dates are not reconstructed clinical episodes.</p>'),
+ paste0('<p><strong>Temporally linked testing:</strong> a subject is counted as tested if at least one qualifying completed PCR falls between a recorded symptom-evidence date and ',link_days,' days later, inclusive, within that subject’s follow-up and the selected cutoff. COVID-form dates are positive ADSYMP assessment dates, not necessarily illness onset. AE dates are AESTDTC onset dates; ongoing AEs do not create a new anchor every day. Repeated assessments may link to the same PCR; participant and record totals are deduplicated. Evidence dates are not reconstructed clinical episodes.</p>'),
  '<p><strong>Two PCR definitions:</strong> DIAGNOSTIC requires an illness label or local COVID Diagnostic Test coding; ANY_NONBASELINE allows any completed non-baseline PCR in the interval, including scheduled follow-up tests. Baseline PCR is excluded from both. This is a temporal association, not proof that symptoms triggered the swab or that an independently documented COVID visit occurred. The earlier heatmap visit-plus-PCR endpoint is different.</p>',
- paste0('<p><strong>Follow-up:</strong> BY_CUTOFF includes all subjects with dated symptom evidence within the usable observation window and reports testing observed by that cutoff. Recent symptom evidence can have less than ',PHMPT_TEST_LINK_DAYS,' days of observation. COMPLETE_7D requires at least one evidence date with a full ',PHMPT_TEST_LINK_DAYS,'-day window; incomplete dates are excluded regardless of whether a test occurred. Both the total reporting population and the eligible denominator are exported. A subject with several dates is counted once per analysis; “tested” means at least one qualifying date was followed by PCR, not that every illness was tested.</p>'),
+ paste0('<p><strong>Follow-up:</strong> BY_CUTOFF includes all subjects with dated symptom evidence within the usable observation window and reports testing observed by that cutoff. Recent symptom evidence can have less than ',link_days,' days of observation. COMPLETE_7D requires at least one evidence date with a full ',link_days,'-day window; incomplete dates are excluded regardless of whether a test occurred. Both the total reporting population and the eligible denominator are exported. A subject with several dates is counted once per analysis; “tested” means at least one qualifying date was followed by PCR, not that every illness was tested.</p>'),
  '<p><strong>Symptom scope:</strong> the prior exact, field-specific AE matching dictionary is reused. Direct included matches count regardless of investigator causal attribution or PCR result. Days 0–6 after either dose are retained. This includes symptom-compatible AEs, not every AE or solicited reactogenicity diary. Fever/duration thresholds and the complete protocol trigger are not established by these records alone. Missing/partial dates and contradictory records are inventoried.</p>',
  '<p><strong>Local and central:</strong> source-route definitions and uncertainty handling are unchanged. Local-source includes MBGRPID 003 or LOCALFL=Y; central-source requires configured group 001 and the expected laboratory name without contradictory local evidence. These are reporting routes, not confirmed physical laboratory locations. Both-source testing can involve different dates or illnesses in the same subject.</p>',
  '<p><strong>Inference:</strong> chi-square or two-sided Fisher exact compares one tested/not-tested outcome per subject within each population. BH and Holm adjustments cover site×endpoint comparisons within each view. The two populations overlap and are not independent cohorts. Conditional arm differences do not by themselves establish investigator bias; symptom patterns, reporting opportunities and follow-up can differ.</p>',
@@ -1185,11 +1263,283 @@ pt_symptom_report <- function(s,t,f,out) {
   title<-paste(v$release,v$period,v$scope,gsub('SYMPTOMS__','',v$stratum,fixed=TRUE),sep=' · ')
   sens<-grepl('ANY_NONBASELINE$',v$stratum)
   if(sens)parts<-c(parts,paste0('<details><summary>Sensitivity: ',pt_escape(title),'</summary>')) else parts<-c(parts,paste0('<section><h2>',pt_escape(title),'</h2>'))
-  parts<-c(parts,pt_table(pt_display(a)),'<details><summary>Site-level results</summary>',pt_table(pt_display(b,TRUE)),'</details>',if(sens)'</details>' else '</section>')
+  parts<-c(parts,pt_table(display(a)),'<details><summary>Site-level results</summary>',pt_table(display(b,TRUE)),'</details>',if(sens)'</details>' else '</section>')
  }
  parts<-c(parts,'<details><summary>Population flow for both symptom definitions</summary>',pt_table(f),'</details>',
  '<p class="muted">Audit trail: symptom_subjects/ contains deduplicated subjects and testing flags. symptom_links/ contains source-record → evidence-date → PCR links, including repeated-PCR linkage counts. Each release’s symptoms/ folder contains the mapping, original evidence and quality review. These files permit review without treating repeated symptoms or repeated assays as independent subjects.</p></main></body></html>')
- writeLines(enc2utf8(parts),file.path(out,'pcr_testing_report.html'),useBytes=TRUE)
+ writeLines(enc2utf8(parts),file.path(out,'pcr_testing_full_tables.html'),useBytes=TRUE)
+}
+
+# ---- Results report: derived from the run's exported participant/link tables ----
+# No published counts, site IDs or p-values are hard-coded in this report.
+pt_r_read <- function(path, required=TRUE) {
+ if(!file.exists(path)) {
+  if(required)stop('Missing report input: ',path)
+  return(data.frame())
+ }
+ read.csv(path,check.names=FALSE,stringsAsFactors=FALSE,fileEncoding='UTF-8-BOM')
+}
+pt_r_bool <- function(x) !is.na(x)&toupper(as.character(x))%in%c('TRUE','T','1')
+pt_r_bind <- function(x) if(length(x))do.call(rbind,x) else data.frame()
+pt_r_pct <- function(k,n,digits=1L) ifelse(is.na(k)|is.na(n),'Unavailable',ifelse(n>0,sprintf(paste0('%.',digits,'f%%'),100*k/n),'Not estimable'))
+pt_r_count <- function(k,n,digits=1L) ifelse(is.na(k)|is.na(n),'Unavailable',ifelse(n>0,paste0(format(k,big.mark=',',trim=TRUE,scientific=FALSE),'/',format(n,big.mark=',',trim=TRUE,scientific=FALSE),' (',pt_r_pct(k,n,digits),')'),'0/0 (not estimable)'))
+pt_r_window <- function(release,period) {
+ z<-paste(release,period,sep=' / ')
+ z[release=='EUA'&period=='EUA_SNAPSHOT']<-'Original EUA snapshot'
+ z[release=='Prod'&period=='EUA_DATE_RETROSPECTIVE']<-'Production through EUA date'
+ z[release=='Prod'&period=='BLA_SNAPSHOT']<-'Production through BLA cutoff'
+ z
+}
+pt_r_pop <- function(s) ifelse(grepl('COVID_FORM_PLUS_AE',s,fixed=TRUE),'COVID forms + matched AEs','COVID forms')
+pt_r_primary <- function(x,pop=NULL) {
+ ok<-x$scope=='STRICT_BLINDED'&grepl('__BY_CUTOFF__DIAGNOSTIC$',x$stratum)
+ if(!is.null(pop))ok<-ok&grepl(paste0('SYMPTOMS__',pop,'__'),x$stratum,fixed=TRUE)
+ x[ok,,drop=FALSE]
+}
+pt_r_classification <- function(out,releases) {
+ rows<-lapply(releases,function(rel){
+  p<-pt_r_read(file.path(out,rel,'pcr_record_audit.csv'),FALSE)
+  if(!all(c('route','completed','MBGRPID','laboratory')%in%names(p)))return(data.frame(release=rel,records=NA_integer_,blank_group_records=NA_integer_,completed=NA_integer_,local_completed=NA_integer_,central_completed=NA_integer_,unresolved_completed=NA_integer_,unresolved_viracor_completed=NA_integer_,central_reportable=FALSE,status='Classification inventory unavailable'))
+  done<-pt_r_bool(p$completed); unresolved<-p$route%in%c('UNCLASSIFIED','CONFLICT')
+  ncentral<-sum(done&p$route=='CENTRAL_SOURCE'); nu<-sum(done&unresolved)
+  data.frame(release=rel,records=nrow(p),blank_group_records=sum(is.na(p$MBGRPID)|!nzchar(trimws(as.character(p$MBGRPID)))),completed=sum(done),
+   local_completed=sum(done&p$route=='LOCAL_SOURCE'),central_completed=ncentral,unresolved_completed=nu,
+   unresolved_viracor_completed=sum(done&unresolved&grepl('VIRACOR|VIRA[ -]?COR',toupper(p$laboratory))),
+   central_reportable=ncentral>0||nu==0,status=if(ncentral==0&&nu>0)'Central / both not estimable under current rule' else if(nu>0)'Partial route classification' else 'All completed records classified')
+ });pt_r_bind(rows)
+}
+pt_r_mask <- function(display,t,route_status) {
+ if(!nrow(t))return(display)
+ j<-match(t$release,route_status$release)
+ unavailable<-is.na(j)|!route_status$central_reportable[j]
+ bad<-unavailable&t$endpoint%in%c('Central-source PCR','Both source streams')
+ bad[is.na(bad)]<-TRUE
+ # Count exports retain the original algorithmic categories. All HTML presentations
+ # explicitly distinguish an unidentifiable stream from an observed zero rate.
+ for(n in intersect(names(display),c('mRNA-1273 tested','Placebo tested','mRNA-1273','Placebo','Difference (pp)','Test','p','BH-adjusted p','Holm-adjusted p')))display[bad,n]<-if(n%in%c('Test','mRNA-1273 tested','Placebo tested','mRNA-1273','Placebo'))'Not estimable (route)' else '\u2014'
+ display
+}
+pt_r_comparison <- function(t,route_status,site=FALSE,adjusted=FALSE) {
+ if(!nrow(t))return(data.frame())
+ z<-data.frame(Window=pt_r_window(t$release,t$period),Population=pt_r_pop(t$stratum),Endpoint=t$endpoint,
+  `mRNA-1273`=pt_r_count(t$v_tested,t$v_total),Placebo=pt_r_count(t$p_tested,t$p_total),
+  `Difference (pp)`=ifelse(is.finite(t$difference_pp),sprintf('%+.1f',t$difference_pp),'Not estimable'),p=pt_p(t$p_value),check.names=FALSE)
+ if(site)z<-cbind(Site=t$site,z)
+ if(adjusted){z[['BH-adjusted p']]<-pt_p(t$p_BH);z[['Holm-adjusted p']]<-pt_p(t$p_Holm)}
+ pt_r_mask(z,t,route_status)
+}
+pt_r_sources <- function(out,views,asset_dir) {
+ comp<-overlap<-people<-list()
+ for(i in seq_len(nrow(views))){v<-views[i,,drop=FALSE];stem<-paste(v$release,v$period,v$scope,sep='_')
+  prefix<-file.path(out,'symptom_subjects',paste0(stem,'_SYMPTOMS__COVID_FORM_PLUS_AE__BY_CUTOFF__'))
+  x<-pt_r_read(paste0(prefix,'DIAGNOSTIC.csv'),FALSE);y<-pt_r_read(paste0(prefix,'ANY_NONBASELINE.csv'),FALSE)
+  if(!nrow(x))next
+  if(anyDuplicated(x$subject))stop('Duplicate participant in report source: ',stem)
+  needed<-c('subject','arm','site','source_category','any_tested','local_source_tested','central_source_tested','both_tested')
+  if(!all(needed%in%names(x)))stop('Participant export lacks report columns: ',stem)
+  x$any_tested<-pt_r_bool(x$any_tested);x$both_tested<-pt_r_bool(x$both_tested)
+  if(nrow(y)){
+   if(anyDuplicated(y$subject)||!setequal(x$subject,y$subject))stop('Diagnostic/non-baseline denominators differ: ',stem)
+   y<-y[match(x$subject,y$subject),,drop=FALSE]
+   if(any(x$source_category!=y$source_category))stop('Recording-source categories differ between test selections: ',stem)
+   x$any_nonbaseline_tested<-pt_r_bool(y$any_tested)
+  } else x$any_nonbaseline_tested<-NA
+  x$release<-v$release;x$period<-v$period;x$scope<-v$scope
+  people[[length(people)+1L]]<-x
+  for(cat in c('COVID forms only','Both sources','AE only')){
+   zz<-x[x$source_category==cat,,drop=FALSE]
+   a<-zz[zz$arm=='mRNA-1273',,drop=FALSE];b<-zz[zz$arm=='Placebo',,drop=FALSE]
+   an<-nrow(a);bn<-nrow(b);ak<-sum(a$any_tested);bk<-sum(b$any_tested)
+   pv<-if(an>0&&bn>0)fisher.test(matrix(c(ak,an-ak,bk,bn-bk),nrow=2,byrow=TRUE))$p.value else NA_real_
+   comp[[length(comp)+1L]]<-data.frame(release=v$release,period=v$period,scope=v$scope,source_category=cat,
+    v_total=an,p_total=bn,v_population=sum(x$arm=='mRNA-1273'),p_population=sum(x$arm=='Placebo'),
+    v_diagnostic=ak,p_diagnostic=bk,v_any_nonbaseline=if(all(is.na(a$any_nonbaseline_tested)))NA_integer_ else sum(a$any_nonbaseline_tested),
+    p_any_nonbaseline=if(all(is.na(b$any_nonbaseline_tested)))NA_integer_ else sum(b$any_nonbaseline_tested),fisher_p=pv)
+  }
+  for(ar in c('mRNA-1273','Placebo')){
+   z<-x[x$arm==ar,,drop=FALSE]
+   overlap[[length(overlap)+1L]]<-data.frame(release=v$release,period=v$period,scope=v$scope,arm=ar,n_tested=sum(z$any_tested),n_both=sum(z$both_tested),pct_both_among_tested=if(sum(z$any_tested)>0)100*sum(z$both_tested)/sum(z$any_tested) else NA_real_)
+  }
+ }
+ list(composition=pt_r_bind(comp),overlap=pt_r_bind(overlap),people=pt_r_bind(people))
+}
+pt_r_postdose <- function(out,views,site_comparisons,asset_dir) {
+ # Rebuild eligible dates AND links; retain a person with any remaining anchor.
+ summaries<-list();coverage<-list()
+ for(i in seq_len(nrow(views))){v<-views[i,,drop=FALSE];stem<-paste(v$release,v$period,v$scope,sep='_');d<-file.path(out,'symptom_links',stem)
+  a<-pt_r_read(file.path(d,'symptom_evidence_dates.csv'),FALSE);h<-pt_r_read(file.path(d,'symptom_date_to_pcr_links.csv'),FALSE)
+  required<-c('anchor_id','subject','arm','site','early_postdose','has_covid_form','has_ae')
+  ready<-all(required%in%names(a))&&all(c('anchor_id','subject','diagnostic','route','record_id','test_date')%in%names(h))
+  coverage[[length(coverage)+1L]]<-data.frame(release=v$release,period=v$period,scope=v$scope,status=if(ready)'Computed from exported anchors and PCR links' else 'Unavailable: required anchor/link columns missing')
+  if(!ready)next
+  a<-a[!pt_r_bool(a$early_postdose),,drop=FALSE]
+  allsites<-sort(unique(site_comparisons$site[site_comparisons$release==v$release&site_comparisons$period==v$period&site_comparisons$scope==v$scope]))
+  for(pop in c('COVID_FORM_ONLY','COVID_FORM_PLUS_AE')){
+   z<-if(pop=='COVID_FORM_ONLY')a[pt_r_bool(a$has_covid_form),,drop=FALSE] else a
+   x<-unique(z[c('subject','arm','site')]);if(anyDuplicated(x$subject))stop('Inconsistent arm/site for an anchor subject: ',stem)
+   links<-h[h$anchor_id%in%z$anchor_id&pt_r_bool(h$diagnostic),,drop=FALSE]
+   if(any(!links$subject%in%x$subject))stop('PCR link outside retained participant set')
+   x$days_observed<-rep(NA_real_,nrow(x))
+   for(route in c('ANY','LOCAL_SOURCE','CENTRAL_SOURCE','UNCLASSIFIED','CONFLICT')){
+    u<-if(route=='ANY')links else links[links$route==route,,drop=FALSE];nm<-tolower(route)
+    x[[paste0(nm,'_records')]]<-tabulate(match(unique(u[c('subject','record_id')])$subject,x$subject),nbins=nrow(x))
+    x[[paste0(nm,'_days')]]<-tabulate(match(unique(u[c('subject','test_date')])$subject,x$subject),nbins=nrow(x))
+    x[[paste0(nm,'_tested')]]<-x[[paste0(nm,'_records')]]>0
+   }
+   x$both_tested<-x$local_source_tested&x$central_source_tested;x$unresolved_tested<-x$unclassified_tested|x$conflict_tested
+   meta<-data.frame(release=v$release,period=v$period,scope=v$scope,stratum=paste0('SYMPTOMS__',pop,'__BY_CUTOFF__DIAGNOSTIC__EXCL_POSTDOSE_0_6'))
+   sm<-pt_summary(x,meta=meta,sites=allsites);sm$person_days<-sm$records_per_100_person_days<-NA_real_
+   summaries[[length(summaries)+1L]]<-sm
+   ws_csv(x,file.path(asset_dir,paste0('postdose_subjects_',stem,'_',pop,'.csv')))
+  }
+ }
+ s<-pt_r_bind(summaries)
+ list(comparisons=if(nrow(s))pt_compare(s) else data.frame(),coverage=pt_r_bind(coverage))
+}
+pt_r_site_signals <- function(sites,people) {
+ primary<-pt_r_primary(sites,'COVID_FORM_PLUS_AE');primary<-primary[primary$endpoint=='Any PCR',,drop=FALSE]
+ signals<-primary[is.finite(primary$p_BH)&primary$p_BH<.05,,drop=FALSE]
+ signals<-signals[order(signals$release,signals$period,signals$p_BH),,drop=FALSE]
+ if(!nrow(signals))return(signals)
+ for(n in c('form_v_tested','form_v_total','form_p_tested','form_p_total','ae_only_v','ae_only_p','any_nonbaseline_BH','complete_followup_BH'))signals[[n]]<-NA_real_
+ for(i in seq_len(nrow(signals))){r<-signals[i,];same<-sites$release==r$release&sites$period==r$period&sites$scope==r$scope&sites$site==r$site&sites$endpoint=='Any PCR'
+  f<-sites[same&sites$stratum=='SYMPTOMS__COVID_FORM_ONLY__BY_CUTOFF__DIAGNOSTIC',,drop=FALSE]
+  if(nrow(f)==1L)signals[i,c('form_v_tested','form_v_total','form_p_tested','form_p_total')]<-f[1,c('v_tested','v_total','p_tested','p_total')]
+  a<-sites[same&sites$stratum=='SYMPTOMS__COVID_FORM_PLUS_AE__BY_CUTOFF__ANY_NONBASELINE',,drop=FALSE]
+  if(nrow(a)==1L)signals$any_nonbaseline_BH[i]<-a$p_BH
+  a<-sites[same&sites$stratum=='SYMPTOMS__COVID_FORM_PLUS_AE__COMPLETE_7D__DIAGNOSTIC',,drop=FALSE]
+  if(nrow(a)==1L)signals$complete_followup_BH[i]<-a$p_BH
+  if(nrow(people)){
+   a<-people[people$release==r$release&people$period==r$period&people$scope==r$scope&people$site==r$site&people$source_category=='AE only',,drop=FALSE]
+   signals$ae_only_v[i]<-sum(a$arm=='mRNA-1273');signals$ae_only_p[i]<-sum(a$arm=='Placebo')
+  }
+ };signals
+}
+pt_r_signal_counts <- function(sites) {
+ x<-pt_r_primary(sites);v<-unique(x[c('release','period','scope','stratum')]);rows<-list()
+ for(i in seq_len(nrow(v))){r<-v[i,];z<-x[x$release==r$release&x$period==r$period&x$scope==r$scope&x$stratum==r$stratum,,drop=FALSE];a<-z[z$endpoint=='Any PCR',,drop=FALSE]
+  rows[[i]]<-data.frame(r,sites=nrow(a),adjustment_family_rows=nrow(z),estimable_family_tests=sum(is.finite(z$p_value)),nominal=sum(a$p_value<.05,na.rm=TRUE),BH=sum(a$p_BH<.05,na.rm=TRUE),Holm=sum(a$p_Holm<.05,na.rm=TRUE))
+ };pt_r_bind(rows)
+}
+pt_r_csv_download <- function(x,name) {
+ # Small curated result tables are embedded, so their download works even when
+ # the HTML is shared separately from the complete output directory.
+ if(!ncol(x))return('')
+ text<-paste(capture.output(write.table(x,sep=',',row.names=FALSE,na='',qmethod='double')),collapse='\r\n')
+ paste0('<a class="download" download="',pt_escape(name),'" href="data:text/csv;charset=utf-8,',URLencode(paste0('\ufeff',text),reserved=TRUE),'">Download table CSV</a>')
+}
+pt_r_section <- function(id,title,description,display,raw=display,filename=paste0(id,'.csv')) {
+ paste0('<section id="',id,'"><h2>',pt_escape(title),'</h2><p>',description,'</p>',pt_table(display),pt_r_csv_download(raw,filename),'</section>')
+}
+pt_results_report <- function(out,show_report=FALSE,require_complete=TRUE) {
+ out<-normalizePath(out,winslash='/',mustWork=TRUE)
+ run<-file.path(out,'RUN_STATUS.txt')
+ if(isTRUE(require_complete)&&(!file.exists(run)||!identical(trimws(readLines(run,warn=FALSE)[1]),'COMPLETE')))stop('Rebuild requires a completed results folder (RUN_STATUS.txt = COMPLETE).')
+ g<-pt_r_read(file.path(out,'symptom_comparisons_global.csv'));sites<-pt_r_read(file.path(out,'symptom_comparisons_by_site.csv'))
+ params<-pt_r_read(file.path(out,'parameters.csv'));getparam<-function(k,default='Not recorded'){i<-match(k,params$parameter);if(is.na(i))default else as.character(params$value[i])}
+ asset_dir<-file.path(out,'report_assets');dir.create(asset_dir,showWarnings=FALSE)
+ routes<-pt_r_classification(out,unique(g$release))
+ primary<-pt_r_primary(g);primary<-primary[primary$endpoint=='Any PCR',,drop=FALSE]
+ primary<-primary[order(match(primary$release,c('EUA','Prod')),primary$period,primary$stratum),,drop=FALSE]
+ # Explicit report view; no substitution of calendar data when blinded data are absent.
+ views<-unique(primary[c('release','period','scope')])
+ views<-views[order(match(views$release,c('EUA','Prod')),match(views$period,c('EUA_SNAPSHOT','EUA_DATE_RETROSPECTIVE','BLA_SNAPSHOT'))),,drop=FALSE]
+ primary<-primary[order(match(paste(primary$release,primary$period),paste(views$release,views$period)),match(pt_r_pop(primary$stratum),c('COVID forms','COVID forms + matched AEs'))),,drop=FALSE]
+ message('Building data-focused PCR report and sensitivity tables')
+ sources<-pt_r_sources(out,views,asset_dir);early<-pt_r_postdose(out,views,sites,asset_dir)
+ signals<-pt_r_site_signals(sites,sources$people);counts<-pt_r_signal_counts(sites)
+ localcentral<-pt_r_primary(g,'COVID_FORM_PLUS_AE');localcentral<-localcentral[localcentral$endpoint%in%c('Local-source PCR','Central-source PCR','Both source streams'),,drop=FALSE]
+ localcentral$central_reportable<-routes$central_reportable[match(localcentral$release,routes$release)]
+ localcentral$report_interpretation<-ifelse(!localcentral$central_reportable&localcentral$endpoint%in%c('Central-source PCR','Both source streams'),'NOT_ESTIMABLE_ROUTE','Observed classified stream')
+ sens<-g[g$scope=='STRICT_BLINDED'&grepl('SYMPTOMS__COVID_FORM_PLUS_AE__',g$stratum,fixed=TRUE)&g$endpoint=='Any PCR',,drop=FALSE]
+ earlyg<-if(nrow(early$comparisons))early$comparisons[early$comparisons$granularity=='GLOBAL'&early$comparisons$endpoint=='Any PCR'&grepl('COVID_FORM_PLUS_AE',early$comparisons$stratum,fixed=TRUE),names(g),drop=FALSE] else g[FALSE,]
+ sens<-rbind(sens,earlyg)
+ assets<-list(global_comparisons=primary,source_streams=localcentral,recording_sources=sources$composition,stream_overlap=sources$overlap,site_signals=signals,site_signal_counts=counts,sensitivities=sens,route_classification=routes,postdose_comparisons=early$comparisons,postdose_coverage=early$coverage)
+ for(n in names(assets))if(ncol(assets[[n]]))ws_csv(assets[[n]],file.path(asset_dir,paste0(n,'.csv')))
+ # Retain comprehensive tables as a secondary report, with the same route warning.
+ ss<-rbind(pt_r_read(file.path(out,'symptom_summary_global.csv')),pt_r_read(file.path(out,'symptom_summary_by_site.csv')))
+ sf<-pt_r_read(file.path(out,'symptom_population_flow.csv'))
+ pt_symptom_report(ss,rbind(g,sites),sf,out,route_status=routes,eua_cutoff=getparam('EUA_cutoff'),bla_cutoff=getparam('BLA_cutoff'),link_days=getparam('PCR_link_days','7'))
+ cohort_files<-c('summary_global.csv','summary_by_site.csv','comparisons_global.csv','comparisons_by_site.csv','population_flow.csv','release_status.csv')
+ if(all(file.exists(file.path(out,cohort_files))))pt_report(rbind(pt_r_read(file.path(out,cohort_files[1])),pt_r_read(file.path(out,cohort_files[2]))),rbind(pt_r_read(file.path(out,cohort_files[3])),pt_r_read(file.path(out,cohort_files[4]))),pt_r_read(file.path(out,cohort_files[5])),pt_r_read(file.path(out,cohort_files[6])),out,route_status=routes,filename='pcr_cohort_testing_report.html',eua_cutoff=getparam('EUA_cutoff'),bla_cutoff=getparam('BLA_cutoff'))
+ css<-paste0('body{margin:0;background:#eef2f5;color:#172737;font:15px/1.55 Arial,sans-serif}main{max-width:1180px;margin:24px auto;background:white;padding:36px 44px}h1{font-size:30px;line-height:1.2;margin:0 0 12px}h2{font-size:22px;line-height:1.3;margin-top:0}h3{font-size:17px}.meta,.muted{font-size:13px;color:#536575}nav{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0}nav a,.download,button{display:inline-block;border:1px solid #cad5df;border-radius:4px;padding:6px 10px;text-decoration:none;font:13px Arial;background:white;color:#19547a}section{margin:30px 0;padding-top:22px;border-top:1px solid #d2dce4}table{border-collapse:collapse;width:100%;font-size:12px;line-height:1.4}th,td{padding:9px 8px;border-bottom:1px solid #d7dfe6;text-align:left;vertical-align:top}th{background:#e7eef4}tbody tr:nth-child(even){background:#f6f8fa}.scroll{overflow:auto;margin:16px 0}.note{background:#edf5fa;border-left:4px solid #2b6487;padding:14px 18px}.warning{background:#fff4df;border-left-color:#b67d1d}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.card{padding:16px;border:1px solid #ccd9e3;border-top:4px solid #2b6487}.card strong{display:block;font-size:24px}.card span{font-size:13px;color:#526474}details{margin:16px 0}summary{cursor:pointer;font-weight:bold;padding:8px 0}a{color:#19547a}code{overflow-wrap:anywhere}label{margin-right:16px;font-size:13px}select,input{font:14px Arial;padding:6px;border:1px solid #aebfcd;border-radius:3px;max-width:100%}.controls{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.hidden{display:none!important}@media(max-width:700px){main{margin:0;padding:22px 16px}.cards{grid-template-columns:1fr}h1{font-size:25px}}@media print{body{background:white;font-size:10pt}main{margin:0;padding:0;max-width:none}nav,button,.download,.controls{display:none}.scroll{overflow:visible}table{font-size:8pt}th,td{padding:5pt}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}h1{font-size:19pt}h2{font-size:14pt}section{margin:18pt 0;padding-top:12pt}.card strong{font-size:16pt}.meta,.muted{font-size:8.5pt}.cards{gap:8pt}.no-print{display:none}}@page{size:A4 landscape;margin:13mm}')
+ parts<-c('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Moderna P301 — PCR testing results</title>',paste0('<style>',css,'</style></head><body><main>'),'<h1>PCR testing after reported symptoms</h1>',
+  paste0('<p class="meta">Moderna P301 · Results report v1.2.0 · Source analysis v',pt_escape(getparam('version')),' · EUA cutoff ',pt_escape(getparam('EUA_cutoff')),' · BLA cutoff ',pt_escape(getparam('BLA_cutoff')),' · Generated ',format(Sys.Date(),'%d %B %Y'),'</p>'),
+  '<p>Results are shown by randomized arm. The main tables use the strict blinded window and count each participant once: tested means at least one completed qualifying PCR linked to symptom evidence. All percentages below are participant proportions, unless labelled otherwise.</p>',
+  '<nav><a href="#global">Global results</a><a href="#streams">Local / central</a><a href="#recording">Recording sources</a><a href="#signals">Site signals</a><a href="#sensitivity">Sensitivity</a><a href="#classification">Classification</a><a href="#site-detail">All sites</a><a href="#methods">Definitions / exports</a></nav><button onclick="window.print()">Print displayed results</button>')
+ if(!nrow(primary))parts<-c(parts,'<p class="note warning">The main strict-blinded / diagnostic / available-follow-up view is absent from this run. No calendar or alternative-test results have been substituted. See the comprehensive tables for the views that were generated.</p>')
+ headline<-primary[primary$release=='Prod'&primary$period=='BLA_SNAPSHOT'&grepl('COVID_FORM_PLUS_AE',primary$stratum,fixed=TRUE),,drop=FALSE]
+ if(nrow(headline)==1L){h<-headline;ns<-sum(signals$release=='Prod'&signals$period=='BLA_SNAPSHOT')
+  parts<-c(parts,paste0('<div class="cards"><div class="card"><span>Blinded BLA · COVID forms + matched AEs</span><strong>',pt_r_pct(h$v_tested,h$v_total),' / ',pt_r_pct(h$p_tested,h$p_total),'</strong><span>mRNA-1273 / placebo with linked diagnostic PCR</span></div><div class="card"><span>Vaccine minus placebo</span><strong>',sprintf('%+.1f',h$difference_pp),' pp</strong><span>Raw p ',pt_escape(pt_p(h$p_value)),'</span></div><div class="card"><span>Combined-denominator BLA site comparisons</span><strong>',ns,' BH-significant site',if(ns!=1)'s' else '', '</strong><span>Any diagnostic PCR; within-view adjustment</span></div></div>'))
+ }
+ parts<-c(parts,pt_r_section('global','1. Global testing rates by symptom denominator',
+  paste0('Diagnostic PCR within 0\u2013',pt_escape(getparam('PCR_link_days','7')),' days of a positive COVID-form assessment or matched AE onset, censored at the participant\u2019s follow-up end. COVID forms + matched AEs is the union of both sources. The original EUA snapshot and the production data restricted to the EUA date are distinct data versions.'),pt_r_comparison(primary,routes)[,setdiff(names(pt_r_comparison(primary,routes)),'Endpoint'),drop=FALSE],primary))
+ display<-pt_r_comparison(localcentral,routes);display<-display[,setdiff(names(display),'Population'),drop=FALSE]
+ parts<-c(parts,pt_r_section('streams','2. Local and central source streams','Combined symptom-plus-AE denominator. Local and central percentages overlap. Source labels describe reporting streams and do not establish the physical laboratory or unique physical assay. Unidentifiable central/both rates are marked not estimable.',display,localcentral))
+ ov<-sources$overlap
+ if(nrow(ov)){
+  od<-data.frame(Window=pt_r_window(ov$release,ov$period),Arm=ov$arm,`Both streams / any tested`=pt_r_count(ov$n_both,ov$n_tested),check.names=FALSE)
+  bad<-!routes$central_reportable[match(ov$release,routes$release)];od[[3]][bad]<-'Not estimable (route)'
+  parts<-c(parts,'<h3>Overlap among tested participants</h3>',pt_table(od),'<p class="muted">The same participant can appear in both streams on different dates or for different illnesses. Stream overlap does not demonstrate two independent tests of one specimen.</p>')
+ }
+ c<-sources$composition
+ if(nrow(c)){
+  cd<-data.frame(Window=pt_r_window(c$release,c$period),`Recording source`=c$source_category,
+   `Vaccine: share of combined population`=pt_r_count(c$v_total,c$v_population),`Placebo: share of combined population`=pt_r_count(c$p_total,c$p_population),
+   `Vaccine: diagnostic tested`=pt_r_count(c$v_diagnostic,c$v_total,2),`Placebo: diagnostic tested`=pt_r_count(c$p_diagnostic,c$p_total,2),`Fisher p (diagnostic)`=pt_p(c$fisher_p),
+   `Vaccine: any non-baseline PCR`=pt_r_count(c$v_any_nonbaseline,c$v_total),`Placebo: any non-baseline PCR`=pt_r_count(c$p_any_nonbaseline,c$p_total),check.names=FALSE)
+ }else cd<-data.frame()
+ parts<-c(parts,pt_r_section('recording','3. Where symptom evidence was recorded','These categories are mutually exclusive within the combined population: COVID forms only, both recording sources, and AE only. They describe participant histories across the window, not investigator classification of an individual episode. Diagnostic and any-non-baseline rates use the same category denominator. Fisher p-values here are exploratory and unadjusted.',cd,c),'<p class="muted">Any non-baseline PCR includes scheduled tests; temporal proximity does not establish that the symptom prompted the test. A higher AE-only share changes the aggregate rate even when COVID-form participants have similar testing rates.</p>')
+ sd<-pt_r_comparison(signals,routes,site=TRUE,adjusted=TRUE)
+ if(nrow(sd))sd<-sd[,setdiff(names(sd),c('Population','Endpoint')),drop=FALSE]
+ parts<-c(parts,pt_r_section('signals','4. Site comparisons surviving BH adjustment','Primary view: combined symptom-plus-AE population, any diagnostic PCR, available follow-up in the strict blinded window. These are exploratory site signals. BH and Holm adjustments cover all site\u00d7endpoint comparisons within each data/window/view; they do not cover all alternative analyses.',sd,signals))
+ if(!nrow(signals))parts<-c(parts,'<p>No site met BH-adjusted p &lt; 0.05 in the available primary views.</p>')
+ if(nrow(signals)){
+  q<-signals
+  qd<-data.frame(Window=pt_r_window(q$release,q$period),Site=q$site,`Vaccine: COVID-form tested`=pt_r_count(q$form_v_tested,q$form_v_total),`Placebo: COVID-form tested`=pt_r_count(q$form_p_tested,q$form_p_total),`Vaccine: AE-only participants`=q$ae_only_v,`Placebo: AE-only participants`=q$ae_only_p,`BH p: any non-baseline PCR`=pt_p(q$any_nonbaseline_BH),`BH p: complete follow-up`=pt_p(q$complete_followup_BH),check.names=FALSE)
+  parts<-c(parts,'<h3>Recording composition and endpoint sensitivity at these sites</h3>',pt_table(qd))
+ }
+ if(nrow(counts)){
+  cn<-data.frame(Window=pt_r_window(counts$release,counts$period),Population=pt_r_pop(counts$stratum),Sites=counts$sites,`Family rows`=counts$adjustment_family_rows,`Source p-values available`=counts$estimable_family_tests,`Any PCR: raw p < 0.05`=counts$nominal,`Any PCR: BH < 0.05`=counts$BH,`Any PCR: Holm < 0.05`=counts$Holm,check.names=FALSE)
+  parts<-c(parts,'<details><summary>Number of site signals and adjustment-family sizes</summary>',pt_table(cn),'</details>')
+ }
+ if(nrow(sens)){
+  sens$analysis<-ifelse(grepl('EXCL_POSTDOSE',sens$stratum),'Exclude post-dose days 0–6; diagnostic PCR',ifelse(grepl('COMPLETE_7D',sens$stratum),'Full linking interval; ','Available follow-up; '))
+  base<-!grepl('EXCL_POSTDOSE',sens$stratum);sens$analysis[base]<-paste0(sens$analysis[base],ifelse(grepl('ANY_NONBASELINE',sens$stratum[base]),'any non-baseline PCR','diagnostic PCR'))
+  d<-pt_r_comparison(sens,routes);d<-cbind(d['Window'],Analysis=sens$analysis,d[,c('mRNA-1273','Placebo','Difference (pp)','p'),drop=FALSE])
+ }else d<-data.frame()
+ parts<-c(parts,pt_r_section('sensitivity','5. Global sensitivity analyses','Combined symptom-plus-AE denominator. Complete follow-up requires an eligible evidence date with the full configured linking interval. The post-dose sensitivity removes evidence dates on days 0–6 after either dose, then rebuilds both eligible participants and PCR links; a participant is retained if another eligible date remains. Early symptoms are not assumed to be non-COVID. P-values are unadjusted.',d,sens))
+ if(nrow(early$coverage)&&any(grepl('Unavailable',early$coverage$status)))parts<-c(parts,pt_table(early$coverage))
+ cr<-data.frame(Release=routes$release,`PCR records`=routes$records,`Blank group ID`=routes$blank_group_records,`Completed local`=routes$local_completed,`Completed central`=routes$central_completed,`Completed unresolved`=routes$unresolved_completed,`Unresolved completed naming Viracor`=routes$unresolved_viracor_completed,Interpretation=routes$status,check.names=FALSE)
+ parts<-c(parts,pt_r_section('classification','6. Laboratory classification coverage','Record counts below describe the complete release inventory, before analysis-window restrictions. A zero classified-central count can reflect missing route identifiers. The report masks central and both-stream rates whenever completed unresolved records exist but no central records can be classified. Local and any-PCR counts remain observed counts; incomplete classification may underestimate individual streams.',cr,routes))
+ if(any(!routes$central_reportable))parts<-c(parts,paste0('<p class="note warning"><strong>Reporting limitation:</strong> ',pt_escape(paste(routes$release[!routes$central_reportable],collapse=', ')),': central/both rates are not estimable under the current classification rule. The original algorithmic count exports may contain zeros; those zeros are not evidence that central testing did not occur. Laboratory name alone was not used to reclassify records.</p>'))
+ # Compact site explorer: all endpoints for the primary combined denominator.
+ allsite<-pt_r_primary(sites,'COVID_FORM_PLUS_AE');allsite<-allsite[order(allsite$release,allsite$period,allsite$endpoint,allsite$p_value,allsite$site),,drop=FALSE]
+ parts<-c(parts,'<section id="site-detail"><h2>7. Site-level results</h2><p>Combined symptom-plus-AE denominator; diagnostic PCR with available follow-up during the strict blinded window. Select a reporting stream and window. Print includes the currently displayed rows.</p>')
+ if(nrow(allsite)){
+  ad<-pt_r_comparison(allsite,routes,TRUE,TRUE);ad<-ad[,setdiff(names(ad),'Population'),drop=FALSE]
+  wins<-unique(ad$Window);eps<-c('Any PCR','Local-source PCR','Central-source PCR','Both source streams','Unclassified/conflicting PCR')
+  options<-function(z)paste0('<option value="',pt_escape(z),'">',pt_escape(z),'</option>',collapse='')
+  parts<-c(parts,paste0('<div class="controls"><label>Window <select id="site-window">',options(wins),'</select></label><label>Endpoint <select id="site-endpoint">',options(eps),'</select></label><label>Site <input id="site-search" placeholder="e.g. US372" type="search"></label></div><p id="site-visible" class="muted"></p><div id="site-table">',pt_table(ad),'</div>'),pt_r_csv_download(allsite,'site_comparisons_primary.csv'))
+ }
+ parts<-c(parts,'</section><section id="methods"><h2>8. Definitions and supporting exports</h2>',
+  paste0('<p><strong>Linking interval:</strong> 0–',pt_escape(getparam('PCR_link_days','7')),' days inclusive from a positive COVID-form assessment or AE onset, capped by individual follow-up. A temporal link does not establish that a COVID visit was triggered. A participant with multiple dates needs only one linked test to count as tested.</p>'),
+  '<p><strong>Diagnostic PCR:</strong> illness-labelled or local diagnostic-coded completed non-baseline PCR. <strong>Any non-baseline PCR:</strong> also allows scheduled follow-up tests. <strong>AE scope:</strong> the reviewed symptom-matching dictionary, regardless of investigator attribution; this does not establish that all protocol symptom thresholds were met.</p>',
+  '<p><strong>Source routes:</strong> local = configured local group or LOCALFL=Y; central = configured central group plus expected laboratory name without conflicting local evidence. Local Viracor records remain local-source. Both streams can refer to different dates or illnesses.</p>',
+  '<p><strong>Statistics:</strong> Pearson chi-square without continuity correction when every expected 2×2 cell is at least five; otherwise two-sided Fisher exact. Missing-arm comparisons are not estimable. Recording-category comparisons use exploratory two-sided Fisher tests. Site BH/Holm values are taken from the source analysis; new post-dose comparisons use the same within-view adjustment family. P-values are displayed as thresholds down to &lt; 0.000001; exact values are retained in CSV exports. Difference = mRNA-1273 minus placebo, in percentage points.</p>',
+  '<p><strong>Scope:</strong> main results retain early post-dose symptoms and use individual strict-blinded boundaries. Calendar follow-up and all other generated views remain in the comprehensive report. Conditional arm differences can reflect symptom patterns, recording route and follow-up; these tables do not establish investigator unblinding or quantify missed infections.</p>',
+  '<p><a href="pcr_testing_full_tables.html">Comprehensive symptom-testing tables</a> · <a href="pcr_cohort_testing_report.html">Whole-cohort testing report</a> · <a href="symptom_comparisons_global.csv">All global comparisons CSV</a> · <a href="symptom_comparisons_by_site.csv">All site comparisons CSV</a> · <a href="source_manifest.csv">Input manifest</a> · <a href="parameters.csv">Analysis settings</a></p>',
+  '<p class="muted">Curated numeric tables and the reconstructed post-dose participant files are saved in report_assets/. The original symptom_subjects/ and symptom_links/ files provide the participant and record-level audit trail. The main tables above embed their CSV downloads for sharing this HTML independently.</p></section>',
+  '<script>(function(){const w=document.getElementById("site-window"),e=document.getElementById("site-endpoint"),s=document.getElementById("site-search");if(!w)return;const rows=[...document.querySelectorAll("#site-table tbody tr")];function filter(){let n=0;for(const r of rows){const c=r.cells;const ok=c[1].textContent===w.value&&c[2].textContent===e.value&&c[0].textContent.toUpperCase().includes(s.value.trim().toUpperCase());r.classList.toggle("hidden",!ok);if(ok)n++;}document.getElementById("site-visible").textContent=n+" sites displayed";}w.addEventListener("change",filter);e.addEventListener("change",filter);s.addEventListener("input",filter);filter();})();</script></main></body></html>')
+ path<-file.path(out,'pcr_testing_report.html');writeLines(enc2utf8(parts),path,useBytes=TRUE)
+ ws_csv(data.frame(report_version='1.2.0',source_analysis_version=getparam('version'),generated_utc=format(Sys.time(),tz='UTC',usetz=TRUE),primary_global_rows=nrow(primary),BH_site_signals=nrow(signals),postdose_comparison_rows=nrow(early$comparisons)),file.path(asset_dir,'report_generation.csv'))
+ message('Results report: ',path)
+ if(isTRUE(show_report))try(utils::browseURL(path),silent=TRUE)
+ invisible(list(report=path,tables=assets))
+}
+# Rebuild from a completed v1.1.3+ results folder without rereading trial inputs.
+rebuild_pcr_testing_report <- function(results_dir,show_report=interactive()) {
+ pt_results_report(results_dir,show_report=show_report,require_complete=TRUE)
 }
 
 analyse_pcr_testing_by_lab <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_DIR,
@@ -1259,13 +1609,13 @@ analyse_pcr_testing_by_lab <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_D
  ws_csv(t[t$granularity=='GLOBAL',],file.path(out,'comparisons_global.csv'));ws_csv(t[t$granularity=='SITE',],file.path(out,'comparisons_by_site.csv'))
  ws_csv(t[t$granularity=='SITE'&t$nominal_p_lt_05,],file.path(out,'sites_nominal_p_lt_05.csv'))
  ws_csv(f,file.path(out,'population_flow.csv'));ws_csv(m,file.path(out,'source_manifest.csv'))
- params<-list(version='1.1.1',EUA_cutoff=PHMPT_EUA_CUTOFF,BLA_cutoff=PHMPT_BLA_CUTOFF,
+ params<-list(version='1.2.0',EUA_cutoff=PHMPT_EUA_CUTOFF,BLA_cutoff=PHMPT_BLA_CUTOFF,
   central_groups=paste(PHMPT_CENTRAL_GROUPS,collapse=';'),local_groups=paste(PHMPT_LOCAL_GROUPS,collapse=';'),central_name_regex=PHMPT_CENTRAL_NAME_REGEX,
   central_rule='group AND expected lab name AND no contradictory local evidence',local_rule='local group OR LOCALFL Y, except conflict',
   symptom_analysis=PHMPT_ANALYSE_SYMPTOMS,PCR_link_days=PHMPT_TEST_LINK_DAYS,symptom_cohorts=paste(PHMPT_SYMPTOM_COHORTS,collapse=';'),
   scopes=paste(PHMPT_SCOPES,collapse=';'),method='randomized-subject testing proportions; repeated record rates descriptive',numeric_date_origin=PHMPT_NUMERIC_DATE_ORIGIN)
  ws_csv(data.frame(parameter=names(params),value=as.character(unlist(params))),file.path(out,'parameters.csv'))
- capture.output(sessionInfo(),file=file.path(out,'sessionInfo.txt'));pt_report(s,t,f,status,out)
+ capture.output(sessionInfo(),file=file.path(out,'sessionInfo.txt'))
  if(isTRUE(PHMPT_ANALYSE_SYMPTOMS)) {
   ss<-do.call(rbind,sym_sums);sf<-do.call(rbind,sym_flows);st<-pt_compare(ss)
   # Both definitions share the same date/eligibility rules: the union must contain
@@ -1281,14 +1631,18 @@ analyse_pcr_testing_by_lab <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_D
   ws_csv(ss[ss$granularity=='GLOBAL',],file.path(out,'symptom_summary_global.csv'));ws_csv(ss[ss$granularity=='SITE',],file.path(out,'symptom_summary_by_site.csv'))
   ws_csv(st[st$granularity=='GLOBAL',],file.path(out,'symptom_comparisons_global.csv'));ws_csv(st[st$granularity=='SITE',],file.path(out,'symptom_comparisons_by_site.csv'))
   ws_csv(sf,file.path(out,'symptom_population_flow.csv'))
-  if(!file.rename(file.path(out,'pcr_testing_report.html'),file.path(out,'pcr_cohort_testing_report.html')))stop('Cannot retain cohort report')
-  pt_symptom_report(ss,st,sf,out)
+  # The results renderer below reads the exported counts and participant/link assets.
  }
  writeLines(c('Site sums match global sums.','No participant numerator exceeds its denominator.','No duplicate summary keys.'),file.path(out,'verification_checks.txt'))
- writeLines('COMPLETE',file.path(out,'RUN_STATUS.txt'));complete<-TRUE
+ writeLines('COMPLETE',file.path(out,'RUN_STATUS.txt'))
+ if(isTRUE(PHMPT_ANALYSE_SYMPTOMS))pt_results_report(out,show_report=FALSE) else pt_report(s,t,f,status,out)
+ complete<-TRUE
  message('Complete: ',file.path(out,'pcr_testing_report.html'))
  if(isTRUE(show_report))try(utils::browseURL(file.path(out,'pcr_testing_report.html')),silent=TRUE)
  invisible(list(output_dir=out,summary=s,comparisons=t,flow=f,symptom_summary=if(isTRUE(PHMPT_ANALYSE_SYMPTOMS))ss else NULL))
 }
 # ---- RUN: executes when the entire standalone script is run ----
-if(isTRUE(getOption('phmpt.autorun',TRUE)))analyse_pcr_testing_by_lab()
+if(isTRUE(getOption('phmpt.autorun',TRUE))) {
+ if(nzchar(PHMPT_REBUILD_REPORT_DIR))rebuild_pcr_testing_report(PHMPT_REBUILD_REPORT_DIR,show_report=PHMPT_SHOW_REPORT)
+ else analyse_pcr_testing_by_lab()
+}
