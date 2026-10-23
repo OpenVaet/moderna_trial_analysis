@@ -1,4 +1,4 @@
-# Moderna demographics, recruitment and BLA Figure 1, v1.15.2 -- R 4.3+.
+# Moderna demographics, recruitment and BLA Figure 1, v1.16.0 -- R 4.3+.
 # Save as analyse_demographics.R in the project root.
 # Open in RStudio, adjust SETTINGS, select all, and Run (or use Source).
 # No options() or separate function call is required. The final line starts it.
@@ -13,6 +13,9 @@
 # The map uses clinical_trial_sites.csv and screening_map_template.html when present.
 # Leaflet and overview boundaries are embedded: the generated map works offline.
 # Missing map assets do not prevent Figure 1 or recruitment charts.
+# Audit exports: V01 weekly recruitment, V02 populations, V03 static site map.
+# V03 needs clinical_trial_sites.csv coordinates; it does not need the HTML template.
+# All three PNGs are refreshed in audit_assets only after they render successfully.
 # First/last recruitment dates by phase are included in HTML and Recruitment_periods.csv.
 # P1 PDF input needs pdftools (or an installed pdftotext command); P2 XPT needs haven.
 
@@ -23,7 +26,9 @@ PHMPT_OUTPUT_DIR <- ""            # Empty = a new dated folder under analysis/
 PHMPT_EXCEL_FR <- TRUE             # Also write semicolon-delimited subject CSV
 PHMPT_STRICT <- TRUE               # Stop after saving results if counts disagree
 PHMPT_SHOW_DIAGRAM <- interactive() # Show the diagram in RStudio's Plots pane
-PHMPT_PNG_DPI <- 180L
+PHMPT_PNG_DPI <- 180L              # Existing report figures
+PHMPT_AUDIT_DPI <- 300L            # Print PNGs: 8.5 inches wide = 2550 px
+PHMPT_AUDIT_ASSET_DIR <- "audit_assets" # Stable V01/V02/V03 files, relative to project root
 PHMPT_SITES_FILE <- "clinical_trial_sites.csv"       # In the project root
 PHMPT_MAP_TEMPLATE <- "screening_map_template.html"  # In the project root
 PHMPT_P1_FILE <- "" # Empty = discover the local DMID 20-0003 16.1.6 PDF
@@ -987,9 +992,545 @@ bla1_recruitment_html <- function(r,output_dir) {
 }
 
 
+# ---- AUDIT ASSETS: V01/V02/V03, print and Substack PNGs ----
+# Uses the same calculated tables as the report. No screenshots or downloads.
+bla1_audit_number <- function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+
+bla1_audit_png <- function(path, draw, width, height, dpi) {
+  if (length(dpi) != 1L || !is.finite(dpi) || dpi < 150 || dpi > 600)
+    stop("PHMPT_AUDIT_DPI must be between 150 and 600.")
+  type <- if (capabilities("cairo")) "cairo" else if (.Platform$OS.type == "windows") "windows" else "Xlib"
+  success <- FALSE
+  grDevices::png(path, width = width, height = height, units = "in", res = dpi,
+    pointsize = 13, bg = "white", type = type)
+  device <- grDevices::dev.cur()
+  on.exit({
+    if (device %in% grDevices::dev.list()) grDevices::dev.off(device)
+    if (!success && file.exists(path)) unlink(path)
+  })
+  draw()
+  grDevices::dev.off(device)
+  con <- file(path, "rb"); on.exit(close(con), add = TRUE)
+  sig <- readBin(con, "raw", n = 8L)
+  if (!identical(sig, as.raw(c(137,80,78,71,13,10,26,10)))) stop("Invalid PNG: ", path)
+  seek(con, 16L); dims <- readBin(con, "integer", n = 2L, size = 4L, endian = "big")
+  if (any(abs(dims - round(c(width, height) * dpi)) > 1L)) stop("Unexpected PNG dimensions: ", path)
+  success <- TRUE
+  dims
+}
+
+bla1_audit_weekly <- function(r) {
+  colors <- c(P1 = "#A65B22", P2 = "#16816F", P3 = "#286AA0")
+  english_date <- function(d) paste(format(d,"%d"),month.abb[as.integer(format(d,"%m"))],format(d,"%Y"))
+  weeks <- sort(unique(r$weekly$WEEK_START))
+  left <- as.Date(format(min(weeks), "%Y-%m-01"))
+  ticks <- seq(left, max(weeks) + 7, by = "month")
+  old <- graphics::par(mfrow = c(3,1), mar = c(2.7,4.8,3.2,0.8),
+    oma = c(3.2,0,3.7,0), family = "sans", cex = 1)
+  on.exit(graphics::par(old))
+  for (p in names(colors)) {
+    s <- r$sources[r$sources$phase == p, , drop = FALSE]
+    w <- r$weekly[r$weekly$PHASE == p, , drop = FALSE]
+    available <- nrow(s) == 1L && s$status == "AVAILABLE"
+    ymax <- if (all(is.na(w$subjects_recruited))) 1 else max(1, w$subjects_recruited, na.rm = TRUE)
+    graphics::plot(as.numeric(weeks), rep(0,length(weeks)), type = "n",
+      ylim = c(0,ymax * 1.12), xlim = c(as.numeric(left)-4,as.numeric(max(weeks))+7),
+      xaxs = "i", yaxs = "i", axes = FALSE, xlab = "", ylab = "")
+    yy <- pretty(c(0,ymax), n = 4); yy <- yy[yy >= 0 & yy <= ymax * 1.12]
+    graphics::abline(h = yy, col = "#DCE3E8", lwd = 0.7)
+    if (available) graphics::rect(as.numeric(w$WEEK_START)-2.5,0,
+      as.numeric(w$WEEK_START)+2.5,w$subjects_recruited,col=colors[p],border=NA)
+    else graphics::text(mean(graphics::par("usr")[1:2]),0.5,
+      "Source unavailable\n(not zero recruitment)", col = "#765A36", cex = 1)
+    graphics::axis(2,at=yy,labels=bla1_audit_number(yy),las=1,tck=-0.015,col="#74838C",cex.axis=0.9)
+    graphics::axis(1,at=as.numeric(ticks),labels=format(ticks,"%Y-%m"),
+      tck=-0.025,col="#74838C",cex.axis=0.83)
+    graphics::mtext("Participants", side=2, line=3.6, cex=0.9)
+    graphics::mtext(paste0(p,"  |  ", if(available) paste0(bla1_audit_number(s$participants)," participants") else "unavailable"),
+      side=3,line=1.85,adj=0,font=2,cex=1.13,col=colors[p])
+    period <- if (!available || is.na(s$first_recruitment_date)) "No observed recruitment dates" else
+      paste(english_date(s$first_recruitment_date),"to",english_date(s$last_recruitment_date))
+    coverage <- if(available) paste0("  |  ",s$dated," dated; ",s$missing_dates," missing") else ""
+    graphics::mtext(paste0(period,coverage),side=3,line=0.45,adj=0,cex=0.78,col="#4E606B")
+  }
+  graphics::mtext("V01  Weekly recruitment by clinical trial phase",outer=TRUE,side=3,line=2,at=0.035,adj=0,cex=1.3,font=2)
+  graphics::mtext("P1: first-dose proxy. P2 and P3: randomization dates.",outer=TRUE,side=3,line=0.5,at=0.035,adj=0,cex=0.9,col="#4E606B")
+  graphics::mtext("Monday-start weeks; a common calendar axis and separate vertical scales.",outer=TRUE,side=1,line=0.8,at=0.035,adj=0,cex=0.85,col="#4E606B")
+  graphics::mtext("Local PHMPT records; missing dates are excluded from weekly bars.",outer=TRUE,side=1,line=2,at=0.035,adj=0,cex=0.85,col="#4E606B")
+}
+
+bla1_audit_flow <- function(counts) {
+  # A two-column layout replaces the original four-column diagram only in V02.
+  # Every number still comes from observed_n; status never substitutes reference counts.
+  n <- function(id) {
+    i <- match(id,counts$node_id)
+    if(anyNA(i)) stop("Missing audit diagram node: ",paste(id[is.na(i)],collapse=", "))
+    counts$observed_n[i]
+  }
+  num <- function(id) bla1_audit_number(n(id))
+  grid::grid.newpage()
+  grid::pushViewport(grid::viewport(xscale=c(0,100),yscale=c(100,0)))
+  on.exit(grid::popViewport())
+  txt <- function(label,x,y,size=12,col="#20313E",bold=FALSE,just="left")
+    grid::grid.text(label,grid::unit(x,"native"),grid::unit(y,"native"),just=c(just,"centre"),
+      gp=grid::gpar(fontfamily="sans",fontsize=size,col=col,fontface=if(bold)"bold" else "plain",lineheight=1.16))
+  box <- function(ids,label,x,y,w,h,kind="main",size=12,bold=FALSE) {
+    mismatch <- any(counts$status[match(ids,counts$node_id)] != "MATCH")
+    fill <- if(mismatch) "#FFF1D9" else switch(kind,root="#234D67",exclusion="#F3F5F6",main="#EAF2F8")
+    grid::grid.rect(grid::unit(x+w/2,"native"),grid::unit(y+h/2,"native"),
+      grid::unit(w/100,"npc"),grid::unit(h/100,"npc"),
+      gp=grid::gpar(fill=fill,col=if(mismatch)"#B86616" else "#6D8492",lwd=0.8))
+    txt(label,x+w/2,y+h/2,size,if(kind=="root" && !mismatch)"white" else "#20313E",bold,"centre")
+  }
+  arrow <- function(x,y1,y2) grid::grid.lines(x=grid::unit(c(x,x),"native"),y=grid::unit(c(y1,y2),"native"),
+    arrow=grid::arrow(length=grid::unit(0.07,"inches"),type="closed"),gp=grid::gpar(col="#617886",fill="#617886",lwd=0.9))
+  txt("V02  Randomization and analysis populations",4,2.3,17,bold=TRUE)
+  txt("Moderna P301 | BLA cutoff: 26 March 2021",4,5,11,col="#4E606B")
+  box("FIGURE1",paste0(num("FIGURE1")," randomized participants"),21,7,58,4.5,"root",14,TRUE)
+  for(pre in c("P","V")) {
+    x <- if(pre=="P")4 else 53; center <- x+21.5
+    id <- function(k) paste0(pre,"_",k)
+    nn <- function(k) num(id(k))
+    arm <- if(pre=="P") "Placebo" else "mRNA-1273"
+    grid::grid.lines(x=grid::unit(c(50,50,center,center),"native"),y=grid::unit(c(11.5,12.6,12.6,14),"native"),
+      gp=grid::gpar(col="#617886",lwd=0.9))
+    box(id(c("RANDOMIZED","NO_DOSE")),paste0(arm,": ",nn("RANDOMIZED")," assigned\nNo study dose: ",nn("NO_DOSE")),x,14,43,6,"main",13,TRUE)
+    arrow(center,20,22)
+    box(id(c("FAS","SAFETY")),paste0("Full analysis: ",nn("FAS"),"\nSafety (actual treatment): ",nn("SAFETY")),x,22,43,6,"main",12.5)
+    arrow(center,28,30)
+    unresolved <- n(id("MITT_EXCLUDED"))-sum(n(id(c("BASELINE_POSITIVE","BASELINE_MISSING"))))
+    label <- paste0("Excluded before modified ITT: ",nn("MITT_EXCLUDED"),
+      "\n",nn("BASELINE_POSITIVE")," positive at baseline\n",nn("BASELINE_MISSING")," missing baseline data",
+      if(unresolved != 0)paste0("\nUnresolved: ",unresolved) else "")
+    box(id(c("MITT_EXCLUDED","BASELINE_POSITIVE","BASELINE_MISSING")),label,x,30,43,10,"exclusion",12)
+    arrow(center,40,42)
+    box(id("MITT"),paste0("Modified intention-to-treat\n",nn("MITT")," participants"),x,42,43,6,"main",13,TRUE)
+    arrow(center,48,50)
+    reasons <- c("INCORRECT_VACCINE","DOSE2_OUTSIDE_WINDOW","NO_SECOND_DOSE","OTHER_MAJOR_DEVIATION")
+    unresolved <- n(id("PP_EXCLUDED"))-sum(n(id(reasons)))
+    label <- paste0("Excluded before per-protocol: ",nn("PP_EXCLUDED"),
+      "\n\n",nn("INCORRECT_VACCINE")," received incorrect vaccine\n",
+      nn("DOSE2_OUTSIDE_WINDOW")," second dose outside window\n",
+      nn("NO_SECOND_DOSE")," no second dose per schedule\n",
+      nn("OTHER_MAJOR_DEVIATION")," other major deviations",
+      if(unresolved != 0)paste0("\nUnresolved: ",unresolved) else "")
+    box(id(c("PP_EXCLUDED",reasons)),label,x,50,43,16,"exclusion",11.8)
+    arrow(center,66,68)
+    box(id("PP"),paste0("Per-protocol population\n",nn("PP")," participants"),x,68,43,6,"main",13.5,TRUE)
+  }
+  notes <- c(
+    paste0(num("ORIGINAL")," ADSL records; ",num("EXCLUDED_BEFORE")," excluded before the figure: ",num("DUPLICATE_RANDOMIZATION")," duplicates and ",num("OTHER_ALL_SET_EXCLUSION")," other exclusions."),
+    paste0("Safety uses actual treatment: ",num("SWITCH_P_TO_V")," placebo-assigned participants enter the vaccine safety arm;"),
+    paste0(num("SWITCH_V_TO_P")," vaccine-assigned participants enter the placebo safety arm."),
+    "Full analysis and efficacy populations use randomized treatment; safety is a separate population.",
+    "Counts use ADSL flags. Overlapping per-protocol reasons use inferred display priority.",
+    "All raw reasons remain in the CSV. No-second-dose classification does not establish withdrawal.",
+    "Reference: El Sahly et al. (2021), Figure 1. All counts are calculated from the input records.")
+  for(i in seq_along(notes)) txt(notes[i],4,78+(i-1)*2.15,10.3,col="#4E606B")
+  good <- sum(counts$status=="MATCH")
+  txt(paste0(good,"/",nrow(counts)," published counts match"),4,96,12,
+    col=if(good==nrow(counts))"#1C7056" else "#B86616",bold=TRUE)
+}
+
+bla1_audit_albers <- function(lon,lat,lon0=-96,lat0=23,parallels=c(29.5,45.5)) {
+  rad <- pi/180; p <- parallels*rad
+  n <- (sin(p[1])+sin(p[2]))/2
+  cc <- cos(p[1])^2+2*n*sin(p[1])
+  rho <- 6371*sqrt(pmax(0,cc-2*n*sin(lat*rad)))/n
+  rho0 <- 6371*sqrt(cc-2*n*sin(lat0*rad))/n
+  theta <- n*((lon-lon0+180)%%360-180)*rad
+  cbind(x=rho*sin(theta),y=rho0-rho*cos(theta))
+}
+
+bla1_audit_map <- function(r) {
+  s <- r$sites[r$sites$subjects_recruited>0,,drop=FALSE]
+  total <- sum(s$subjects_recruited)
+  valid <- is.finite(s$latitude)&is.finite(s$longitude)
+  # Explicit geographic coverage: never silently drop a mapped site off the chart.
+  region <- rep(NA_character_,nrow(s))
+  region[valid & s$longitude>=-125 & s$longitude<=-66 & s$latitude>=24 & s$latitude<=50] <- "CONUS"
+  region[valid & (s$longitude<=-129 | s$longitude>=170) & s$latitude>=50 & s$latitude<=72] <- "AK"
+  region[valid & s$longitude>=-161 & s$longitude<=-154 & s$latitude>=18 & s$latitude<=23] <- "HI"
+  mapped <- valid & !is.na(region)
+  if(!any(mapped)) stop("V03 requires valid US coordinates in clinical_trial_sites.csv; no sites could be plotted.")
+  key <- paste(region[mapped],sprintf("%.4f",s$longitude[mapped]),sprintf("%.4f",s$latitude[mapped]),sep="|")
+  rows <- split(which(mapped),key)
+  points <- do.call(rbind,lapply(rows,function(ii)data.frame(region=region[ii[1]],lon=s$longitude[ii[1]],
+    lat=s$latitude[ii[1]],n=sum(s$subjects_recruited[ii]),sites=length(ii))))
+  geometry <- bla1_audit_boundaries()
+  max_n <- max(points$n,600)
+  old <- graphics::par(no.readonly=TRUE);on.exit(graphics::par(old))
+  panel <- function(fig,new=TRUE) {
+    graphics::par(fig=fig,mar=rep(0,4),new=new,family="sans")
+    graphics::plot.new();graphics::plot.window(c(0,1),c(0,1),xaxs="i",yaxs="i")
+  }
+  panel(c(0,1,0.88,1),FALSE)
+  graphics::text(.035,.77,"V03  Phase 3 recruitment by site",adj=0,cex=1.35,font=2,col="#20313E")
+  graphics::text(.035,.43,paste0(bla1_audit_number(total)," randomized participants | ",nrow(s)," recruiting sites"),adj=0,cex=1.05,col="#405663")
+  graphics::text(.035,.12,"Circle area represents participants; coincident locations are combined.",adj=0,cex=.9,col="#405663")
+  draw_region <- function(which,fig) {
+    g <- geometry[if(which=="CONUS")!geometry$state %in% c("AK","HI") else geometry$state==which,,drop=FALSE]
+    project <- switch(which,CONUS=function(x,y)bla1_audit_albers(x,y),
+      AK=function(x,y)bla1_audit_albers(x,y,-154,50,c(55,65)),
+      HI=function(x,y)cbind(x=x*cos(20*pi/180),y=y))
+    xy <- project(g$lon,g$lat)
+    graphics::par(fig=fig,mar=c(0,0,0,0),new=TRUE)
+    graphics::plot.new();graphics::plot.window(range(xy[,1]),range(xy[,2]),asp=1,xaxs="r",yaxs="r")
+    for(ii in split(seq_len(nrow(g)),g$polygon)) graphics::polygon(xy[ii,1],xy[ii,2],col="#EEF1F3",border="#99A8B2",lwd=.65)
+    pts <- points[points$region==which,,drop=FALSE]
+    if(nrow(pts)) {
+      pts<-pts[order(-pts$n),,drop=FALSE]; pp<-project(pts$lon,pts$lat)
+      graphics::symbols(pp[,1],pp[,2],circles=sqrt(pts$n),inches=.22*sqrt(max(pts$n)/max_n),
+        add=TRUE,bg=grDevices::adjustcolor("#286AA0",alpha.f=.55),fg="#174E76",lwd=.8)
+    }
+    if(which!="CONUS") graphics::mtext(if(which=="AK")"Alaska" else "Hawaii",side=1,line=-.5,adj=.05,cex=.85,col="#405663")
+    if(which=="CONUS") {
+      labs <- unique(g[c("state","label_lon","label_lat")])
+      labs <- labs[!labs$state %in% c("DC","DE","RI","CT","MA","NJ","MD"),,drop=FALSE]
+      ll <- project(labs$label_lon,labs$label_lat)
+      graphics::text(ll[,1],ll[,2],labs$state,cex=.65,col="#4D5F6A")
+    }
+  }
+  draw_region("CONUS",c(.025,.975,.29,.88))
+  draw_region("AK",c(.035,.235,.13,.31))
+  draw_region("HI",c(.255,.405,.13,.26))
+  panel(c(.48,.97,.12,.31))
+  graphics::text(.02,.88,"Participants per location",adj=0,font=2,cex=.95,col="#20313E")
+  nn<-c(100,300,600); xx<-c(.15,.47,.8)
+  graphics::symbols(xx,rep(.53,3),circles=sqrt(nn),inches=.22*sqrt(max(nn)/max_n),add=TRUE,
+    bg=grDevices::adjustcolor("#286AA0",alpha.f=.55),fg="#174E76",lwd=.8)
+  graphics::text(xx,.12,bla1_audit_number(nn),cex=.9,col="#405663")
+  panel(c(0,1,0,.12))
+  coverage <- paste0(sum(mapped),"/",nrow(s)," sites mapped; ",bla1_audit_number(sum(s$subjects_recruited[mapped])),"/",bla1_audit_number(total)," participants represented.")
+  if(any(!mapped)) coverage<-paste0(coverage,"  Unmapped/outside extent: ",sum(!mapped)," sites.")
+  graphics::text(.035,.78,coverage,adj=0,cex=.83,col=if(all(mapped))"#405663" else "#9B4B0A")
+  graphics::text(.035,.48,"P301 randomized population (RANDFL=Y). Site coordinates: clinical_trial_sites.csv.",adj=0,cex=.83,col="#405663")
+  graphics::text(.035,.18,"Natural Earth 1:110m boundaries. Alaska/Hawaii insets are not at the main-map scale.",adj=0,cex=.83,col="#405663")
+}
+
+bla1_export_audit_assets <- function(r,counts,root,output_dir,asset_dir="audit_assets",dpi=300L) {
+  if(is.null(asset_dir)||!nzchar(asset_dir))asset_dir<-"audit_assets"
+  asset_dir<-bla1_path(root,asset_dir)
+  # Render a complete run-specific set first. Failed runs do not publish partial assets.
+  stage<-file.path(output_dir,"audit_assets")
+  if(!dir.exists(stage)&&!dir.create(stage,recursive=TRUE))stop("Cannot create ",stage)
+  files<-c("V01_weekly_recruitment_by_phase.png","V02_randomization_analysis_populations.png","V03_recruitment_by_site.png")
+  dims<-rbind(c(8.5,10),c(8.5,12.8),c(8.5,7.5))
+  draw<-list(function()bla1_audit_weekly(r),function()bla1_audit_flow(counts),function()bla1_audit_map(r))
+  pixels<-matrix(NA_integer_,3,2)
+  for(i in seq_along(files)) pixels[i,]<-bla1_audit_png(file.path(stage,files[i]),draw[[i]],dims[i,1],dims[i,2],dpi)
+  manifest<-data.frame(visual=c("V01","V02","V03"),file=files,width_px=pixels[,1],height_px=pixels[,2],dpi=dpi,
+    generated_at=format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),run_directory=normalizePath(output_dir,winslash="/"),
+    source_adsl_md5=r$sources$source_md5[match("P3",r$sources$phase)],
+    md5=unname(tools::md5sum(file.path(stage,files))),stringsAsFactors=FALSE)
+  bla1_csv(manifest,file.path(stage,"V01_V03_demographics_manifest.csv"))
+  captions<-c("AUDIT ASSETS: DEMOGRAPHICS (V01-V03)","",
+    "PNG files are generated from the same calculated counts as demographics.html, at 8.5 inches wide and the configured audit DPI (default 300 = 2550 pixels).",
+    "Opaque white backgrounds, large sans-serif text and dedicated narrow-column layouts. Upload the original PNGs to Substack; do not screenshot the HTML.","",
+    "V01: Weekly recruitment by phase. P1 uses first dose as a recruitment proxy; P2/P3 use randomization dates. Monday-start weeks and independent vertical scales. Unavailable phases are labelled, not zero-filled.",
+    "V02: Independently drawn randomization/analysis diagram from observed ADSL counts. Safety follows actual treatment; other populations follow randomized treatment. The count-match statement is last.",
+    "V03: Static P301 recruitment map. Marker area represents participants; coincident coordinates are combined. Alaska and Hawaii have separate insets. Unmapped/out-of-extent counts are disclosed on the image. Coordinates are not jittered.","",
+    "V03 uses the embedded Natural Earth geometry and clinical_trial_sites.csv. No screenshot tool, web browser, API key, network access or screening_map_template.html is needed for this PNG.",
+    "The existing interactive map still uses screening_map_template.html. Existing report/data/PDF/SVG outputs are preserved.",
+    "These stable V01-V03 filenames are refreshed on successful runs. Other audit_assets files are not changed. A run-specific copy and manifest remain under analysis/.")
+  writeLines(captions,file.path(stage,"V01_V03_demographics_README.txt"),useBytes=TRUE)
+  if(!dir.exists(asset_dir)&&!dir.create(asset_dir,recursive=TRUE))stop("Cannot create ",asset_dir)
+  for(name in c(files,"V01_V03_demographics_manifest.csv","V01_V03_demographics_README.txt")) {
+    src<-file.path(stage,name);dst<-file.path(asset_dir,name)
+    if(normalizePath(src,winslash="/")!=normalizePath(dst,winslash="/",mustWork=FALSE)) {
+      if(!file.copy(src,dst,overwrite=TRUE))stop("Cannot refresh audit asset: ",dst)
+      if(unname(tools::md5sum(src))!=unname(tools::md5sum(dst)))stop("Audit asset copy verification failed: ",dst)
+    }
+  }
+  message("Audit PNGs: ",normalizePath(asset_dir,winslash="/")," (V01, V02, V03; ",dpi," dpi)")
+  invisible(list(directory=asset_dir,manifest=manifest))
+}
+
+
+# Compact base-R boundary table derived from the existing embedded Natural Earth
+# 5.1.2 1:110m state geometries (public domain); no extra package is required.
+bla1_audit_boundaries <- function() {
+  hex <- paste0(c(
+    "1f8b0800000000000203bd9dcbce65b9919dc7c7ef523f78bf0c0b52db2aabab64b464c9ed8921030d4f04b7016be2b73757c4fe330f79f65a27",
+    "bb25e44048e5c9afc8cd5b3022180cfe9f7ffdcbfffb5ffffabf1ffff7af7ffeebbf3cfeb2fedf5ffefcd7f5bffff92f7ff91ffe37fb7f7ffeeb",
+    "7f888f9f7f79fc30e6c7acbd3f4aff48a3cdc70f337fe4561ea57d843ad345cdf011731c46cdd43995d75f9d1a1c2a56500e5954d76a7168460e",
+    "8ddafd9b62a2d5c58fd022a0183b67522bd60721c5cca9d286fd3a53e5d0fa4bc6afa33751548fad19957ae3d428113ff6beeaa5d06ce8d045a5",
+    "495b983e428cd328d10fe923f56254ab2d0aeaaa31cc9a0435bd8961f28e481fb5e4d5f3f563aec1e454af068d312787d63f0e503dd4c1a93666",
+    "025523efd455a14dc0ba9adaa3a25a7d94f231a7eaae3e5b07d5f950af7e083502aa238b26e651adc28a71e263dd5202557212936b5a491963c9",
+    "27e0fa76506955c8a996ba35308c2aa8345056fe98b98b85b16acaa056516abde25f17d5a2aa308d04a88698d40434267289b51a16a243995657",
+    "3f725d93d3aa0bb4baf6516aead7470d41e5597c04aba06a0b0d9334cfcca18e2216547a10458d5c6c85b55455592318d59b2aabd6b59160b5f6",
+    "5404953101d7afaa1f6a1e268fe29c95532d44fb35d7282a6cb6761a46517617e411e4641335f6524d02ce5214d5a79535b9d4c20e10cab5b126",
+    "45f90655526b822a2581aaa5a9b2a655d8cba09fb576c258ada8594be2d4d20a1e65ac3ff8925e501915d4d22086a0da5aa58b5a63d80495201e",
+    "c6472b292a2a588dbd8ecaa9148b7dfd0c7c9e7648913505e7920161f2c51feb6a1bca9a5c8e805ae3b2caca7ceb291f23f6ea105fd6657540b0",
+    "8e5025e534ad81ad072a4b970ccd90228b0a53ecd3eb5fad8145a83e2d4302623a4ca1da8dec5f9e7a6043b8b452fba41043e6c892b7e53d55a6",
+    "335474a3a4946c75cd16aaf8a4988d1a718afa7a329db4d165b398511c2a8d6e72ef14f3f4f8f90f8f1f625c7f2d235d13b4e097b07e713575b6",
+    "fa85cbf8cfaa735170eb576c14c6658a8525203e6bc57265d8da3a67ba4aab9aebdda4525c8257721080d0176b7b539eed7aa10481550872dbab",
+    "96f695546b97446d5edee229373f22648995d7791f2f9ba447c7ca6c926bdd34b95aa2e646750ec68ee0e22cce35d1dcc52dc161da6197736559",
+    "440641420a68ed20c6d58cd5c5b9debdd23287f8b8a504e7e6aa7213630bae25535e0bd461c1b519e2556f57dce8307ba03287a8175ab2f25a9c",
+    "5371f12acf6c0dc1e53eac1d7d606fe1dca7d2385a925c0dc9e67c4c2529ae8d6096522a53b6b7cfb529c0a26a5561d3b65b9867490cdb5ab997",
+    "c2dab3eae602a5c39a516d9fe45cce4ba57505587235ba25bab4d724b9e4dc486ad8d6740a3d7f355a05375d7b8da5cbf6dae82ed320ea6e49a3",
+    "989adbe0b051cd18d5ccf356a2ec9651b2f933d624141c66537417ca54ddb266d318d976b51a24b72c32f3dbe452a3e27a707fd22a6ebee1acde",
+    "36ca50dc32d6872bbe4a5abddb76f3e3975fdfa88f31c047967cefefcfd8a68b526c576c05f6ac25736c53b939b6e9ef1c7bb60528b5db15043b",
+    "6c144e6df60ec736e34960cf9618c536ab8e539b85c8b1cddca4d86ebb726c338429b65bd5027bb2d009b50c82124d5ccf96699df83534f70aac",
+    "d5d138973ed6dabab828ca7b510439b72b969cdb1555da8e96e6fcaa1ed3f52c977d79fce6a7f56b5d5f9fd7d7c709e51cadaddda6558ad815e6",
+    "3317460497b32d08c2adb1eab982ebd8e315874d6c7123da32a4f58e1aacded96d55f3ef83b44e013a8d2cae45c312f45ac1f5519d2ba69251ae",
+    "84645ce8a61a512ea562dd32a76c4568295baf54d37808b7f6c4b09ab9b81ad4e72d2e47abb6d49cf5e72d89b3b894a76c6e853cc76c19b92aae",
+    "8db537c5b59bc426bb59cfbefa955ba628bab9378161f2adee5d582b122b71fdfbc2aaf907395747f35a4756d8b2510c1bad682e2e73617133b5",
+    "a1b8b52936fc1c62aa8a4bb5dbdc9bb773fe1b3baf7dfdbcbac66cfd1cfbdde73d715077f179ed6eee7d724b6f4ad5ca0bb30fc52d3dccca4bd1",
+    "4cd17fe7f7f58b5bfb7fc2a8c5a52ddc8dee572ead5d083faf5d26490e078ee0fadd9afcca85abbd3d768ead5f6149af9f1bfcf0825bff6e9f97",
+    "534a8a836b2dd9016291186c3870b772f45b7b6f5cdc92506b9b7a241cf5d4acb8a5400d70318fa4b83a97a4585cca4d72b9613227e8ab5372d0",
+    "dad7cf53575b5ab6e68e91fffdad9d8f9f7e7daf93c348b4d3a4be8cb52fdcab8ecfb8d36610dc668330eeb4691877da488c3b6dae7beed58663",
+    "dc691332eeb431197798ac0c3b2d60ca1d16356dc661a153eeb0f869330e0f02e34e8f04e34e0fc73df7ea3161dce18061d8e9cf61dce91f62dc",
+    "e96f62dce9bf62dce90f63dce95fbbe75efd758c3bfd7f8c3bfd89943bfc93f7dcabbf9371a7ff94719b339641a7679771a7a79871a7e7997265",
+    "5a8c4019bab1a16292269c5234bd86f07d111abda817113d10a5ab3c09450b025886bd280b713fed8a73507db28a0bdda326a2eae38e3eb6314b",
+    "7d46cd21a408d1006a6c3b0e316c6c5b6baa19e39a9f6b33988a6b339bd88b439757eb3079514a298a2bd5cf646a2f5596b716b989bdd46479cd",
+    "a5ad19636ad4a27b3124139a41b1f721b9392c222bc39a97b3aed9c6dc53d2239663b98e8db3aa572b36313cfef4e36d81cbecc81efe5646dbc1",
+    "fd0b19f8d26401ee7d28c0af03c2a0d5803e6cb39ad3f63e06c2237285868d2cb93a936da633a724c13e2e2da306d10ef83aeaf0795a70bc2ec0",
+    "16a6b9aa7acd538223776b74eb6a5060d495e6e13ab957092644590274958983159e19d349d290601fe3524aa2e0127673578666d560319f36c0",
+    "24b956e3d5e63735f774a957aeae09b0269f6379e8121760333b4dc56578fd7c09b89ecdc1d25de3bdcc410ef6decc3f9c4692dc84ee625c569f",
+    "0877e8f4c0538bfb136086dbc204845af70b6ca3db29421c26fe39585bb31382dc67978df1538950e498d4d1e365fb4c09668f246e7a124e0f6f",
+    "8923e859880860bd88434030c917d7af10c15a56c7c78fffdd830a42593a56b61387e95ad2ccf591d7182d39b0834b18e6b89a1c05082d2bad19",
+    "0d10617f1ccc08e87ee4a53d65551e629656398bab163e28c09e569b33d6a809570e56180b0063d32596eee07c07e2dc21c37a78d396066b7481",
+    "4b7476dd1658d519f6cdd425d635a000d73e50755b6088aedf43ebba2d881ecf501cdd30a45cae6bb2e672051aa99a61d1677492abd3bc2d0888",
+    "5ebf0f9748a21b533270b637ddd8ca92c2192133efaa1e6b4165b35f8b2e113b4486425adf7c635d3b77c69632e63bd0be71d4f2667ee7255e33",
+    "d496f86636f605ac351dfdec55cd097ce33780c9264f732120270fc2c20106dd8d01d1eda8b9b63760ca5660bc0c7c0e9a3881202b6aa897388e",
+    "cb82cab0a4e4508725b75b7250ad98f732343d7ef5e3fd7484e618f15f2e7d66078f094ec173c950f05c84143c9735050f39c16b3e040f6fcb21",
+    "ca28780a47de8d87b8e5e02ebf795b8e0d81b7e5d862785b8e4d8b80b6ea23403b42e2a00568f87e996b9660827683567b840307e14ac0b8a4a8",
+    "b8015fac75e3325aa6042bbc6b9812a9ab46e330d266777883953c86adb732c4cc3125a81b584a4f126c305db15cc26812eca598505e824c7ca3",
+    "9d1d1517642d8ab908e5b32cbb6b899d5ae3d06034f1d4476e929b3821ce4bff8c5915b8c66d29978b9b70f5286ea990ebf7892b4a629c4dcf5f",
+    "8aefeaf59825163b9c3cf12396942498d00273cc490931ed08c7b8a4472f587baf130e3a5d6d7bcc88bb2e0a6c1f198b38e34f2d8cdfec03f9f1",
+    "abdf79c08a7b2ca1f79b740838a6cffecd736c60815a82107a8f1c1260bcf6aa24b88c10948bab0a5c63822b49063605565ca19b0e7a10170161",
+    "a23c6da60c7bd9750558b3b973edee14e5063a7b5e5c951fe8fee6b72042b0db55a22d51de89018776069af2a2866f7c23f8397372fe46f07e8a",
+    "95c72f7fbcf176e3af100125cdf9157a759d736ed7d62877a87f943bf449c61dfa29c34e7d9771a702cdb8532367dca9e2d3f20e9b41709b1142",
+    "b9c3aa61dc6926d1f20e0177cfbd08cc7bec5500df72a738bf2fec656fb8c73ea73bb85ede73b7cba23e7ef9f9d67912102457a05fe042e70eee",
+    "428d80a79024d8abd025e0ab1827e0ebc620c0684badb80bea1d987121787e03183f9d5a1c9cc811f01e8447fa1bb0762d8f6f01e3524c004617",
+    "cf14acc1abeebe8019383ef0ab61f30d967c7ea5f8667ec989d81ebffba7db839461d7ab47cef919da4fc938779cba71f038c61325eee782e213",
+    "f783460e1e27970c3c4f4239779cac2a703baa1535ef67bfbc2dc761b228713b9c16dc93907b477d11990c3c4530e15ef57d0e569c2c154b9a20",
+    "b988f581068721be1026cef4f95553d6e0cde1c83df87ada72cfdd1cdfdc8337074277e0dd09d33d77736445c0d743b07bf0e658ed1e7c3da7bb",
+    "e76e0efeeec0bb93c47beee668f21ebc39ecbc076f8e4fefc0db03d97bf0e688f71ebc3934be5f7f37c7d0f7e0cdc1f63df87a527ec7dd1ebd13",
+    "11c6f79ffef8af7fb8b73610cf54a07fadddac7f055f237f048870371c62f5c9c117a352702fbee1db9aefbccdb7e09dfffa16bcf388535076e3",
+    "78fce99f6f03b27077b95abfa2751bb8df2d16e07e5999802f979f19f772999a812fb7b31978def6165c4d36494308518387b14f3ff1741fd046",
+    "9f0e0902beba3868771f3e133e7efb7a51e0b60205b807f309504fc6f9f8f19f3cb5424b66028584d93d1394007302f7daf23387eb4db0bd8ba2",
+    "7aaf66297773a0716ee2ea43b60d684a6e0cb3a8ab05c7130e39d210bf0c0bddb248702c172bce34448e2dfbdded733b75105c5bf21ce75025ca",
+    "6a4bf1c3a0a564cbf28af58a9d7a4cc5d551eccca8d41215d7a018c2f13fbbfc3e4b9886c3aaa6db31879fbb855a45bdd006e057811ed98ae4a0",
+    "3e2e6e2de4acb868071d38a852fd173dc90b8e6cc4d7d91acb7eb093452faf7f9fc50b53730a9d016b1a5c8a92c385b9c555b3e33997b21fdf55",
+    "3bb8e05c4938084179a1480ef5e17cea4d71b8b80a4b375ac61ace65f7ad9591b3e25a1ae6dfa8b631f05e2ed15d8e6b7bc86ad472e8c9b9dce5",
+    "9c82fde99c5c1b4b57b0f24a8b724d86e4670f19370ca4048ae6734a598b205c8c80ab332589e5e8dc5bb12cc5770a8f9f7e24c9cf062ec4c065",
+    "9ebe7277a9d4eeb89bbc6c77d86b8ab73bea2e5d1ce162b68f5bf254961746b6c6a621b1d8b3559b96bda839575c92fcb86540fafefa252526f9",
+    "384b78097bb244ce8565730d2bafc16c115c2bc18cfb1a6a515c1d50c0604ccea4b8d28a71f94bea4bc2456b4672f143b104f1b87e8e53511157",
+    "c941592882280df7999642357291e5e559cdd7d2c29b4634d3e3967a51651f4f24ea8a4b96ea191510f118d1c54d4f15e752ed4d55bb34356b6d",
+    "ec6afd045cc47705379537eb0217f291bd3576f97d989ac5f407595e897e38b6d4812839cb3b86f88221fb6535c3beaf54bdd47a1dc6b5a89650",
+    "f276e2fb662a5a98256bef979c75f7d89870290153420fca6fbb38898de6b5f6a6e672c55c376e962c45f7a8d566418c2d2b6e5aefad510945cc",
+    "026c296e88d554b2e4dcbaaab535852ddbce6ca13efa909c4d02244955bddc10cd324d64943834d74c00a554647905b9ec20f7c6ac92abd5b82f",
+    "391c19964d3ed61164714be536c9d76694dd57b39b6f36caaa5e4c4e6c57bab86229e910f05de4e779ac77f6e4b0926bef77f0b76a487cfcf6f7",
+    "37811873e00eccc4f165dda1e7b00e4a6d47f8bcac11df514825f2aeac39ddc5a1a1e6b2d520b345efa08a83dff9165a967e863b6a3456dbb250",
+    "abc7240dcffc4820e47541e052aa91d786384538bf32eb739464d17813e74f9d42c3a2cd907ac3d28ede430df7bb17145575cd94e581c40cbc0b",
+    "5a4a4f87c2a475f5cb39ef60102203e7f87a6a4c2641c424f87210cce653fc525f898c422289cf0ab39ac074c5a4c7cfbfbbb7162c3c6f20b6b4",
+    "7f6277c6c73d769a32f7d48b61748fbdd859a4b4d36cbbc36eacc03becc6a8bcc36e6cd43becc6e42518b2cc7e9d88bcb46dbef2d2b6b94fb17d",
+    "1d31ec58930c3bd6f73df6222b6869bbdca1d82ec368a59b3864d4215919b6f62b53e552acaace167cf3c82527817524a28162a82bddf5473a54",
+    "bb36cab05db7650be1d094d9b23a146f861d7a3cc30eb3809686139d82a52f66118cae61c14523058525a412c848295c051590b2cc26784d421a",
+    "8d12ed2428c73004d6cbb429992c890ac51a32bc2c2cf4a24a5be6c2b048aed095405d0a63c5cfa355555a36dff42a2d07f56d11cf52ac9f7b9b",
+    "456d09d183a4eb904d585b810551963c55a5b94ddbc2d2a7ef92549a46bc22b85569c13c97fd63763aa4387140123c506d6481b56a51e8ddb2a4",
+    "51aae24c1a589c822a48deb5a8d2e59755d87519e9a59a2a2de3901907a0830b9985a5110c8b76a04ab16514b91a5393c472b108ce51f9b60c2c",
+    "fa71ef9a444d7d5b37c5a245be462dbdf830ac8626bb2df9a79530557f54e4bd839ad2d4806a052a3f7ef9875b9b635e6924a30792dd811688ac",
+    "c02db49982e7f9a902b7135955f5749ff01b10bbc7ec6fc1a59a56cb70f29ecbd94ce3d14d3b23982d55338dfb344705e5c688e63118790ec5b5",
+    "52b2732d2a2ed9f56b5c4cd65c48d83571dbc90436e19a473bc215601b3ac7c270876fb58d8e72c8a8687ee1d415b6fb3338b6bb472877b85b04",
+    "b7b96f2877b88338b7bb9728b77bab38b63bbf08f7e24ca3dce19ce3dceeece3dcee3ca4dcae4b726cd74c297728ba943bf466ca1d6a389fcbbb",
+    "b784702fae172eaa0e47ce3bb9fb6f91e4f76079fceeb77721e296bed9af0dac4efbca9d063dc14ee700c15e3c0db7dcabdbe21e7b7181dc632f",
+    "ee947becc5d4a5d86e38f3d236339c61c74136c5f673718a6da7ec8c9a38be422cbf65efa3dd16a7df149d963a92624b727a697e04c7b0a5b25b",
+    "a000623e3935bb87138c3e7961481438ac9d7df629b01c9b7d5af7d7ec18565ab24091116a1658c77b76565a54df368b0562cc281a0a85b7f8a7",
+    "7531544bcbee5ee7c8b23433d910e79cbba02612d6a230858da5b27b3cd1d2a6abc06ab51919d58c1c50c5ed8e6e6ca5a9058f3341c4fee4aa30",
+    "cbac675783b3a02a0e2c1170e42f3032acc3f8b6f8a53e94cc0a263e708d5f49ca4fae7ec619bce13eefdc08911afcde95e62c92a8bee7cebb3e",
+    "8a533b437dfc9e64874ffe3461e9313e63db63709cdb9f96e3dcfe509d286f7bf64e7cdff31b7a1cdb1fe413dc76b424aa7d3ea952d8f3c197aa",
+    "f6f9204d70cfe772a2daed988f73fbb1a1fabce76348c53d5901a2da679b424c81cd4411dcb3c5c3b0d380e2dc6e90716e37f038b71b8c9cdb0d",
+    "50c61df62cc776f39870aff636054f0b9e82af51da1cdcc3be39f7f25604f9c4d7c72748a35f5fb3b8efc5d7d731d88a53d2b43dfef1c7bb30cf",
+    "e8c139790d42eae50b77468d12ec2508957047482ba502dcad48bc522df68c97d6ab71c3c3a278793918d72c105e703d59d695d2cd0d4a38b366",
+    "81e5d0ba6e06f6c9f491ec653bd10c73f5e365e52acbcb78533a473c2a21cb2bd1b9261bbb849e51250c596bc34e9091efb7cb41abc333c18562",
+    "3614ed3c7b65015cacbc1588bdc7f530e372951c3c24198717a25e3c9568ceebb0ec58b3f579791317691005d686e2dada52f173b1fc37824bd0",
+    "82d63aec557e5f83cb25e3e19326b93abd1db185f2861bcebda1fa7baa20bf799a784c49f6dd5a178b2a63c8d252ec565a9a31cad2b0ac1717eb",
+    "9423d1edb59089e3efa8665eac6b1da23c7b67837303a91bc1598221b532d60c49b84bd2956c2cf839e1f42465256a13ee4b274ce83c14b784a3",
+    "733137c52dc3b1daa0a5a8cbc356b5b8d99414cd1fcdb28f99eba569aed802ca21c8ada5e3ce24b8d6e4f779fa0bdc8cac55714b1336ae47b507",
+    "65e8842ea8fa94eda8b8bd08c1179b6c47830b0a82d4d28788f6dab9d89a36bdca7eb6606088f934653bcc0b85f40325897adf6ef5fdf187ff76",
+    "97a660e2743498a88e393e737bde03c16d891418b7e76560d499e681737bde8877dc67228a77dc176b97702fd633e15eac71c2bd58f76fb82fde",
+    "8237dc17efc32df7eacc60d8e11a61d8ee6761d4e1b4b9c75e5c400cdbfd498c3a9c53f7d88bab8b61bbdf8c5187138e61874bef1e3bfd838c3a",
+    "9c8d0c3b5c970c3b1ca10c3bdcaaf7d88b939661bbc7975187fb98618733fa1e7b716d336cf793536abfdbc6b0e3aa1cc38e9b7714dbc5fe3df6",
+    "b28b30ecd8941876ec710c3bb64c861d3b30c38e0d9d96b6eb07f4db767583b674d75e6869bb32c4b14db7a2a3b0ab6a744c77cd8f96b62b926c",
+    "22799545cd369ca442671eb8e6a56496192f0bcba1672501d777f58f91a52c4585eb4fcbb32eb03537124e5c359601a528217c158eaa4547f48f",
+    "253e0165be194f2470c2c737acd129f6c5901c138b64facc4af067cbb26af2fee2ebd28e551116b1c62706a5142114b20e70cd1288716e6d9f36",
+    "c5c486079da8c1119bcc922b4ac7b24998cc372075b608e9bd3e6f36a51361139866c125c94119724baff6a4b00e9181552cd69da57ac0cbc6d9",
+    "9eb78c8a6bd955d9e0162155b4fd926cfcc870a00a4e2bf8e3f1ab3f3c7ee84b9e62d7c62516a47bf8a1e36ee7b4a8905646fbc225a4d1f12c0f",
+    "101f0c8b7873cf8b8b70bc700e5b07424f2cd59628ae7a9a28555842ba630b78f191e5dce87e6532a5206a5d02ba748bec9855d50b6e64e7ca37",
+    "965786e4ec2e24721520f2447078dc120139265839577af5f65a800fe76acd16ed912c0392284fcf95f9f8f9c7bb49709967762f37cf2fdc39a7",
+    "08f6522de5d27592517255b51668f9e0123c488c8bc8a4e107374362d19eec4ed8ae45b56b503f4f5006d623e706c28ec099e926b8e45cceb2da",
+    "328be585193e07281786df4eeeb6f5732ec25d6fb16fbcda36d14acfef86f018c1cde653d4b2e1f35a5bf6bc72a5573d18f6183b5ef854adc5a0",
+    "f5e913b737c5e5e09265098e22b9ee17e883450e724eaf8c1c1ebffce67e12987b0547bf8b7fe25e26d52d7733490977cef95bec660911ae426f",
+    "b643c8307479c39a315ba89243a8360eb6edf931c141a25812855a1497b161e0674b5ac3b9d4829d6a5a4a7fc1c5eec920861db3702e202978b1",
+    "7867d92fab199e3f32b426b960f92873286a7007f43c6076b58573755ca7886d48acf8c7f9bd1bce35cb00583cb6429517b2650a0cf62680e26a",
+    "746ec8395f2e2e598655ced901246239c29bb556fc687be92c597223daa4cac8a12ab83ebb4fd238bbe4aafdaa5610b4cbeac7e9789554706f04",
+    "4b7cfcd34faf8a17fa7cb8984e253d51bb1647b117a947b81729cab8532a13ee45ca33eedc35583b54a7a4c71fff70271ca1e6c42b67ebd2923e",
+    "b9535de158f64089ead3897219694ac199378673052eeec5354b7f23ca8319079967e1d7a2bce459dd42fc54be4979c9655eb25b2aaa1dfe84ac",
+    "4d06d90e7ba6b7f5264bc35528e4fe0d4573a5f74bf864cebd081fc16dc28c728770e4e5edc296739beca6d8b11510eed85838b56f539cdbb73d",
+    "ca1ddb28e58e6d9972c7364fb9436de0dcae86706e576b2877a849a23c2959f2e3c77f7cfc3006ee9d586a3ff3108c0675ce5e225a73237ec1f0",
+    "f4eafce422e72c68d20e5996593a1597afb7967a816dc0b98814437818094f18500ef5350b95b1eb241c1b7358c04faaba1901e9bf117963978e",
+    "c5e75d279efea0b82aaf1a577b97d80cc5436f70495555dbcde99e2c5da428cf32b85a62415d2fd4998c444caa979161b45a50c81c652aaec5ee",
+    "e5a52ecb6bd9dc5dc39e1ae258f1c01b7f854960b55b008c853909ae424459e04d11bd8787ac3c8028db255fc195cf636f595cead7294e545498",
+    "d58e5947680ad3cbb63cfee36d53a35f41811fb7b6f1c41d5dc7b96d2428b68f2bc7f66942b963da11ee651a13ae4037b3eff3bd80713807f15e",
+    "6916a1c538dc016c1e36519bc2a21d53aff964d1c29c0b764dc802c88ae6fc40ca92b5312ce2f10f1bb4613b1ae7bac533e016ffc88a2b571c5c",
+    "47dc85e072f408b2800bfa945ba3d5ddd71ecd9bc4b98a2080f5734130a6e4f0a3e54c1254a8addae9c890d4b043a2a578492cc21f8fd39dd824",
+    "07357961c96e7273ac598f549c5bca118bb86f6fe5c5284702765bc2b1811eb11e9df3932c31dfb39f9de9199070ec61474b908f021b88c9c7b1",
+    "de50dd929010c2ce082b0e6205e7417f51adec8e64fa382fcdad2949e1970ec3652a73c9136da24c1cf727c525c4a4821b4d96d77bf6635fc4a9",
+    "530e97fd8371250429dfdfec03f5f19f7ebc93a0b09cba4752d7d29fb95db1a0dca1a8f0f276c587739b1e25aaddd43251dca6e611ee456da4dc",
+    "ae85f2cfdb955aca1d4a32e50ea59b37c3466d71bd492e5fcfceaab1cd4b3ab5abb4a9b0888f824283180c8ee5e2b9b97b68f55b6aad45cd9425",
+    "0482e7075e5b78555c8797db62c772545c9d1eaab3fa78282e590e9c7c654ce15cc445257b4eb588a987f09bcfdce15172c3c3b41282ca0556f1",
+    "4813827f526c8a2bd967e8cc8aca78cd06f72746aab2b478bd5a1bc6545c4a7ebf63097ad9d88888685cb4884963f66b4c517e9db9244c0aa865",
+    "16e007f597ea7517e7dcfcfe8425e9179db2eb51943bf4323e03763d8fcebc5d6d14d8a685f289bc6bb57c616c4a325ddf87ce2d64d9a6c37311",
+    "af77b4f6f8f9f72f17907075200edb19d6986fd496a19f737bc67fc16d2f0830ee7c918073fb0b079cdb5f4ce0dcfe0203e7f6171d04b7bd10c1",
+    "b9fdc509c16d2f58100e374b6ca30717793fbf98d514db8d748a6d163fa576f701c7766f046daa6f2c486ed914f67cbf4752e39ba8a79b479cdb",
+    "6f32096ebb1925b8eda615e7f69b5b9cdb6f8289f2b69b6582db6eaaf159bcdf7ce3d262bf49c7b9fd669e286fbbe9c7b9e77b839cda6f210a19",
+    "badd6ae4dc7e4b52c8c6e74b97a2b8ed0ea7e0b63ba1a219db1d53d58ce73baba23cb501f5c7ef7f75a383e02cf7ba8650fbf882bda83494db35",
+    "24813deb5b143bd437ca1dea20e50ef59297f7acac52ea507d29b76bd2143b1473c2bd28fa943b0c07ca1d8608e50ec3867287a144b817c38b72",
+    "872147b9dd2e7c5bad5b99bc1586d959abecbd02870f5ec61a21cac9128b3ddc157bec72a1152fceb55ab11e877d1d1e7ba41842b4ba3d3e1643",
+    "2e8aebf600f7ea947758763505996519d7714fd5a7c0088ab30b54feb39af2abbcd05cab2dd00b04977086ba7e8e1636c0db912d8900d2714cc9",
+    "69e1381e3ffde34d3e5ea84c76676dae25dd9eb1edd50f8aed8f88506c7f938460e713271cdb5e4ce1dfb63dc0c2bfedf939175ae7fe380cc5b6",
+    "a76628b53f5c43b1fd1d1c8aedcfeaf0d29edee8e1dffffcde8f68e5f3eb4114db1f23e25dbbbd6d748f995e1ce25b6c2dd3eebd5143a6958e0e",
+    "e3c5bfcdb2b97c03d6a6c00ae4b861559516b2c7b01684a50bec8a1cce814fc96179a3acb4280b334dadd88ead5a90a0bf5aa4581802cb4899fd",
+    "1eabc9dfd87c8b455b7b5dac03c37c55bdc5fa25b24294d8b03cdd196f9373ac154b341ea3ecb66a09c44309f2c39081c19274cfaab068a9bc7b",
+    "aef2f3e1985e58f3c30cfaf93d5a9d350c3587962d67a98dd30c4d2caa108765235fda635718368bbc4a8d539686f850cbab5d051571496a51cd",
+    "8f1f6961d051327a2faa3a53f1d24a1e0a5bb6a5e5f2f6535b4a217f17d26ae72645516b963f3c54318706148f61a515be690c4b180f2a85a0a8",
+    "58bc3ba25d15e1d896f19b627bfe708aedd9c829b6e736a7d89e299d97f69c769def1acf29dc29b5e783a73bd5965c9e6fb45ba67aae046c79ef",
+    "39b665d117bac2734e7ea52b3c65f8e7956eef05f00d7e7b7d406cf0cf6f19706c7b198162fb3b0b14db5f6de0dadff60604c5b60725b8d2bcbd",
+    "4e41b1fdad0b5e9ad4d4e7e3a75fee846ec3eb2ff6ad6329ddcfdc2ec309f7b22550eed86128776c589cdbb63f8eed9b29e79e7766de886d97e7",
+    "85ed3a83e0361544709b4623b84d4112dca66f51ee50df28776883846b9e65e31bb891aebceddfca59220dc6e1e1faabde1ac578984d9fdf9767",
+    "4719a624b7debbe6a6dd4f5d3bd3949c457ec0f73e757978920af3cfdd459c1b2ecc429d45717dfa9e326a4db2bc926d53e923ca7e0ef15a945d",
+    "2db68a932393196deaf2d66a4c569ec5650b2e557fd62ccb6a6bf36daab4a4b0666f8840a2296ae0fa08a83ae41cf50c22d015c254dc5ae2d677",
+    "a1b4a6b89c7c138d4d8dad653c6a5eef94f5b6e84acaa8a3ebb5e6aad1ec4dcae58024b5b97b9e198ec51c4d3fed96a6857396e917d56aac21a5",
+    "2d6a4d4d8af935e1bcb8a0779799aecfb35c44629794bb69098fdffef3cdbb34988b1009506ee77ce6b6576e38b6bf9923b8ed091ec1edfa3de7",
+    "76738172bbf141b017538672876544b9c3d0e2dc66b651ec30022977d894943b4c545ede66f0726c9f7b847b99cb9cdbd706e58eb546b97de952",
+    "ec900494db050bc15ee414e50eb947b9438e52ee90cb943be43ce58e7d83702ffb10e5b65d8d52fb1649b17dc3e5d8be7f53eed0072877e81784",
+    "7bd1572877e83fbcbc5d9fe2dcae9f516ea9a3661f048f9da05c0efe92d81c6d2a2ee431dd4c17cdcd58b06e5a798036e55a77e7c09a79922bd9",
+    "3faff9491de5d6d4f4d922870d79af3fcb53822ff97081b36c7c9cebdd7d214b4e26c55d9f576295c555eb949cc29bc2427b72e750ae588a48cb",
+    "8d28cb2b280772ca720a722ed9bbaab0b36b575cbcb85a55274738adecfbaa92ca69ed7dd5f748b93470f6934c8ca63c14d62c00a423c8227e4f",
+    "ae63aa43c328417223567f6e289721a772cfa6c88d949ae486bf70bccad5e5590c62c375eba2b8d8877176c54d703907cbc76a4b5d71a3b8425a",
+    "5bd522239ba259e794922a577f4aaab6ae047dcad1b016a6deaee2f45abbdcc3c3f4b79ad7d63ba44ed0bb95d7b2d694526c5e9e5247d7922de9",
+    "52e625d55d47d75d0c2dd31fc46ab548e536b479a5daedd2d4786392c4c72f3741251d9e348be258e22b7da1f66b10144a763504e943a150532c",
+    "e09995f5736a516216e4899b1ffcc390c9d47e2d96ba90523e7f31a15a17d8b2041c43a2578e25bb005e3fec1d3e4a45b89a3332375b6a847b2c",
+    "2df53d589d0317401556ede731661798b955edb1d2aa4aab335bacf0d4df96529efedc7b5595067b2f0def314241211882f2ddfa4d30cf38d62c",
+    "1a176974c5b7c1095a3c457413230f1fdef465306a534db0e39786ecb3f56f2cad4f3cdfe75849f4db7a47e48abf589f916b9f60c861ec8f02ae",
+    "1d9df65bafc8abec580d4d60a30d17d135a6bf1d5bfb8baf98cafb6d3521e341168baae292a14334f5e60feff13a61187bd01f2c324eed015a74",
+    "a8f6782f32f067f898c09e82d128b587b6d1c9b605ca71ea39ea8e527b0c1f5d067b482017465b84219580726b498fdffde6ceaa820c8bfe40e8",
+    "5a45cfdcee45e7dcee9517dce6e5a7dc6796cc36cc8a241c6eeb7c0b6539c4c1d99b9c9c8bc58e84a6abfb1cc325138be799920bb85865c16316",
+    "794d388458b7eb8844755e721bd33aaf46c5d939f53770096690a5511ce2fbd01fc583e0c6988aebcd8fc0962622cbb340e8afd172944b982408",
+    "850bb25ac40f832a5db416972a92d59ae6ac8aab96e56859571e2fcd3984523837bf917b53deb09f5b89ba1dd58faeeb0c4372f06717440a66cd",
+    "b5684ffea66c5629e53afcc56b9bed6683536ca038480c386615874987e3fc5a921add58837125b528274b6b76329fbbaa17774d1c2b536235a5",
+    "e4c5c526e77cb15e89736a0cc1f2f04ec5295b3ba23944a6e569162b32b8af708c243b65460f2498334b0984784efbba911416ed65079c31c4a4",
+    "054be84fce29ca65849dc24b5482fcbcdd9944b1c337c5e5edeeebe2f27bf79d51eef0c5f16d68f7ed51eef015f2cd6ff73dd2cd74776552ecf0",
+    "8c52eef0b4f2bd5eeb18f9f1875feeee50e2c9fa68aa1a5e0679e2a2bdf480e40a4562c52d5dbffd7c8f21de0c9b1994e8cf14568cab6e2af610",
+    "a7e23a365bfc6ccf88736e59c5f6f32c926a69ba4999a3e22ab26fc3bc6b5d62c9fd2125e86a0fff05e15efc219cdbfd2b847bf1d770eed9fb43",
+    "a9dd9544b017cf14e50e4f17e14ec719c50e3f1ce14eb71ec15ebc84943bbc8e9cdbbd987f7379dff67db8a6d69cbb423508b6fb0c18773a0d38",
+    "b77b3444799b838473bbbf45b46373df706ef706716e772e716ef755716e777d29eed993c6a7c1ee98e3dce6e6e3d8ee347c37fb3e7d909cdb3c",
+    "9a7c4d6eee51816dce56ceedbe5b210a9ef3e150eac8ae4305d04b8a4c22f75e526e12217fa602247bcb910281eedf6fd481f2f8e38f3782aa23",
+    "b424470ff108f989db8f6f38b71f07096e3b5e12dc765cc5b8f3f88b73fb711ae7f6e3b9efc76da7911cdb0f3719779c950acc22fd3b5ebb8a8a",
+    "1b7958a44b9a45563ba27f5eea55d6db5ab6cf8bf3f2f913aee4ece599b2ccb95cae76c859f5f7e72cc9cefabc72f9756fb1b00cc99aafe22437",
+    "90bfdeee97cc28b92be82d0f355b1697fda4bee0e130c1f57495a6a0b5c54f9f7a497e5cc5db51c6b5efca150fc6b207d505b6768de4a1715362",
+    "e67258d8a7f79971f6f62392a186a6abb591e869c4ef87c5da3da22308e183c39f562c122b64d177e0f0a4002249ba903e8b1bd14de6e489dd29",
+    "d7f14e2022586a979cbdaa642e82d2bf2757aff696d9657b97f8b4fe2b62afc285f9e417a1ec9d538ec5ee7ea25aabfc3a3fab181f4d8e59b0c8",
+    "57b82fc45ce97853cddd3ffeb8e0f7e3c64cc323e314d52f67d2d2aa92e25af2f8b9a59d75c5d5e2fed36039550587dc3fe0def45e499727d32e",
+    "b9712ee3453c77a0ca76e4e2d77f4a103bc6df9db3505673f0c63a2596afd6aa990cf994ac97734a45716dba7f37c796145711418b9b7363c87a",
+    "8b2577c18bf4b97c4faee2f513f44b9ab2979144c25d7b8acae1f27a1735973b6ee15d771dcbdf010bc8fc80755b843a00ce8ef8b16e755bbf99",
+    "b36c5b0337c564af84e99753dbe851712979735b2cb2bdd9c676ad901965bd297a1465cebade50fcfbf208babdc17783046720e5966133ae5bb6",
+    "7976c565cb338998f93e15972cebda2a177b16e5f0887334d7ce983d2bee25eae23b712fb123acffce5014321e2f912d4c073a0365988973c6dd",
+    "308bee0ce321dce6e1e376f3ee30e4dcee80149cf613d4cfe1c8f6e6372ee9d6a238bf8091629b9c6a5044ede774dfda2fa5f5e4d7d973ff362a",
+    "2aac05bfe51dfe1eed7cc3b5c79f7eba528dfa0338355cf923ab3dee844791c27ce66ae9fe9653d158b7f76a901e557296ef257f3a3c29d7f0b6",
+    "833d3b5365bd036f74e35d203fb7a6dcb4278b72bb2ec8df525813c91e862a3935c5e5eb09a455e9549c3fe554f0cf925b8db0d6f62eabedb8fc",
+    "55e0b36b5173abd3f02c5deb926b038fa1c1cd3a8ae2067254151ca655d97d08c029e67cd6bd02eb6b71ae2b736e6da46b6c7192d3b2e430aac6",
+    "d524398c5631d123bb6519adc6f518e55c9e57bd3d4dc90dc4e134c4ebc829daa3377724350b22dee7cac6f5269750c1a3ee8b9b57424ab6221b",
+    "16788783571687138f026d4eb43558ce346029a6a1389ba15035675458194ea9e563993ea6553a659d115e06c3126f839d1d77eb91349aac3644",
+    "ffbc2b8a84733d16efbaa8bf0f5e151b09dddc88b8390c6c6eb2f3123c5298286524c94d9fee2de85eaed5e667eb5956eb39daecb8574e9502c5",
+    "b6344f162dcb6bf67d55cef760af14039b7ad472ce5edcccf2f322b288827bd32d269d16674fd2f34995e0872f781326096ee00d772b2e209249",
+    "706becbb73a1292e7a2b42e8536226f32aee0b72216547febeb5f42ed6dac0155613f12d8ba5619101ddaaad7526c9c178c403aab375c5adb969",
+    "3b5a1e5d721da990b143263159eca929ab367ac65981256b468ca12a6e9902fe64635393057e73df70d5be8c880938a7d08aa10723c2fdbfb8f2",
+    "99b3ea9683c992be89eb388dfe06ae2015334623e5a4b8d4ae76c8d1401c4cb45915b32eaf4230a29b8b9040f6fa59b1272a47694571030e547b",
+    "1933eafe8ba3bb9a19e5ec0b39d963964196d73d540b4ab59f6ff3f1f557835bed5363f57abe35cad917116887d785536b7a5a41926624f7d2cd",
+    "40801dde941c29ea6e39923cb2d571e68c6442e34c41f9962b59c9c897049944d4bfe4db643ad099be93703dfb33bead8e371a5ab1c0ebfef9ea",
+    "02e162f23790a7d4d19025d64637a4a4299fa44be3d35f3772f7974f65a5e99a54a534cd69fbb53ffef4c79bcbbbab33a3bbfd5b49e90bf67217",
+    "9872c7dd62ca1d779539b7df7da6dc71979a73cf37b34569cf91b9143b027d79a7ec81c3bc93f74064caed71cd047b0993e6dc1e764db93d8a9b",
+    "62475038e7b618738a1d21eb94db23e0297604d453ee08d027dc4bc03fe7f60b0494dbef2350ecb8dec0b9fdba04e7f6eb17943bae73680ecdf5",
+    "5b2ef75c474ace5ebf891bedeb410fc796e263c5e59086e262f3e3b4a296901d96669b7ca5f6a9b8913c75646da929aefa7955b573378e156fc5",
+    "32d5aac212f4a46c170f452b90d6e7aa76aa5e8130f6f3af52e654dc7e7c28ca7b3e8d14d8f3d9266fed7e54fa1db9ed68580ddaf351b39803db",
+    "d1b5e0b6a370ceed47eb9cdb8feac55c7e3af8572be3398ce07b7167d884e09e8230841cd8423a38b7458808f1f31c6fc2b13d7c85737b38ccf7",
+    "e3f6f01fceede1449cdbc39304b7853bf1cd650f9fe2dc168df5ddb02df04c705b209baaf6292e8e635b949dd897b7a0bdefc7ed418a42fdf91a",
+    "f12874a92d7c52705b38a6e0b6f04eceede1a242c77c8e3ee5d81eccfafdb83d7897737b30b0b20b9e838b05b7052b0b7b640b7e169c345dc7e3",
+    "d7ff6027bea1783abb82fd143f94e8912ff606d857ae47df1f4bb15031ced9ad0aa8ac4869a7caf3a0a3112cc88a722d99f6334a97d85253bcda",
+    "5965b5cb423775a5d9c387824bdd0d1ccfb043b91c2ff5a25ae002e582c5a5406d90d5be198df9f8f5afeec2933a4e1d5d419818dd7f3bb7874f",
+    "516e8fc612c55db6f5b06813c2c1e5198d1b7dfc0dcda8e1f1f3afefc217f01fba3320238becbf9d7b8eada0d01ea7f10d18a71a8c169b4fd9dc",
+    "039cbb6c87aa9865739ba2d23d950a2fcbf6ee011f5b56dc11d345b8971831ceed3167943b62d82877c4c4f1f2f6183bfe7d7bcc1ee7f61840d1",
+    "de7316937e7e5915a4bc975576cfbd2cdabf093be23b29b7458b726a8f3da5dc11cbfaddb823769772472c30e58ed862caedce06ceedce0bc69d",
+    "ce10ce6dbe158e6d9e1a8eed8e1fceed8e24c69d8e29ceed8e2ece6d7e33816d6e38d12b182c7071be1b8ccbfd17f5e44b393b57e5a6d19abf7f",
+    "a2bfef4537e3dcaeeb51eed05638573d67450925fe3db6e5375c7cfcf29fef94b8f251e04641328ad5b2676e570a29772899944bc1bde3c39276",
+    "512c267761cd32457178acd4bdd961d89d14ca75ac22bc6f635e6a5e2f92c5c3e92dabadfedeb83daa62bd2c5a6b6f4cd6d1642747e4c840b6b0",
+    "d275b523d9cfa34ddd7b19f182f62ae554bd327bb50455c1823a442f077f7b255bf279ceb56ec5e5aae640f6e3517c9e674de45cf5e6f61ae4e7",
+    "253c238e51ebb9c8f25ab2e1281607c8cb8b8827c45c0eb6c679f7854b2978838de0dbbd6f1c6a69f82b5265c849f566e9a6c72fff6ccd2d4879",
+    "57ecd0cfedbeb5cfd9c9ee12c1e389abc8b05e2c82782a6e4d4e4b079782ddb1a35c9b9e5dce5f68139c3dad1ae07e8e92b350263cc55a86e646",
+    "beb8a6b86ecfc3ce1c45ad489f16adb54bf513bd87a477c527b36c2b3226e1f04b4213c7a8a052970371ac0bceedeb8c70e7b2a5d8c0c355f62c",
+    "6d2b9c4306fd6069fe960ced92b388b78813c124b932e6d7979538173d95e2f0ebc214f310f3f831d56c6f70655b0c49b0f7451837b06a2d7625",
+    "70682202347e33b4f4fe28b96ec13c6b96bfc33eb9a91a30f1844641d6c5dc2417fdb1de25c592aa37582854ea8ab10ca08845696a454c379711",
+    "8b927a52df3660708173339d721dd95910d09594c8415c9a5363286ad9f0033fafed424ea5b5fd5b9fcc5464ad760521f8cd7e0a216dab45b835",
+    "b918721c165937dce8e28bba350bb05cd3bc6801d6bb735aa8e776d51bb410b6082d881e496544305be8d14c9283ff1d97552cef97a815170aac",
+    "93a7dc4a32628e31b2f610ba6a456c7e8727ebdeb3102a040856c999fb085cd33b40f2b8b525a3e4cefe4603c88ffff2e34d6c064c76e4453345",
+    "33c48d7b4eddf94ddc549c3d7e04ae5d9e813bee45e2716c17a06fb9c0a15dae13e8659320dcb9e7506cdfc128766c889cdb3758ceed1b36e15e",
+    "1400caedfa042f6eb72a28775829bcf776ab873777b7a27879bb5546b9ddc8e3d5ee36a318b5671394f6ca61d1f25ede2d64dedadde216ad7d36",
+    "e02976f80328b79f6151ec3812e3dce9c6210bf7c52d74cbddb89998b438dd56847b71831111f5e256a392f6395aee0dc7257c79fc8c4336fcbb",
+    "2b52c152a83618ad7e9f2396f184758f77c7cce30cf2e85bf8329619c526e62562e26dcbe358f19dcb354682414614bbdf910394545a5ab35b11",
+    "9ee3904239d89d8d89cb689c0ad86c70290bb7d709b67e4d38a02970ae775a5a4388d575f36d148525bcb988fb7b66ea120caff105bb1f176c7f",
+    "15985fc6e921a9d262be7e850aca30a42128dd35403eee0da13ac96f0ea7aafa2df8a5663502112a2e9430e86a7cc8e5ccae8f9f6faf28aeddc7",
+    "bc0f96ac383f714b31b5812acd22a228d71d6b16e34ba9a53f5aad235a0420e56a4ac62d8bbe2a0eb76fe003b698574e21e5af7155d69af08881",
+    "71164f48b988c408e04a17e58da5cd43bb1e3882107ddc716da4786b2d809b7229f8f5ce618e33c6358f3f5fdcf59e37e55a4f565ef354c894b3",
+    "6b3205ef7ab721b935998ccb53726b555b7b8b054c702e9425b7b0faed810cc6e1ca616b7ecb5773cba0b77a935f6ea05ca9c3ea8db21db81def",
+    "524736038a4eb00b99aab082cbd8265fa76c04b26bb7ebb26deb8aeb302521afedc49c737e971e57de467fc3a56fe15af03bf2c52f6e522e67bf",
+    "57ba0c64d92fb124eb971a53925cf2cbeac59f3ee51c422d71dbb687a9b830fd0e7f3253967176b5ceee48c7a80469bef45824fe9558f3d18d29",
+    "7589459f2def6a2d88bfc0e63e8b2caf4ebf7f3ade9467763b02592415fb8c7e7957b502f7c73ed347f4a9b8de5c452966a170aed660adc8efb8",
+    "eb3a6bb2c348ce95516deb0c4ade26dc34334d60c62a9b5b82fbb42c7a5870d9f22e2039481a924b9ecd23fb2d50ca59568035f367d2d8e5ab5a",
+    "db64535c9c907b788620c96e597b7d7bba2d2aca73e5a7f422bfaf5cd7092d944960e6fb4a52dc268859732d95acf602e4af766f70e8534f7998",
+    "95e09a1267e7534362dd6e2f1771e9f3fc0e129565c7ab4a7c6fd95f69125cbf1e2e6a72c3ed88eefae2c0e11bfdc0c590b7e53d712d480563c6",
+    "ab5ec9411170cfcc3b2ef63afce1a72c15b9887bcc78e04889bd7e196f09b94ba4be775c67e6dc7e3d9a7fde7edd9a73fbf56dceedd7c105f77c",
+    "bb5c74cb76595d74cb76f95dcd82e7cbf462566d97f329775cf6a7dc913c80abcb7b3202ae2eefc90d78797bb204de8e3df902efbf3d99839856",
+    "f59bb823d9043787b6dc151cdb536150ee48ad21b8e74c1d143b127ff0e2f64422943b1293706e4f74c2bf6fcb9bc28bdbd3b0501bf648ebc2b9",
+    "2d4b0c3789f7a433943b92d870937d4f8a73cfbde4d8a1d891b28772470a20c13d6714e2d89ea0887247c22351de964089737b4226caedf99d38",
+    "b6a78be2bdbca79fe2dc9ece8a0fee9e1e8b737bba2d3aa9def8c6dae3c7df3e7e8835e31a537f54386e267e88307e1f0dcf8484f9955bf606f2",
+    "bc55bb8e572418e1b65ee0da8aa200915363cd946ab27708706d92482058d7d865188002ac71ed6a0b9ca66c081029012b1c82386c139fd85bb2",
+    "460f64a553a0eec5ee5cc3533d7d3c5af0c3720e56bc755300a6999b042b7c2415d72f65c51181d51599094a91a05d9d4179252a107bd75aa0f8",
+    "c298e3dfd2e6e1605f2a6c5e4bbd214603c9fa041871e3a199c5af4a5cc20673b021cc4d14d826ded7ace04abe9db39f20ee504cab79d9675582",
+    "1defc52d305ac0bda8ba269498ae976f445b124c4c94386f47f02bd8204a1698fbedbafada8d6b00ad77325e069203737563096f4a7c3382d341",
+    "8b235c6dc1d15afabb60c8eeb8665a78435df330b422419c7537bbe33b38e777f6c1895a718ba7ac0da7dadd812840bb345b1f15c74aa2ebf0da",
+    "579f1d05167b228e821531a0bee44757edc0d650c1a52e6b5e26386ca48a4b7c5135257b3441456a1d1869145cd65e5ebf575c3b49aa2d78ea6c",
+    "b5a122dfb4ec451cf101c44960158d4e784311581a551667765085b7200df9810117bd2bdecb1eba254b454e00cb94a3923e301be0e2953d5d33",
+    "a47f7f576d41a4828d5d4c39ca591390670ba0e9fc621eb6e425a698929cd80354952b69608bc022c9aa5370049eaaed4e3d7525609002caf7cf",
+    "308a5aec08d01db63ea7bd7d49c1eaafca35dcc1bf95e89f60bf76a7f5ada3881e2cabe7f0b26583c0ce920b7005e113fbd060ed61b82e50545b",
+    "acfbacd16bc58b4facb8d13f4cbbc888c1e0a0e5ed2d00971d3d2438f07616aa2e55720547d20db90264814b9c2366b6ad159873d36d819dd510",
+    "3bafa6043e1197e0aceaae1a8d49366c0083796728583c4b16bab12a81083d72d9b42e628b2e3165df2d62519b594574054ac48d3db5b42069c2",
+    "3075bca4a4c10a0f67f5b3408ac1ea86a083fa27c76520534136913dd5ac5dbdd78283d58e0d19889d1b0f3f563cc4a8aac65448566096bdbd94",
+    "b3947d5709497de2527c42c3ec2ed013558905f9d31ac0126489d89c9778ad7690a2ab76c51d027c16d998617d632ff689ae19f8b0c58d59655f",
+    "570c6f85d7644409861e0c2c5181153a7631a5204435cc9838cd2d4d7fcf8082d76d5598a45d6215abb32271a092b3b5bb5714aa5a54bb2ed600",
+    "8e2cd124a98d607bb4c532dee86a6b0d04ec3ed5f250e9c56279dbf18d3916094e3c898d4fe8498f74aebef786aed4bf66c1a4d668ec468a9b0d",
+    "5b2fc0a8971f727741416d6a9c3167e11586a0905b41c3e1e9b5a3ea659a91fcc8f58d296777c1a3d7c98c86a61413fc1d021beb26bc03919b10",
+    "fb5a577a3e4c7bc4312e5017d771ada9d91b965ade60ab5adcea43dde265d098cdac772018837589ed66c185e58df05c8b007f562973907fd44d",
+    "e15aa29e1035bba3a048ad045b7df7c674cb4623c089f4b30db717929edc36c51a047c7a5735cc52ec08436f5619d11c00bb524b56f7946a9f58",
+    "eb9b8da057af39675933fa1973b65c7e7b35797008894697a6e76c49fe8d6dc8ad1ceea88a9fc35092b641dbc09480df4c16d79189169e82a144",
+    "3c5a80ec69cddcd95a42b4eabe87b7a08d2faad6c36727d703608c722e22b463da37f65cf5f87584f5222a34caa58a275f22b8863b215236cdb5",
+    "532230b4c8c90d773b162092cc0d3d21eca26a437ada37e39231c3b0f5d62adbbc2685f98eb2deadd2da208381cb80d7dbdac4a95ab78393ac65",
+    "04742b781f8b32a1ab399012c061995ea42ebd0610609266014e5556f7746cc1528fc08963373016092ee180606e7815a734349621ed2d910653",
+    "8a06650d5953b52dd78b75707e63e502aa595aeb761d0cee55a526e130d2da271d914bfe25cca439a5c7a1c2878cb26ad23e8c609b1266a6dae6",
+    "deb849ff3f6fae45b8736e0100"
+  ), collapse = "")
+  starts <- seq.int(1L,nchar(hex),by=2L)
+  text <- rawToChar(memDecompress(as.raw(strtoi(substring(hex,starts,starts+1L),16L)),type="gzip"))
+  utils::read.table(text=text,header=TRUE,sep="\t",stringsAsFactors=FALSE)
+}
+
 analyse_demographics <- function(root = "", adsl_file = NULL,
   output_dir = NULL, excel_fr = TRUE, strict = TRUE, show_diagram = interactive(), png_dpi = 180L,
-  sites_file = "clinical_trial_sites.csv", template_file = "screening_map_template.html", p1_file = "", p2_file = "") {
+  sites_file = "clinical_trial_sites.csv", template_file = "screening_map_template.html", p1_file = "", p2_file = "",
+  audit_asset_dir = "audit_assets", audit_dpi = 300L) {
   root <- bla1_project_root(root)
   if (is.null(output_dir) || !nzchar(output_dir)) {
     analysis <- file.path(root, "analysis")
@@ -1056,7 +1597,7 @@ analyse_demographics <- function(root = "", adsl_file = NULL,
   ii <- grepl("^PP_HAS_", dictionary$column)
   dictionary$definition[ii] <- "Y if this reason appears in PPEREAS among MITT=Y/PPROT=N; multiple reasons can be Y."
   bla1_csv(dictionary, file.path(output_dir, "BLA_Figure1_dictionary.csv"))
-  writeLines(c("Moderna demographics, recruitment and BLA Figure 1, v1.15.2", "",
+  writeLines(c("Moderna demographics, recruitment and BLA Figure 1, v1.16.0", "",
     paste("Input:", normalizePath(adsl_file, winslash = "/")),
     paste("Main CSV records:", nrow(subjects)), paste("Pre-figure exclusion records:", nrow(excluded)),
     paste("Published count comparisons:", nrow(nodes$counts)),
@@ -1084,12 +1625,24 @@ analyse_demographics <- function(root = "", adsl_file = NULL,
     "Input_discovery_P1/P2/P3.csv record candidate files, rejection reasons, duplicate copies and selected sources.",
     "Equivalent file formats are compared on the fields used in this analysis; conflicting valid snapshots require an explicit choice.",
     "Original JMP/XPT/SAS formats are preferred when readable. An equivalent converted CSV is also supported.",
-    "clinical_trial_sites.csv and screening_map_template.html are optional presentation assets; only the map depends on them.",
+    "clinical_trial_sites.csv supplies coordinates for V03. screening_map_template.html is needed only by the interactive HTML map.",
+    "audit_assets: V01_weekly_recruitment_by_phase.png, V02_randomization_analysis_populations.png and V03_recruitment_by_site.png; print/Substack layouts at PHMPT_AUDIT_DPI (default 300).",
+    "A complete run-specific PNG set and its manifest are also retained under this results directory.",
     "The input path and SOURCE_MD5 identify the exact source analyzed in this run."),
     file.path(output_dir, "README.txt"), useBytes = TRUE)
   capture.output(sessionInfo(), file = file.path(output_dir, "sessionInfo.txt"))
-  files <- list.files(output_dir, full.names = TRUE)
-  bla1_csv(data.frame(file = basename(files), md5 = unname(tools::md5sum(files))), file.path(output_dir, "output_checksums.csv"))
+  audit_assets <- bla1_export_audit_assets(recruitment, nodes$counts, root, output_dir,
+    asset_dir = audit_asset_dir, dpi = audit_dpi)
+  audit_links <- paste0('<section><h2>Audit PNGs for print / Substack</h2><p>',
+    paste0('<a href="audit_assets/', audit_assets$manifest$file, '">',
+      audit_assets$manifest$visual, ' PNG</a>', collapse = ' | '),
+    '</p><p>White backgrounds; 8.5-inch export width; ', audit_dpi,
+    ' dpi. Stable copies are refreshed in ', bla1_escape(audit_assets$directory),
+    '.</p></section>')
+  report <- sub('</main>', paste0(audit_links, '</main>'), report, fixed = TRUE)
+  writeLines(enc2utf8(report), report_file, useBytes = TRUE)
+  files <- list.files(output_dir, full.names = TRUE, recursive = TRUE)
+  bla1_csv(data.frame(file = substring(files, nchar(output_dir) + 2L), md5 = unname(tools::md5sum(files))), file.path(output_dir, "output_checksums.csv"))
   bad <- any(nodes$counts$status != "MATCH") || any(x$FIGURE1_BRANCH == "UNRESOLVED")
   message("Wrote ", nrow(subjects), " Figure 1 participants; ", nrow(excluded), " pre-figure exclusions. ",
     sum(nodes$counts$status == "MATCH"), "/", nrow(nodes$counts), " published counts match.\nRecruitment: ",
@@ -1101,7 +1654,7 @@ analyse_demographics <- function(root = "", adsl_file = NULL,
     }, character(1)), collapse = "; "),
     "\n", normalizePath(output_dir, winslash = "/"))
   if (bad && strict) stop("Reconstruction has discrepancies. CSVs and the diagram were saved for review; no count was forced to match.")
-  invisible(list(subjects = subjects, excluded = excluded, counts = nodes$counts, recruitment = recruitment, output_dir = output_dir))
+  invisible(list(subjects = subjects, excluded = excluded, counts = nodes$counts, recruitment = recruitment, audit_assets = audit_assets, output_dir = output_dir))
 }
 
 # Embedded offline map assets. Leaflet 1.9.4 (BSD-2-Clause; full license in
@@ -3382,4 +3935,5 @@ analyse_demographics(root = PHMPT_ROOT, adsl_file = PHMPT_ADSL_FILE,
   output_dir = PHMPT_OUTPUT_DIR, excel_fr = PHMPT_EXCEL_FR, strict = PHMPT_STRICT,
   show_diagram = PHMPT_SHOW_DIAGRAM, png_dpi = PHMPT_PNG_DPI,
   sites_file = PHMPT_SITES_FILE, template_file = PHMPT_MAP_TEMPLATE,
-  p1_file = PHMPT_P1_FILE, p2_file = PHMPT_P2_FILE)
+  p1_file = PHMPT_P1_FILE, p2_file = PHMPT_P2_FILE,
+  audit_asset_dir = PHMPT_AUDIT_ASSET_DIR, audit_dpi = PHMPT_AUDIT_DPI)

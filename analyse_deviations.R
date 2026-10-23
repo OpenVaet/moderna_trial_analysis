@@ -1,4 +1,4 @@
-# Moderna P301 protocol deviations -- v1.3.0 -- R 4.3+
+# Moderna P301 protocol deviations -- v1.4.0 -- R 4.3+
 # Standalone: save in the project root, Select All / Run or Source in RStudio.
 # Reads your local PHMPT files. No downloads and no earlier analysis scripts.
 # Base R + grid suffice for CSV/JMP and PDF/HTML output; haven reads XPT/SAS7BDAT.
@@ -27,6 +27,16 @@ PHMPT_WEEKLY_PNG_DPI <- 300L             # A4 landscape PDF + one PNG per chart 
 PHMPT_UNBLINDING_START <- "2020-12-14"   # EUA-era calendar reference, not first individual unblinding
 # Earlier UBLDDT dates are retained and audited. Scheduled open-label visits began
 # 2020-12-24; see weekly_staff_deviations_methods.txt for these distinct milestones.
+
+PHMPT_AUDIT_ASSET_DIR <- "audit_assets"  # Stable V05-V07 PNGs, relative to project root
+PHMPT_AUDIT_DPI <- 300L                   # 8.5-inch width = 2550 px at 300 dpi
+PHMPT_AUDIT_WINDOW <- "Prod_BLINDED"     # V05/V06: do not combine submission windows
+PHMPT_AUDIT_WEEKLY_WINDOW <- "Prod_ALL_FOLLOWUP" # V07 includes post-unblinding follow-up
+PHMPT_AUDIT_MIN_AFFECTED <- 40L           # V05 display filter: strictly more than this many
+PHMPT_AUDIT_GLOBAL_P <- 0.000001          # V05 report selection; raw p strictly below threshold
+# These are display filters only. Original full analyses and PHMPT_ALPHA are unchanged.
+# Tables paginate at readable font sizes when needed (_02.png, _03.png, ...).
+# Load functions without running: options(phmpt.autorun=FALSE) before source().
 
 # ---- INPUT AND VALIDATION ----
 dv_root <- function(root = "") {
@@ -651,7 +661,7 @@ dv_weekly_page <- function(x,coverage,window,categories,eua_cutoff,page,total,fo
   for(i in seq_along(c(note1,note2,note3)))txt(c(note1,note2,note3)[i],12,22-(i-1)*4,7.4,color="#52677a")
   if(sum(meta$missing_blind_endpoint)>0 && window!="Prod_ALL_FOLLOWUP")txt(paste0("Blind endpoint missing for ",sum(meta$missing_blind_endpoint),
     " participants: available administrative/study-end/death caps used."),12,10,7,color="#52677a")
-  txt(paste0("analyse_deviations.R v1.3.0 | ",window," | ",page," / ",total),285,5,7,color="#52677a",just="right")
+  txt(paste0("analyse_deviations.R v1.4.0 | ",window," | ",page," / ",total),285,5,7,color="#52677a",just="right")
 }
 dv_unblind_page <- function(breakdown,window,basis,page,total,font="sans") {
   grid::grid.newpage()
@@ -702,7 +712,7 @@ dv_unblind_page <- function(breakdown,window,basis,page,total,font="sans") {
   txt("People are deduplicated within each period/category and can appear in both periods. The combined row deduplicates across categories.",12,18,7.6,color="#52677a")
   txt(if(window=="Prod_ALL_FOLLOWUP")"Follow-up includes crossover: original placebo recipients may have received vaccine. Same-day events are assigned to on/after; ordering is unknown." else
     "Individual blinded-period limits remain in force. After the calendar marker, this table retains only follow-up allowed by those limits.",12,13,7.4,color="#52677a")
-  txt(paste0("analyse_deviations.R v1.3.0 | ",basis," | ",page," / ",total),285,5,7,color="#52677a",just="right")
+  txt(paste0("analyse_deviations.R v1.4.0 | ",basis," | ",page," / ",total),285,5,7,color="#52677a",just="right")
 }
 dv_weekly_finish <- function(runs,out,status,eua_cutoff,png_dpi,excel_fr,start_basis,unblinding_start="2020-12-14",unblinding_inventory=NULL) {
   x<-do.call(rbind,lapply(runs,function(z)z$data));coverage<-do.call(rbind,lapply(runs,function(z)z$coverage))
@@ -839,7 +849,7 @@ dv_html <- function(results,den,status,notes,out,alpha,site_mode=FALSE) {
   html<-paste0('<!doctype html><html lang="en"><meta charset="utf-8"><title>Moderna protocol deviation imbalances</title><style>',
     'body{font:14px/1.4 Arial,sans-serif;color:#182d40;max-width:1250px;margin:28px auto;padding:0 18px}h1{font-size:27px;margin-bottom:4px}h2{font-size:21px;border-bottom:2px solid #234c6b;padding-bottom:6px}h3{font-size:15px;margin:18px 0 6px}p{margin:6px 0 12px}.sub,.den{color:#4d6171}table{border-collapse:collapse;width:100%;margin-bottom:16px}th,td{padding:7px 8px;vertical-align:top;border-bottom:1px solid #d4dce3;text-align:right}th{background:#eaf0f5;font-weight:600}th:first-child,td:first-child{text-align:left}tbody tr:nth-child(even){background:#f6f8fa}.signals{table-layout:fixed}.signals td:first-child{overflow-wrap:anywhere}.signals td{font-size:12px}.signals th{font-size:12px}a{color:#20547d}.notes{font-size:12px}li{margin-bottom:6px}.toolbar{margin:15px 0}',
     '@page{size:A4 landscape;margin:12mm}@media print{body{max-width:none;margin:0;padding:0;font-size:10pt;color:#000}h1{font-size:17pt}h2{font-size:13pt}h3{font-size:11pt}section{break-before:page}thead{display:table-header-group}tr{break-inside:avoid}th,td{padding:4px 5px}.signals td,.signals th{font-size:8.5pt}.toolbar{display:none}.notes{font-size:9pt}a{color:inherit;text-decoration:none}}',
-    '</style><h1>',title,'</h1><p class="sub">Exploratory comparisons by original randomized arm | ',format(Sys.Date()),' | analyse_deviations.R v1.3.0</p>',
+    '</style><h1>',title,'</h1><p class="sub">Exploratory comparisons by original randomized arm | ',format(Sys.Date()),' | analyse_deviations.R v1.4.0</p>',
     '<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button> &nbsp; <a href="',stem,'.pdf">Print-ready PDF</a> | <a href="',all_csv,'">All tests CSV</a> | <a href="',selected_csv,'">Selected rows CSV</a></div>',
     '<h2>Methods and interpretation</h2><ol class="notes">',paste0('<li>',esc(notes),'</li>',collapse=''),'</ol>',
     '<h3>Release availability</h3><table><thead><tr>',paste0('<th>',esc(names(status)),'</th>',collapse=''),'</tr></thead><tbody>',paste(status_rows,collapse=''),'</tbody></table>',
@@ -863,7 +873,7 @@ dv_pdf <- function(results,den,notes,out,alpha,site_mode=FALSE) {
   newpage<-function(title,subtitle="") {
     grid::grid.newpage();page<<-page+1L;text(if(site_mode)"MODERNA P301  /  SITE-LEVEL DEVIATIONS" else "MODERNA P301  /  PROTOCOL DEVIATIONS",12,9,9,TRUE,color="#476780")
     text(title,12,17,15,TRUE);text(subtitle,12,27,8.5);line(35)
-    text("Participant-level exploratory comparison | analyse_deviations.R v1.3.0",12,199,7,color="#52677a")
+    text("Participant-level exploratory comparison | analyse_deviations.R v1.4.0",12,199,7,color="#52677a")
     text(paste("Page",page),285,199,7,just="right",color="#52677a")
   }
   wrap<-function(s,width,size=8.5) {
@@ -909,11 +919,290 @@ dv_pdf <- function(results,den,notes,out,alpha,site_mode=FALSE) {
 }
 
 # ---- MAIN ----
+# ---- AUDIT PNG EXPORTS: dedicated article-width layouts ----
+dv_audit_png <- function(path,draw,width=8.5,height=7,dpi=300L) {
+  if(length(dpi)!=1L||!is.finite(dpi)||dpi<150||dpi>600)
+    stop("PHMPT_AUDIT_DPI must be between 150 and 600.")
+  type<-if(capabilities("cairo"))"cairo" else if(.Platform$OS.type=="windows")"windows" else getOption("bitmapType")
+  success<-FALSE
+  grDevices::png(path,width=width,height=height,units="in",res=dpi,pointsize=13,bg="white",type=type)
+  device<-grDevices::dev.cur()
+  on.exit({if(device %in% grDevices::dev.list())grDevices::dev.off(device);if(!success&&file.exists(path))unlink(path)})
+  draw();grDevices::dev.off(device)
+  bytes<-readBin(path,"raw",n=file.info(path)$size)
+  if(length(bytes)<32L || !identical(bytes[1:8],as.raw(c(137,80,78,71,13,10,26,10))) ||
+     !identical(tail(bytes,12),as.raw(c(0,0,0,0,73,69,78,68,174,66,96,130))))stop("Incomplete PNG: ",path)
+  dims<-vapply(list(bytes[17:20],bytes[21:24]),function(b)sum(as.integer(b)*256^(3:0)),numeric(1))
+  if(any(abs(dims-round(c(width,height)*dpi))>1))stop("Unexpected PNG dimensions: ",path)
+  success<-TRUE;dims
+}
+dv_audit_publish <- function(stage,destination,files,owned_pattern) {
+  # Rendering/validation finishes before any stable copy is touched. Backups allow
+  # rollback if publishing fails partway through (e.g. a file is open in Windows).
+  dir.create(destination,recursive=TRUE,showWarnings=FALSE)
+  if(!dir.exists(destination))stop("Cannot create audit asset directory: ",destination)
+  if(identical(normalizePath(stage,winslash="/"),normalizePath(destination,winslash="/")))return(invisible(destination))
+  old<-list.files(destination,pattern=owned_pattern,full.names=FALSE)
+  backup<-tempfile("audit_backup_",tmpdir=stage);dir.create(backup)
+  if(length(old)&&!all(file.copy(file.path(destination,old),backup,overwrite=TRUE)))
+    stop("Cannot back up previous audit assets; stable files were not changed.")
+  complete<-FALSE
+  on.exit({
+    if(!complete) {
+      unlink(file.path(destination,setdiff(files,old)))
+      if(length(old)&&!all(file.copy(file.path(backup,old),destination,overwrite=TRUE)))
+        warning("Could not fully restore earlier audit assets; backup retained at ",backup)
+    } else unlink(backup,recursive=TRUE)
+  })
+  for(name in files) {
+    src<-file.path(stage,name);dst<-file.path(destination,name)
+    if(!file.copy(src,dst,overwrite=TRUE)||unname(tools::md5sum(src))!=unname(tools::md5sum(dst)))
+      stop("Could not publish audit asset: ",dst)
+  }
+  obsolete<-setdiff(old,files)
+  if(length(obsolete)&&unlink(file.path(destination,obsolete))!=0L)
+    stop("Could not remove obsolete audit continuation pages.")
+  complete<-TRUE;invisible(destination)
+}
+dv_audit_num <- function(x) format(x,big.mark=",",scientific=FALSE,trim=TRUE)
+dv_audit_wrap <- function(text,width,size=11.5,bold=FALSE) {
+  # Measure actual glyph widths; avoid clipping long descriptions or long tokens.
+  measure<-function(s)grid::convertWidth(grid::grobWidth(grid::textGrob(s,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain"))),"in",valueOnly=TRUE)
+  words<-strsplit(gsub("[[:space:]]+"," ",trimws(text))," ",fixed=TRUE)[[1]]
+  lines<-character();line<-""
+  for(word in words) {
+    candidate<-paste(c(if(nzchar(line))line,word),collapse=" ")
+    if(measure(candidate)<=width){line<-candidate;next}
+    if(nzchar(line)){lines<-c(lines,line);line<-""}
+    while(nchar(word)>1L&&measure(word)>width) {
+      n<-nchar(word)-1L
+      while(n>1L&&measure(substr(word,1,n))>width)n<-n-1L
+      lines<-c(lines,substr(word,1,n));word<-substring(word,n+1L)
+    }
+    line<-word
+  }
+  paste(c(lines,line),collapse="\n")
+}
+dv_audit_text <- function(text,x,y,size=11.5,bold=FALSE,col="#25343D",just=c("left","top")) {
+  grid::grid.text(text,x=grid::unit(x,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),just=just,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain",col=col,lineheight=1.14))
+}
+
+dv_audit_window_label <- function(window) switch(window,
+  Prod_BLINDED="BLA data, individual blinded follow-up",
+  Prod_ALL_FOLLOWUP="BLA data, full follow-up including unblinding/crossover",
+  Prod_EUA="BLA data restricted to the EUA cutoff",
+  EUA_SNAPSHOT="EUA submission data",window)
+
+dv_audit_table <- function(x,id,stem,stage,dpi,window,subtitle,footer,site=FALSE) {
+  # Text measurement and wrapping use physical inches on a temporary vector device.
+  tmp<-tempfile(fileext=".pdf");grDevices::pdf(tmp,width=8.5,height=12)
+  measure_device<-grDevices::dev.cur()
+  on.exit({if(measure_device %in% grDevices::dev.list())grDevices::dev.off(measure_device);unlink(tmp)})
+  col_left<-c(.35,3.79,4.89,5.99,7.09);col_width<-c(3.34,1,1,1,1.06)
+  labels<-if(site)paste(x$SITEID,x$deviation,sep=" | ") else x$deviation
+  wrapped<-vapply(labels,dv_audit_wrap,character(1),width=col_width[1],size=11.5)
+  detail<-if(nrow(x))paste0(if(site)paste0("Records: ",dv_audit_num(x$vaccine_records)," / ",dv_audit_num(x$placebo_records)," (vaccine / placebo)") else x$test,
+    " | Difference: ",sprintf("%+.2f pp (95%% CI %+.2f to %+.2f)",x$difference_pp,x$lower95_pp,x$upper95_pp)) else character()
+  detail<-vapply(detail,dv_audit_wrap,character(1),width=7.8,size=10.7)
+  nlines<-function(s)length(strsplit(s,"\n",fixed=TRUE)[[1]])
+  text_height<-function(text,size)grid::convertHeight(grid::grobHeight(grid::textGrob(text,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,lineheight=1.14))),"in",valueOnly=TRUE)
+  main_h<-if(length(wrapped))pmax(.44,vapply(wrapped,text_height,numeric(1),size=11.5)) else numeric()
+  row_h<-if(length(wrapped))main_h+vapply(detail,text_height,numeric(1),size=10.7)+.30 else numeric()
+  subtext<-dv_audit_wrap(paste(dv_audit_window_label(window),subtitle,sep=". "),7.8,11.2)
+  foottext<-dv_audit_wrap(footer,7.8,10.7)
+  top<- .95+text_height(subtext,11.2)+.22
+  bottom<- .35+text_height(foottext,10.7)
+  budget<-12.8-top-.44-bottom
+  pages<-list();current<-integer();used<-0
+  for(i in seq_along(row_h)) {
+    if(row_h[i]>budget)stop("Deviation description exceeds one audit page; review the source term: ",labels[i])
+    if(length(current)&&used+row_h[i]>budget){pages[[length(pages)+1L]]<-current;current<-integer();used<-0}
+    current<-c(current,i);used<-used+row_h[i]
+  }
+  if(length(current))pages[[length(pages)+1L]]<-current
+  if(!length(pages))pages<-list(integer())
+  grDevices::dev.off(measure_device)
+  output<-list()
+  for(p in seq_along(pages)) {
+    rows<-pages[[p]];height<-top+.44+if(length(rows))sum(row_h[rows]) else .75
+    height<-max(4,height+bottom)
+    file<-paste0(stem,if(p>1)sprintf("_%02d",p) else "",".png")
+    draw<-function() {
+      grid::grid.newpage()
+      title<-if(site)"Site-level deviation screen" else "Globally imbalanced protocol deviations"
+      dv_audit_text(paste(id,title),.35,.25,17,TRUE,col="#172F3C")
+      dv_audit_text(paste0("Moderna P301 | ",nrow(x)," selected comparisons | Page ",p," of ",length(pages)),.35,.64,11.5)
+      dv_audit_text(subtext,.35,.95,11.2)
+      grid::grid.rect(x=grid::unit(.35,"in"),y=grid::unit(1,"npc")-grid::unit(top,"in"),
+        width=grid::unit(7.8,"in"),height=grid::unit(.44,"in"),just=c("left","top"),
+        gp=grid::gpar(fill="#EAF0F3",col=NA))
+      heads<-c(if(site)"Site / deviation" else "Recorded deviation","mRNA-1273","Placebo","Raw p","Holm p")
+      for(k in 1:5)dv_audit_text(heads[k],col_left[k],top+.12,11,TRUE)
+      y<-top+.44
+      if(!length(rows))dv_audit_text("No comparisons meet the stated selection rules.",.35,y+.22,12)
+      for(i in rows) {
+        grid::grid.rect(x=grid::unit(.35,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),
+          width=grid::unit(7.8,"in"),height=grid::unit(row_h[i],"in"),just=c("left","top"),
+          gp=grid::gpar(fill=if(match(i,rows)%%2==0)"#F5F7F8" else "white",col=NA))
+        value<-if(site)c(paste0(dv_audit_num(x$vaccine_n[i]),"/",dv_audit_num(x$vaccine_N[i]),"\n",sprintf("(%.2f%%)",x$vaccine_percent[i])),
+          paste0(dv_audit_num(x$placebo_n[i]),"/",dv_audit_num(x$placebo_N[i]),"\n",sprintf("(%.2f%%)",x$placebo_percent[i]))) else
+          c(paste0(dv_audit_num(x$vaccine_n[i]),"\n",sprintf("(%.2f%%)",x$vaccine_percent[i])),
+            paste0(dv_audit_num(x$placebo_n[i]),"\n",sprintf("(%.2f%%)",x$placebo_percent[i])))
+        cells<-c(wrapped[i],value,dv_p(x$p_raw[i]),dv_p(x$p_holm[i]))
+        for(k in 1:5)dv_audit_text(cells[k],col_left[k],y+.1,if(k>=4)10.8 else 11.5,
+          bold=k%in%c(2,3),col=if(k==2)"#1E667D" else if(k==3)"#A65B22" else "#25343D")
+        detail_y<-y+.18+main_h[i]
+        dv_audit_text(detail[i],.35,detail_y,10.7,col="#52616C")
+        y<-y+row_h[i]
+        grid::grid.lines(x=grid::unit(c(.35,8.15),"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),gp=grid::gpar(col="#D9E1E6",lwd=.6))
+      }
+      dv_audit_text(foottext,.35,height-bottom+.12,10.7,col="#52616C")
+    }
+    dims<-dv_audit_png(file.path(stage,file),draw,height=height,dpi=dpi)
+    output[[p]]<-data.frame(visual=id,file=file,page=p,pages=length(pages),window=window,
+      rows_on_page=length(rows),selected_comparisons=nrow(x),width_px=dims[1],height_px=dims[2],dpi=dpi)
+  }
+  do.call(rbind,output)
+}
+
+dv_audit_weekly <- function(data,coverage,breakdown,window,marker) {
+  z<-data[data$window==window & data$category=="ANY_OF_SEVEN",]
+  cov<-coverage[coverage$window==window & coverage$category=="ANY_OF_SEVEN",]
+  b<-breakdown[breakdown$window==window & breakdown$category=="ANY_OF_SEVEN",]
+  arms<-c("mRNA-1273","Placebo");colors<-c("#1E667D","#D27C34")
+  weeks<-sort(unique(as.Date(z$week_start)));x<-as.numeric(weeks)
+  vals<-vapply(arms,function(a)z$records[match(paste(weeks,a),paste(as.Date(z$week_start),z$arm))],numeric(length(weeks)))
+  if(anyNA(vals))stop("Incomplete arm/week grid for V07.")
+  for(a in arms)if(sum(z$records[z$arm==a])!=cov$records[cov$arm==a])stop("V07 weekly and coverage totals disagree.")
+  old<-par(no.readonly=TRUE);on.exit(par(old))
+  par(fig=c(0,1,.52,.85),mai=c(.62,1.02,.15,.25),mgp=c(3,.6,0),family="sans",las=1,xaxs="i",yaxs="i",bty="n")
+  ymax<-max(pretty(c(0,max(1,vals)*1.15),n=5))
+  plot(range(x)+c(-5,5),c(0,ymax),type="n",axes=FALSE,xlab="",ylab="")
+  ticks<-pretty(c(0,ymax),n=5);ticks<-ticks[ticks>=0 & ticks<=ymax]
+  abline(h=ticks,col="#E1E6E9",lwd=.7)
+  rect(x-2.7,0,x-.2,vals[,1],col=colors[1],border=NA)
+  rect(x+.2,0,x+2.7,vals[,2],col=colors[2],border=NA)
+  axis(2,at=ticks,labels=dv_audit_num(ticks),tick=FALSE,cex.axis=.88)
+  ii<-seq(1,length(x),by=max(1L,ceiling(length(x)/10)))
+  lab<-paste(format(weeks[ii],"%d"),month.abb[as.integer(format(weeks[ii],"%m"))])
+  axis(1,at=x[ii],labels=FALSE,tck=-.015,col="#74838C")
+  text(x[ii],-.03*ymax,lab,srt=45,adj=1,xpd=NA,cex=.85)
+  mtext("Deviation records",side=2,line=3.3,las=0,cex=.9)
+  ref<-as.numeric(as.Date(marker));in_window<-ref>=min(x)&ref<=max(x)+6
+  if(in_window)abline(v=ref,col="#BB302A",lty=2,lwd=1.8)
+  grid::pushViewport(grid::viewport())
+  dv_audit_text("V07  Weekly staff-related deviations",.35,.25,17,TRUE,col="#172F3C")
+  dv_audit_text(paste0("Moderna P301 | ",dv_audit_window_label(window)),.35,.69,11.5)
+  dv_audit_text(paste0("All sites | ",min(cov$window_start)," to ",max(cov$window_end)," | Seven predefined types"),.35,.98,11.5)
+  for(i in seq_along(arms)) {
+    a<-cov[cov$arm==arms[i],]
+    dv_audit_text(paste0(arms[i],": ",dv_audit_num(a$records)," records / ",dv_audit_num(a$affected_participants)," participants"),
+      .35,1.28+.26*(i-1),11.5,TRUE,col=colors[i])
+  }
+  dv_audit_text(paste0("Dashed red line: ",marker," calendar reference",if(!in_window)" (outside this window)" else ""),.35,5.55,11.5,TRUE,col="#BB302A")
+  dv_audit_text("Weekly columns count records; the breakdown uses exact deviation dates.",.35,5.85,11.2)
+  dv_audit_text("Before / after unblinding",.35,6.3,13,TRUE)
+  dv_audit_text("Cells show records / distinct affected participants",.35,6.65,11.2)
+  dv_audit_text("Split and period",.35,7.04,11.5,TRUE)
+  dv_audit_text("mRNA-1273",5.1,7.04,11.5,TRUE,col=colors[1])
+  dv_audit_text("Placebo",6.85,7.04,11.5,TRUE,col=colors[2])
+  rows<-data.frame(basis=c(rep("CALENDAR_MARKER",2),rep("PARTICIPANT_UBLDDT",3)),
+    period=c("BEFORE","ON_AFTER","BEFORE","ON_AFTER","UNRESOLVED"),
+    label=c(paste0("Calendar: before ",marker),paste0("Calendar: on/after ",marker),
+      "Individual UBLDDT: before","Individual UBLDDT: on/after","Individual UBLDDT: unresolved"))
+  for(i in seq_len(nrow(rows))) {
+    y<-7.42+(i-1)*.37
+    dv_audit_text(rows$label[i],.35,y,11.3)
+    for(j in seq_along(arms)) {
+      r<-b[b$basis==rows$basis[i]&b$period==rows$period[i]&b$arm==arms[j],]
+      value<-if(nrow(r)!=1L)"Unavailable" else if(r$person_days==0)"No follow-up" else
+        paste0(dv_audit_num(r$records)," / ",dv_audit_num(r$affected_participants))
+      dv_audit_text(value,c(5.1,6.85)[j],y,11.3,col=colors[j])
+    }
+  }
+  notes<-c("Types: observation <30 min; missing 30-min diary; missing required nasopharyngeal swab; pregnancy testing not per protocol; incomplete examination/vital signs; SAE/AESI reporting >24 h; unblinded staff performing blinded tasks.",
+    "All included records are plotted, without a significance or volume filter. Original randomized arms are retained after crossover. Participants may contribute in both periods; do not add participant counts across periods.",
+    "The calendar reference is not each participant's unblinding date. Unresolved UBLDDT is displayed separately; same-day records enter on/after. Weeks start Monday; boundary weeks may be partial.")
+  y<-9.45
+  for(note in notes) {
+    text<-dv_audit_wrap(note,7.8,10.6)
+    dv_audit_text(text,.35,y,10.6,col="#52616C")
+    y<-y+length(strsplit(text,"\n",fixed=TRUE)[[1]])*10.6/72*1.14+.12
+  }
+  grid::popViewport()
+}
+
+dv_export_audit <- function(results,den,site_results,weekly_results,root,out,alpha,site_min_records,
+    unblinding_start,asset_dir="audit_assets",dpi=300L,window="Prod_BLINDED",
+    weekly_window="Prod_ALL_FOLLOWUP",min_affected=40L,global_p=0.000001) {
+  if(!window%in%results$window)stop("Audit table window unavailable: ",window,". Set PHMPT_AUDIT_WINDOW explicitly. Existing analysis outputs are retained in ",out)
+  if(!weekly_window%in%weekly_results$data$window)stop("Audit weekly window unavailable: ",weekly_window,". Set PHMPT_AUDIT_WEEKLY_WINDOW explicitly. Existing analysis outputs are retained in ",out)
+  if(length(global_p)!=1||!is.finite(global_p)||global_p<=0||global_p>alpha)stop("Audit global p threshold must be >0 and <= alpha.")
+  if(length(min_affected)!=1||!is.finite(min_affected)||min_affected<0||min_affected!=floor(min_affected))stop("Invalid audit affected-participant threshold.")
+  if(!nrow(site_results$results))stop("V06 site analysis unavailable; inspect site_fisher_methods.txt. Stable audit PNGs were not replaced.")
+  stage<-file.path(out,"audit_assets");dir.create(stage,recursive=TRUE,showWarnings=FALSE)
+  x<-results[which(results$window==window & results$level=="term" & results$p_raw<global_p &
+    results$vaccine_n+results$placebo_n>min_affected),,drop=FALSE]
+  x<-x[order(x$p_raw,x$deviation),,drop=FALSE]
+  sites<-site_results$results
+  s<-sites[which(sites$window==window & sites$level=="site_category" & sites$total_records>=site_min_records & sites$p_raw<alpha),,drop=FALSE]
+  s<-s[order(s$p_raw,s$SITEID),,drop=FALSE]
+  d<-den[den$window==window,]
+  n<-setNames(d$N,d$arm)
+  gsubtitle<-paste0("Selection: >",min_affected," affected participants across arms; raw p < ",format(global_p,scientific=FALSE,trim=TRUE),".")
+  gfooter<-paste0("Cells: affected participants (% of arm). Randomized denominators: mRNA-1273 ",dv_audit_num(n['mRNA-1273']),
+    "; placebo ",dv_audit_num(n['Placebo']),". Difference = vaccine minus placebo, in percentage points (pp); pointwise 95% Newcombe CI. Holm p retains the original all-term testing family across analyzed windows/releases, before display filtering. ",sum(x$p_holm<alpha,na.rm=TRUE)," of ",nrow(x)," selected rows have Holm p < ",alpha,".")
+  ssubtitle<-paste0("Type-specific comparisons with >=",site_min_records," records across arms and two-sided Fisher p < ",alpha,"; ",length(unique(s$SITEID))," sites.")
+  sfooter<-paste0("Cells: affected participants / within-site randomized-arm denominator (%). Records are a separate volume filter; repeated records do not increase the affected count. Difference = vaccine minus placebo (pp); pointwise 95% Newcombe CI. Holm p retains all site/type tests across analyzed windows/releases before filtering. ",sum(s$p_holm<alpha,na.rm=TRUE)," of ",nrow(s)," selected rows have Holm p < ",alpha,".")
+  a<-dv_audit_table(x,"V05","V05_imbalanced_deviations",stage,dpi,window,gsubtitle,gfooter)
+  b<-dv_audit_table(s,"V06","V06_site_deviation_imbalances",stage,dpi,window,ssubtitle,sfooter,site=TRUE)
+  file<-"V07_weekly_staff_deviations.png"
+  dims<-dv_audit_png(file.path(stage,file),function()dv_audit_weekly(weekly_results$data,weekly_results$coverage,
+    weekly_results$breakdown,weekly_window,unblinding_start),height=11.5,dpi=dpi)
+  c<-data.frame(visual="V07",file=file,page=1L,pages=1L,window=weekly_window,rows_on_page=NA_integer_,selected_comparisons=NA_integer_,width_px=dims[1],height_px=dims[2],dpi=dpi)
+  manifest<-rbind(a,b,c)
+  manifest$generated_at<-format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z")
+  manifest$run_directory<-normalizePath(out,winslash="/")
+  manifest$source_manifest_md5<-unname(tools::md5sum(file.path(out,"source_manifest.csv")))
+  manifest$md5<-unname(tools::md5sum(file.path(stage,manifest$file)))
+  dv_csv(manifest,file.path(stage,"V05_V07_deviations_manifest.csv"))
+  dv_csv(x,file.path(stage,"V05_deviations_data.csv"));dv_csv(s,file.path(stage,"V06_sites_data.csv"))
+  weekly<-weekly_results$data;coverage<-weekly_results$coverage;breakdown<-weekly_results$breakdown
+  dv_csv(weekly[weekly$window==weekly_window & weekly$category=="ANY_OF_SEVEN",],file.path(stage,"V07_weekly_data.csv"))
+  dv_csv(coverage[coverage$window==weekly_window & coverage$category=="ANY_OF_SEVEN",],file.path(stage,"V07_coverage_data.csv"))
+  dv_csv(breakdown[breakdown$window==weekly_window & breakdown$category=="ANY_OF_SEVEN",],file.path(stage,"V07_before_after_data.csv"))
+  writeLines(c("V05-V07: PRINT / SUBSTACK AUDIT ASSETS",
+    "All PNGs are 8.5 inches wide, opaque white, default 300 dpi = 2550 pixels wide.",
+    "Tables wrap full source descriptions and paginate at readable font sizes; continuation names end _02, _03, etc. All selected rows are retained.",
+    paste0("V05 window: ",window,". ",gsubtitle),
+    "V05 uses the narrower display selection in the current report. This does not change alpha or filter the full global analysis outputs. Counts are recomputed from input data, never hardcoded.",
+    paste0("V06 window: ",window,". ",ssubtitle),
+    "V06 screens the seven predefined staff-related categories, separately; the combined ANY_OF_SEVEN site test is not displayed in V06.",
+    paste0("V07 window: ",weekly_window,"; all seven categories and sites, without volume/p-value filtering. Dashed marker: ",unblinding_start,"."),
+    "V07 includes both the exact-date calendar split and participant UBLDDT split. Full follow-up retains original randomized arms after crossover.",
+    "Global/site tests are unaltered. Holm adjustment covers the original families across all successfully analyzed windows/releases, BEFORE the audit display filters. Results can differ when release coverage differs.",
+    "Matching CSVs preserve unrounded numeric results. Source hashes and complete methods remain in the run directory, linked by the manifest.",
+    "No unavailable requested window is silently replaced. Set PHMPT_AUDIT_WINDOW/PHMPT_AUDIT_WEEKLY_WINDOW explicitly for other windows.",
+    "Stable images are published only after all requested PNGs validate. This script refreshes only its named V05-V07 assets; V01-V04 and other assets are retained."),file.path(stage,"V05_V07_deviations_README.txt"))
+  files<-c(manifest$file,"V05_V07_deviations_manifest.csv","V05_V07_deviations_README.txt","V05_deviations_data.csv","V06_sites_data.csv","V07_weekly_data.csv","V07_coverage_data.csv","V07_before_after_data.csv")
+  pattern<-"^(V05_imbalanced_deviations(_[0-9]+)?[.]png|V06_site_deviation_imbalances(_[0-9]+)?[.]png|V07_weekly_staff_deviations[.]png|V05_V07_deviations_(manifest[.]csv|README[.]txt)|V05_deviations_data[.]csv|V06_sites_data[.]csv|V07_(weekly|coverage|before_after)_data[.]csv)$"
+  destination<-dv_path(root,asset_dir)
+  dv_audit_publish(stage,destination,files,pattern)
+  message("Audit PNGs: ",destination," (V05-V07, ",dpi," dpi; ",nrow(manifest)," images)")
+  list(directory=destination,manifest=manifest)
+}
+
+
 analyse_deviations <- function(root="",releases=c("EUA","Prod"),adsl_files=c(EUA="",Prod=""),
   dv_files=c(EUA="",Prod=""),addv_files=c(EUA="",Prod=""),output_dir="",
   eua_cutoff="2020-11-25",bla_cutoff="2021-03-26",start_basis="randomization",alpha=.05,
   expected_min=5,min_randomized=30000L,csv_encoding="auto",numeric_date_origin="",excel_fr=TRUE,
-  site_min_records=20L,weekly_png_dpi=300L,unblinding_start="2020-12-14") {
+  site_min_records=20L,weekly_png_dpi=300L,unblinding_start="2020-12-14",
+  audit_asset_dir="audit_assets",audit_dpi=300L,audit_window="Prod_BLINDED",
+  audit_weekly_window="Prod_ALL_FOLLOWUP",audit_min_affected=40L,audit_global_p=0.000001) {
   root<-dv_root(root)
   if(!all(releases%in%c("EUA","Prod"))||anyDuplicated(releases))stop("Choose distinct EUA/Prod releases.")
   if(!start_basis%in%c("randomization","first_dose"))stop("Invalid start_basis.")
@@ -989,7 +1278,10 @@ analyse_deviations <- function(root="",releases=c("EUA","Prod"),adsl_files=c(EUA
   dv_html(results,den,status,notes,out,alpha);dv_pdf(results,den,notes,out,alpha)
   site_results<-dv_site_finish(site_runs,out,status,alpha,site_min_records,excel_fr,start_basis)
   weekly_results<-dv_weekly_finish(weekly_runs,out,status,eua_cutoff,weekly_png_dpi,excel_fr,start_basis,unblinding_start,do.call(rbind,unblinding_audits))
-  writeLines(c("MODERNA P301 DEVIATION ANALYSIS v1.3.0","",notes,"",
+  audit_assets<-dv_export_audit(results,den,site_results,weekly_results,root,out,alpha,site_min_records,
+    unblinding_start,audit_asset_dir,audit_dpi,audit_window,audit_weekly_window,audit_min_affected,audit_global_p)
+  writeLines(c("MODERNA P301 DEVIATION ANALYSIS v1.4.0","",notes,"",
+    "AUDIT PNG OUTPUTS: V05_imbalanced_deviations.png; V06_site_deviation_imbalances.png; V07_weekly_staff_deviations.png in project audit_assets. Tables may continue as _02, _03, etc. Data CSVs, manifest and selection rules accompany them. Default 2550 px wide / 300 dpi. Original full results are preserved.",
     "OUTPUTS: deviation_imbalances.pdf (A4 landscape); deviation_imbalances.html (print CSS); deviations_all_tests.csv (all results, including nonsignificant); deviations_imbalanced.csv (nominal p<alpha term rows); denominators.csv; release_status.csv; source_manifest.csv.",
     "SITE OUTPUTS: site_fisher_imbalances.pdf/html; site_fisher_all_tests.csv; site_fisher_volume_qualified.csv; site_fisher_imbalanced.csv; site_fisher_coverage.csv; site_deviation_mapping.csv; site_deviation_rules.csv; site_fisher_methods.txt. These cover the seven deviation types specified in the earlier audit, jointly and individually. The volume filter counts records; Fisher tests count affected participants against within-site randomized-arm denominators. No global-significance prefilter is applied. See site_fisher_methods.txt for multiplicity and interpretation.",
     "WEEKLY OUTPUTS: weekly_staff_deviations.pdf (A4 landscape vector charts); weekly_staff_deviations_*.png (one page per image, default 300 dpi); weekly_staff_deviations.csv (records, distinct affected participants and follow-up by arm/week/type); weekly_staff_deviations_coverage.csv; weekly_staff_deviations_methods.txt; weekly_staff_deviations_pages.csv. All sites and the seven specified types are retained, without a volume/significance filter. Combined and type-specific counts use Monday-Sunday bins by recorded deviation date, with original windows/caps. Separate windows/releases are never summed.",
@@ -1001,13 +1293,15 @@ analyse_deviations <- function(root="",releases=c("EUA","Prod"),adsl_files=c(EUA
     "This script intentionally does not reproduce the earlier audit's treated-subject population. Default is randomized participants from RANDDT; PHMPT_START='first_dose' selects a post-dose cohort from TR01SDT. Date caps and complete ADSL provenance are exported.",
     "METHOD REFERENCES: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/chisq.test.html ; https://stat.ethz.ch/R-manual/R-devel/library/stats/html/fisher.test.html ; https://stat.ethz.ch/R-manual/R-devel/library/stats/html/p.adjust.html ; Newcombe RG (1998), Statistics in Medicine 17:873-890, https://pubmed.ncbi.nlm.nih.gov/9595617/",
     "The PDF transliterates non-ASCII text for portable base-R fonts. HTML/CSV retain original UTF-8 wording."),file.path(out,"README.txt"),useBytes=TRUE)
-  dput(list(version="1.3.0",root=root,releases=releases,eua_cutoff=eua_cutoff,bla_cutoff=bla_cutoff,start_basis=start_basis,
-    alpha=alpha,expected_min=expected_min,min_randomized=min_randomized,csv_encoding=csv_encoding,numeric_date_origin=numeric_date_origin,site_min_records=site_min_records,weekly_png_dpi=weekly_png_dpi,unblinding_start=unblinding_start),file.path(out,"run_settings.R"))
+  dput(list(version="1.4.0",root=root,releases=releases,eua_cutoff=eua_cutoff,bla_cutoff=bla_cutoff,start_basis=start_basis,
+    alpha=alpha,expected_min=expected_min,min_randomized=min_randomized,csv_encoding=csv_encoding,numeric_date_origin=numeric_date_origin,site_min_records=site_min_records,weekly_png_dpi=weekly_png_dpi,unblinding_start=unblinding_start,
+    audit_asset_dir=audit_asset_dir,audit_dpi=audit_dpi,audit_window=audit_window,
+    audit_weekly_window=audit_weekly_window,audit_min_affected=audit_min_affected,audit_global_p=audit_global_p),file.path(out,"run_settings.R"))
   capture.output(sessionInfo(),file=file.path(out,"sessionInfo.txt"))
-  fs<-list.files(out,full.names=TRUE);dv_csv(data.frame(file=basename(fs),md5=unname(tools::md5sum(fs))),file.path(out,"output_checksums.csv"))
+  fs<-list.files(out,full.names=TRUE,recursive=TRUE);dv_csv(data.frame(file=substring(fs,nchar(out)+2),md5=unname(tools::md5sum(fs))),file.path(out,"output_checksums.csv"))
   message("Wrote ",nrow(selected)," nominal term signals; ",sum(selected$p_holm<alpha)," survive Holm correction.\n",normalizePath(out,winslash="/"))
   if(any(status$Status=="FAILED"))warning("Some requested releases FAILED: review release_status.csv. Outputs cover analyzed releases only.",call.=FALSE)
-  invisible(list(results=results,denominators=den,status=status,site_results=site_results,weekly_results=weekly_results,output_dir=out))
+  invisible(list(results=results,denominators=den,status=status,site_results=site_results,weekly_results=weekly_results,audit_assets=audit_assets,output_dir=out))
 }
 
 # The validated PHMPT P301 ADSL JMP reader is embedded below.
@@ -1107,11 +1401,14 @@ dv_read_jmp <- function(path, fields) {
 }
 
 # ---- RUN: select all and Run, or Source ----
-analyse_deviations(root=PHMPT_ROOT, releases=PHMPT_RELEASES,
+if(isTRUE(getOption("phmpt.autorun",TRUE)))analyse_deviations(root=PHMPT_ROOT, releases=PHMPT_RELEASES,
   adsl_files=PHMPT_ADSL_FILES, dv_files=PHMPT_DV_FILES, addv_files=PHMPT_ADDV_FILES,
   output_dir=PHMPT_OUTPUT_DIR, eua_cutoff=PHMPT_EUA_CUTOFF, bla_cutoff=PHMPT_BLA_CUTOFF,
   start_basis=PHMPT_START, alpha=PHMPT_ALPHA, expected_min=PHMPT_EXPECTED_MIN,
   min_randomized=PHMPT_MIN_RANDOMIZED, csv_encoding=PHMPT_CSV_ENCODING,
   numeric_date_origin=PHMPT_NUMERIC_DATE_ORIGIN, excel_fr=PHMPT_EXCEL_FR,
   site_min_records=PHMPT_SITE_MIN_RECORDS,weekly_png_dpi=PHMPT_WEEKLY_PNG_DPI,
-  unblinding_start=PHMPT_UNBLINDING_START)
+  unblinding_start=PHMPT_UNBLINDING_START,
+  audit_asset_dir=PHMPT_AUDIT_ASSET_DIR,audit_dpi=PHMPT_AUDIT_DPI,
+  audit_window=PHMPT_AUDIT_WINDOW,audit_weekly_window=PHMPT_AUDIT_WEEKLY_WINDOW,
+  audit_min_affected=PHMPT_AUDIT_MIN_AFFECTED,audit_global_p=PHMPT_AUDIT_GLOBAL_P)

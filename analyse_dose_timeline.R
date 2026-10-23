@@ -1,4 +1,4 @@
-# Moderna P301 - weekly dose 1 / dose 2 administrations - v1.0.0
+# Moderna P301 - weekly dose 1 / dose 2 administrations - v1.1.0
 # Stand-alone, R >= 4.3: save in your project root, then Select All / Run in RStudio.
 # Reads local ADSL: CSV, XPT, SAS7BDAT or the released P301 JMP format.
 # CSV/JMP and all exports need only base R. XPT/SAS7BDAT require haven.
@@ -16,6 +16,8 @@ PHMPT_CSV_ENCODING <- "auto"        # UTF-8-BOM, then Windows-1252 if decoding f
 PHMPT_NUMERIC_DATE_ORIGIN <- ""     # For unformatted CSV dates only; never guessed
 PHMPT_MIN_RANDOMIZED <- 30000L      # Reject subject subsets and incomplete extracts
 PHMPT_PNG_DPI <- 300L
+PHMPT_AUDIT_ASSET_DIR <- "audit_assets" # Relative to project root; stable V04 PNG
+PHMPT_AUDIT_DPI <- 300L                # 8.5-inch width = 2550 px at 300 dpi
 PHMPT_SHOW_VALUES <- FALSE          # Optional count labels above individual columns
 PHMPT_SHOW_CHART <- interactive()
 # Load functions without running: options(phmpt.autorun=FALSE) before source().
@@ -191,8 +193,135 @@ dt_chart <- function(weekly,totals,pop_n,population,cutoff,release,show_values=F
   }
 }
 
+# ---- AUDIT PNG EXPORTS: dedicated article-width layouts ----
+dt_audit_png <- function(path,draw,width=8.5,height=7,dpi=300L) {
+  if(length(dpi)!=1L||!is.finite(dpi)||dpi<150||dpi>600)
+    stop("PHMPT_AUDIT_DPI must be between 150 and 600.")
+  type<-if(capabilities("cairo"))"cairo" else if(.Platform$OS.type=="windows")"windows" else getOption("bitmapType")
+  success<-FALSE
+  grDevices::png(path,width=width,height=height,units="in",res=dpi,pointsize=13,bg="white",type=type)
+  device<-grDevices::dev.cur()
+  on.exit({if(device %in% grDevices::dev.list())grDevices::dev.off(device);if(!success&&file.exists(path))unlink(path)})
+  draw();grDevices::dev.off(device)
+  bytes<-readBin(path,"raw",n=file.info(path)$size)
+  if(length(bytes)<32L || !identical(bytes[1:8],as.raw(c(137,80,78,71,13,10,26,10))) ||
+     !identical(tail(bytes,12),as.raw(c(0,0,0,0,73,69,78,68,174,66,96,130))))stop("Incomplete PNG: ",path)
+  dims<-vapply(list(bytes[17:20],bytes[21:24]),function(b)sum(as.integer(b)*256^(3:0)),numeric(1))
+  if(any(abs(dims-round(c(width,height)*dpi))>1))stop("Unexpected PNG dimensions: ",path)
+  success<-TRUE;dims
+}
+dt_audit_publish <- function(stage,destination,files,owned_pattern) {
+  # Rendering/validation finishes before any stable copy is touched. Backups allow
+  # rollback if publishing fails partway through (e.g. a file is open in Windows).
+  dir.create(destination,recursive=TRUE,showWarnings=FALSE)
+  if(!dir.exists(destination))stop("Cannot create audit asset directory: ",destination)
+  if(identical(normalizePath(stage,winslash="/"),normalizePath(destination,winslash="/")))return(invisible(destination))
+  old<-list.files(destination,pattern=owned_pattern,full.names=FALSE)
+  backup<-tempfile("audit_backup_",tmpdir=stage);dir.create(backup)
+  if(length(old)&&!all(file.copy(file.path(destination,old),backup,overwrite=TRUE)))
+    stop("Cannot back up previous audit assets; stable files were not changed.")
+  complete<-FALSE
+  on.exit({
+    if(!complete) {
+      unlink(file.path(destination,setdiff(files,old)))
+      if(length(old)&&!all(file.copy(file.path(backup,old),destination,overwrite=TRUE)))
+        warning("Could not fully restore earlier audit assets; backup retained at ",backup)
+    } else unlink(backup,recursive=TRUE)
+  })
+  for(name in files) {
+    src<-file.path(stage,name);dst<-file.path(destination,name)
+    if(!file.copy(src,dst,overwrite=TRUE)||unname(tools::md5sum(src))!=unname(tools::md5sum(dst)))
+      stop("Could not publish audit asset: ",dst)
+  }
+  obsolete<-setdiff(old,files)
+  if(length(obsolete)&&unlink(file.path(destination,obsolete))!=0L)
+    stop("Could not remove obsolete audit continuation pages.")
+  complete<-TRUE;invisible(destination)
+}
+dt_audit_num <- function(x) format(x,big.mark=",",scientific=FALSE,trim=TRUE)
+dt_audit_wrap <- function(text,width,size=11.5,bold=FALSE) {
+  # Measure actual glyph widths; avoid clipping long descriptions or long tokens.
+  measure<-function(s)grid::convertWidth(grid::grobWidth(grid::textGrob(s,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain"))),"in",valueOnly=TRUE)
+  words<-strsplit(gsub("[[:space:]]+"," ",trimws(text))," ",fixed=TRUE)[[1]]
+  lines<-character();line<-""
+  for(word in words) {
+    candidate<-paste(c(if(nzchar(line))line,word),collapse=" ")
+    if(measure(candidate)<=width){line<-candidate;next}
+    if(nzchar(line)){lines<-c(lines,line);line<-""}
+    while(nchar(word)>1L&&measure(word)>width) {
+      n<-nchar(word)-1L
+      while(n>1L&&measure(substr(word,1,n))>width)n<-n-1L
+      lines<-c(lines,substr(word,1,n));word<-substring(word,n+1L)
+    }
+    line<-word
+  }
+  paste(c(lines,line),collapse="\n")
+}
+dt_audit_text <- function(text,x,y,size=11.5,bold=FALSE,col="#25343D",just=c("left","top")) {
+  grid::grid.text(text,x=grid::unit(x,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),just=just,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain",col=col,lineheight=1.14))
+}
+
+dt_audit_chart <- function(weekly,totals,pop_n,population,cutoff,release) {
+  old<-par(no.readonly=TRUE);on.exit(par(old))
+  par(mai=c(2.0,1.02,1.35,.25),mgp=c(2.9,.55,0),family="sans",las=1,bty="n",xaxs="i",yaxs="i")
+  weeks<-as.Date(weekly$week_start);x<-as.numeric(weeks)
+  vals<-c(weekly$dose_1,weekly$dose_2)
+  ymax<-max(pretty(c(0,max(1,vals)*1.15),n=5))
+  plot(range(x)+c(-5,5),c(0,ymax),type="n",axes=FALSE,xlab="",ylab="")
+  ticks<-pretty(c(0,ymax),n=5);ticks<-ticks[ticks>=0 & ticks<=ymax]
+  abline(h=ticks,col="#E1E6E9",lwd=.7)
+  rect(x-2.7,0,x-.2,weekly$dose_1,col="#1E667D",border=NA)
+  rect(x+.2,0,x+2.7,weekly$dose_2,col="#D27C34",border=NA)
+  axis(2,at=ticks,labels=dt_n(ticks),tick=FALSE,cex.axis=.9)
+  label<-seq(1,length(x),by=max(1L,ceiling(length(x)/11)))
+  axis(1,at=x[label],labels=FALSE,tck=-.015,col="#74838C")
+  text(x[label],-.025*ymax,dt_label(weeks[label]),srt=45,adj=1,xpd=NA,cex=.88)
+  mtext("Dose administrations",side=2,line=3.35,las=0,cex=.95)
+  legend("topright",legend=paste0(c("Dose 1: ","Dose 2: "),dt_n(totals$n_administered)),
+    fill=c("#1E667D","#D27C34"),border=NA,bty="n",cex=.95,inset=.015)
+  grid::pushViewport(grid::viewport())
+  dt_audit_text("V04  Weekly dose 1 and dose 2 administrations",.35,.25,17,TRUE,col="#172F3C")
+  dt_audit_text(paste0("Moderna P301 | ",if(population=="randomized")"Randomized population" else "All ADSL participants",
+    ": ",dt_n(pop_n)),.35,.69,12.2)
+  dt_audit_text(paste0(release," data cutoff: ",cutoff," | mRNA-1273 and placebo combined"),.35,.99,11.5)
+  dt_audit_text("Monday-start weeks, labelled by their first day. Original blinded study doses only.",.35,5.64,11.2)
+  for(i in seq_len(nrow(totals)))dt_audit_text(paste0("Dose ",totals$dose[i],": ",dt_n(totals$n_administered[i]),
+    " administrations | ",totals$first_date[i]," to ",totals$last_date[i]),.35,5.97+.28*(i-1),11.2)
+  dt_audit_text("Open-label crossover doses are excluded. Zero-dose participants contribute no columns.",.35,6.6,10.6,col="#52616C")
+  grid::popViewport()
+}
+dt_export_audit <- function(weekly,totals,pop_n,population,cutoff,release,source,root,out,
+    asset_dir="audit_assets",dpi=300L) {
+  stage<-file.path(out,"audit_assets");dir.create(stage,recursive=TRUE,showWarnings=FALSE)
+  name<-"V04_weekly_dose_administrations.png"
+  dims<-dt_audit_png(file.path(stage,name),function()dt_audit_chart(weekly,totals,pop_n,population,cutoff,release),height=7,dpi=dpi)
+  manifest<-data.frame(visual="V04",file=name,width_px=dims[1],height_px=dims[2],dpi=dpi,
+    release=release,cutoff=cutoff,population=population,cohort_n=pop_n,source_adsl_md5=source$md5,
+    generated_at=format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),run_directory=normalizePath(out,winslash="/"),
+    md5=unname(tools::md5sum(file.path(stage,name))))
+  dt_csv(manifest,file.path(stage,"V04_dose_manifest.csv"))
+  dt_csv(weekly,file.path(stage,"V04_weekly_dose_data.csv"))
+  writeLines(c("V04: WEEKLY ORIGINAL BLINDED DOSE ADMINISTRATIONS",
+    "8.5 x 7 inches, opaque white PNG; default 300 dpi = 2550 x 2100 pixels.",
+    "Use the original PNG for Substack/print, not a screenshot. Counts are identical to weekly_doses.csv.",
+    "Bars count dose administrations, grouped by dose; both randomized arms combined. Weeks start Monday.",
+    "Original dose dates only: dose 1 TR01SDT/DOSE1FL; dose 2 DOSE2DT/DOSE2FL. Crossover is excluded.",
+    "Source file/hash and cohort are recorded in the manifest and selected_adsl.csv in the run directory.",
+    "Only this script's named V04 files are refreshed in audit_assets. Other figures are retained."),
+    file.path(stage,"V04_dose_README.txt"))
+  files<-c(name,"V04_dose_manifest.csv","V04_weekly_dose_data.csv","V04_dose_README.txt")
+  destination<-dt_path(root,asset_dir)
+  dt_audit_publish(stage,destination,files,"^(V04_weekly_dose_administrations[.]png|V04_dose_(manifest[.]csv|README[.]txt)|V04_weekly_dose_data[.]csv)$")
+  message("Audit PNG: ",file.path(destination,name)," (",dpi," dpi)")
+  list(directory=destination,manifest=manifest)
+}
+
+
 analyse_dose_timeline <- function(root="",release="auto",adsl_file="",population="randomized",output_dir="",
-  encoding="auto",numeric_date_origin="",min_randomized=30000L,png_dpi=300L,show_values=FALSE,show_chart=FALSE) {
+  encoding="auto",numeric_date_origin="",min_randomized=30000L,png_dpi=300L,show_values=FALSE,show_chart=FALSE,
+  audit_asset_dir="audit_assets",audit_dpi=300L) {
   if(!population %in% c("randomized","all_adsl"))stop("Population must be randomized or all_adsl.")
   if(!is.numeric(png_dpi)||length(png_dpi)!=1L||!is.finite(png_dpi)||png_dpi<72||png_dpi>1200)stop("PNG DPI must be between 72 and 1200.")
   root<-dt_root(root)
@@ -244,7 +373,7 @@ analyse_dose_timeline <- function(root="",release="auto",adsl_file="",population
     grDevices::svg(file.path(out,"weekly_doses.svg"),width=297/25.4,height=210/25.4,family="sans")
     tryCatch(draw(),finally=grDevices::dev.off())
   }
-  readme<-c("MODERNA P301 - WEEKLY DOSE ADMINISTRATIONS - v1.0.0", "",
+  readme<-c("MODERNA P301 - WEEKLY DOSE ADMINISTRATIONS - v1.1.0", "",
     paste("Population:",population,"; ADSL participants:",nrow(x)),
     paste("Release:",selected$release,"; source cutoff:",format(x$CUTOFFDT[1])),
     paste("Selected file:",selected$manifest$path),paste("MD5:",selected$manifest$md5),"",
@@ -257,13 +386,16 @@ analyse_dose_timeline <- function(root="",release="auto",adsl_file="",population
     "Automatic selection prefers a complete production ADSL and its latest CUTOFFDT. EUA is a fallback and is never pooled with production. Conflicting latest-cutoff inputs require an explicit PHMPT_ADSL_FILE.",
     "CSV dates must be ISO, English SAS-style DDMMMYYYY, or use an explicitly documented numeric origin. Haven dates and JMP date metadata are decoded directly.",
     "CSV/JMP processing and plots use base R. XPT/SAS7BDAT require haven. The embedded JMP reader supports the released P301 fixed-width/Float64 format and stops on unsupported layouts.",
+    "AUDIT OUTPUT: audit_assets/V04_weekly_dose_administrations.png, with data CSV, provenance manifest and README; dedicated print/article layout (default 2550 px wide at 300 dpi).",
     "Outputs: weekly_doses.pdf/.png/.svg; weekly_doses.csv; weekly_doses_by_arm.csv; subject_dose_dates.csv; dose_totals_and_dates.csv; source and exception logs.",
     "Protocol/metadata reference: production P301 ADaM define.xml, ADSL TR01SDT, DOSE2DT, DOSE1FL, DOSE2FL and RANDFL derivations.","",
     capture.output(print(totals,row.names=FALSE)))
   writeLines(readme,file.path(out,"README.txt"));capture.output(sessionInfo(),file=file.path(out,"sessionInfo.txt"))
+  audit_assets<-dt_export_audit(weekly,totals,nrow(x),population,format(x$CUTOFFDT[1]),selected$release,
+    selected$manifest,root,out,audit_asset_dir,audit_dpi)
   if(show_chart)draw()
   message("Chart: ",pdfpath);message("Weekly CSV: ",file.path(out,"weekly_doses.csv"));print(totals,row.names=FALSE)
-  invisible(list(output_dir=out,weekly=weekly,totals=totals,events=event,selected=selected$manifest))
+  invisible(list(output_dir=out,weekly=weekly,totals=totals,events=event,selected=selected$manifest,audit_assets=audit_assets))
 }
 
 # ---- EMBEDDED P301 JMP READER ----
@@ -365,5 +497,6 @@ if(isTRUE(getOption("phmpt.autorun",TRUE))) {
   analyse_dose_timeline(root=PHMPT_ROOT,release=PHMPT_RELEASE,adsl_file=PHMPT_ADSL_FILE,
     population=PHMPT_POPULATION,output_dir=PHMPT_OUTPUT_DIR,encoding=PHMPT_CSV_ENCODING,
     numeric_date_origin=PHMPT_NUMERIC_DATE_ORIGIN,min_randomized=PHMPT_MIN_RANDOMIZED,
-    png_dpi=PHMPT_PNG_DPI,show_values=PHMPT_SHOW_VALUES,show_chart=PHMPT_SHOW_CHART)
+    png_dpi=PHMPT_PNG_DPI,show_values=PHMPT_SHOW_VALUES,show_chart=PHMPT_SHOW_CHART,
+    audit_asset_dir=PHMPT_AUDIT_ASSET_DIR,audit_dpi=PHMPT_AUDIT_DPI)
 }
