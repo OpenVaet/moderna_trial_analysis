@@ -4,5 +4,6 @@
 /prod_data/
 /.Rproj.user/
 /analysis/
+/audit_assets/
 /cache/
 moderna_trial_analysis.Rproj
