@@ -1449,7 +1449,7 @@ phmpt_anomaly_examples <- function(data_dir, output_dir=data_dir, high_cutoff=10
 # This formats existing calculations; no symptom, visit or PCR linkage is changed.
 phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   reference_start=32L, audit_results_dir=output_dir,
-  repo_url='https://github.com/OpenVaet/moderna_trial_analysis/blob/main') {
+  repo_url='https://github.com/OpenVaet/moderna_trial_analysis/blob/main', audit_root=PHMPT_ROOT) {
   dir.create(output_dir,recursive=TRUE,showWarnings=FALSE)
   if(length(start_paragraph)!=1L || is.na(start_paragraph) || start_paragraph<1)stop('Invalid starting paragraph')
   if(length(reference_start)!=1L || is.na(reference_start) || reference_start<1)stop('Invalid starting footnote')
@@ -1497,7 +1497,7 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
     q<-models[models$model==model & models$term==term & models$cluster_unit=='SITEID',,drop=FALSE]
     if(nrow(q)!=1L || !is.finite(q$OR)||!isTRUE(q$converged))NULL else q
   }
-  body<-character();plain<-character();number<-as.integer(start_paragraph);tables<-list();captions<-list();fig_index<-0L
+  body<-character();plain<-character();number<-as.integer(start_paragraph);tables<-list();audit_tables<-list();captions<-list();fig_index<-0L
   addh<-function(s){body<<-c(body,paste0('<h2>',esc(s),'</h2>'));plain<<-c(plain,s,'')}
   addp<-function(s,refs=integer()) {
     marker<-if(length(refs))paste0(' <sup>',paste0('<a href="#ref-',refs,'">',refs,'</a>',collapse=', '),'</sup>') else ''
@@ -1507,6 +1507,7 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   }
   addtable<-function(title,headers,rows,note='') {
     rows<-as.data.frame(rows,stringsAsFactors=FALSE);names(rows)<-headers
+    audit_tables[[title]]<<-rows
     ht<-paste0('<table><caption>',esc(title),'</caption><thead><tr>',paste0('<th>',esc(headers),'</th>',collapse=''),'</tr></thead><tbody>',
       paste(apply(rows,1,function(z)paste0('<tr>',paste0('<td>',esc(z),'</td>',collapse=''),'</tr>')),collapse=''),'</tbody></table>')
     body<<-c(body,ht,if(nzchar(note))paste0('<p class="table-note">',esc(note),'</p>') else '')
@@ -1609,6 +1610,7 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
     'Values, tables, captions and statements about multiplicity are rebuilt from the selected export. Fixed example sites remain identified as illustrative.',
     'P-values retain full precision in the statistical CSVs; display thresholds run from <0.01 to <0.000001.',
     status),file.path(output_dir,'REPORT_INTEGRATION.txt'),useBytes=TRUE)
+  phmpt_export_audit_assets(audit_root,output_dir,data_dir,audit_tables)
   message('Copy-ready report section: ',normalizePath(file.path(output_dir,'report_insert.html'),winslash='/'))
   invisible(list(html=file.path(output_dir,'report_insert.html'),paragraph_start=start_paragraph,paragraph_end=number-1L,adjusted_models=!is.null(ma)&&cut==10))
 }
@@ -1781,7 +1783,7 @@ analyse_symptom_testing_heatmaps <- function(root="",release="auto",window="BLIN
     normalizePath(background_path,winslash="/"),format(Sys.time(),"%Y-%m-%dT%H:%M:%SZ",tz="UTC")))
   ws_csv(pars,file.path(out,"run_parameters.csv"))
   if(write_anomaly_examples || write_report_insert)phmpt_anomaly_examples(out,out,high_cutoff=anomaly_high_positivity)
-  if(write_report_insert)phmpt_report_insert(out,out,report_start,reference_start)
+  if(write_report_insert)phmpt_report_insert(out,out,report_start,reference_start,audit_root=root)
   message("[6/7] Drawing the two overview heatmaps and regional print pages")
   h<-max(11,3+length(sites)*.19)
   hm_pdf(file.path(out,"all_sites_heatmaps.pdf"),15.5,h)
@@ -1823,6 +1825,289 @@ ws_candidates <- function(root,release,domain) {
 }
 
 # ---- RUN: selecting/running the whole script executes the analysis ----
+# Audit PNG export extension v1.0.0 | 2026-10-23
+# Standalone; stable Vxx filenames in <project>/audit_assets plus this run's copy.
+# Long tables continue as _02.png, _03.png, etc. References remain in HTML/provenance.
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
+PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
+
+# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# Embedded in each script: no shared R file or browser is required.
+ax_clean <- function(x) {
+  x<-as.character(x);x[is.na(x)]<-"Unavailable"
+  x<-gsub("https?://[^[:space:]<>]+","",x,perl=TRUE)
+  x<-gsub("(?i)doi:[[:space:]]*[^[:space:]]+","",x,perl=TRUE)
+  x<-gsub("\\[[0-9]+([,; -]+[0-9]+)*\\]","",x,perl=TRUE)
+  trimws(x)
+}
+ax_path <- function(root,p)if(grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)",p))p else file.path(root,p)
+ax_root <- function(root="",out=getwd()) {
+  if(nzchar(root))return(normalizePath(root,winslash="/",mustWork=TRUE))
+  for(start in unique(c(getwd(),out))) {
+    p<-normalizePath(start,winslash="/",mustWork=TRUE)
+    repeat {
+      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(basename(p)=="analysis")return(dirname(p))
+      up<-dirname(p);if(up==p)break;p<-up
+    }
+  }
+  stop("Set PHMPT_ROOT or phmpt.root to the project folder for audit_assets exports.")
+}
+ax_read <- function(out,file,required=TRUE) {
+  p<-file.path(out,file)
+  if(!file.exists(p)){if(required)stop("Missing export: ",p);return(data.frame())}
+  read.csv(p,check.names=FALSE,stringsAsFactors=FALSE,fileEncoding="UTF-8-BOM")
+}
+ax_csv <- function(x,path) {
+  con<-file(path,"wb");on.exit(close(con));writeBin(as.raw(c(239,187,191)),con)
+  write.table(x,con,sep=",",row.names=FALSE,quote=TRUE,na="",qmethod="double")
+}
+ax_num <- function(x)ifelse(is.na(x),"Unavailable",format(x,big.mark=",",scientific=FALSE,trim=TRUE))
+ax_rate <- function(k,n,digits=1)ifelse(is.na(k)|is.na(n),"Unavailable",ifelse(n>0,
+  paste0(ax_num(k),"/",ax_num(n),sprintf(paste0(" (%.",digits,"f%%)"),100*k/n)),"0/0 (not estimable)"))
+ax_p <- function(p) {
+  z<-ifelse(is.finite(p),formatC(p,digits=4,format="f"),"Not estimable")
+  for(i in 2:6)z[is.finite(p)&p<10^-i]<-paste0("< ",format(10^-i,scientific=FALSE,trim=TRUE))
+  z
+}
+ax_text <- function(s,x,y,size=11.5,bold=FALSE,col="#25343D",just=c("left","top"))
+  grid::grid.text(ax_clean(s),x=grid::unit(x,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),just=just,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain",col=col,lineheight=1.12))
+ax_height <- function(s,size=11.5)grid::convertHeight(grid::grobHeight(grid::textGrob(s,
+  gp=grid::gpar(fontfamily="sans",fontsize=size,lineheight=1.12))),"in",valueOnly=TRUE)
+ax_wrap <- function(s,width,size=11.5,bold=FALSE) {
+  measure<-function(t)grid::convertWidth(grid::grobWidth(grid::textGrob(t,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain"))),"in",valueOnly=TRUE)
+  paragraphs<-strsplit(ax_clean(s),"\n",fixed=TRUE)[[1]];all<-character()
+  for(p in paragraphs) {
+    words<-strsplit(gsub("[[:space:]]+"," ",trimws(p))," ",fixed=TRUE)[[1]];lines<-character();line<-""
+    for(w in words) {
+      z<-paste(c(if(nzchar(line))line,w),collapse=" ")
+      if(measure(z)<=width){line<-z;next}
+      if(nzchar(line)){lines<-c(lines,line);line<-""}
+      while(nchar(w)>1L&&measure(w)>width) {
+        n<-nchar(w)-1L;while(n>1L&&measure(substr(w,1,n))>width)n<-n-1L
+        lines<-c(lines,substr(w,1,n));w<-substring(w,n+1L)
+      };line<-w
+    };all<-c(all,lines,line)
+  };paste(all,collapse="\n")
+}
+ax_begin <- function(root,out,owner,dpi=PHMPT_AUDIT_DPI,asset_dir=PHMPT_AUDIT_ASSET_DIR) {
+  if(length(dpi)!=1||!is.finite(dpi)||dpi<150||dpi>600)stop("Audit DPI must be 150-600.")
+  if(length(asset_dir)!=1||is.na(asset_dir)||!nzchar(asset_dir))stop("Audit asset directory is empty.")
+  a<-new.env(parent=emptyenv());a$root<-ax_root(root,out);a$out<-normalizePath(out,winslash="/",mustWork=TRUE)
+  a$owner<-owner;a$dpi<-dpi;a$dest<-ax_path(a$root,asset_dir)
+  a$stage<-tempfile(paste0("audit_",owner,"_"),tmpdir=out);dir.create(a$stage)
+  a$rows<-list();a$files<-character();a
+}
+ax_png <- function(a,id,slug,draw,height=7,page=1L,pages=1L,status="AVAILABLE",rows=NA_integer_) {
+  file<-paste0(id,"_",slug,if(page>1)sprintf("_%02d",page) else "",".png");path<-file.path(a$stage,file)
+  grDevices::png(path,width=8.5,height=height,units="in",res=a$dpi,pointsize=13,bg="white",
+    type=if(capabilities("cairo"))"cairo" else if(.Platform$OS.type=="windows")"windows" else getOption("bitmapType","Xlib"))
+  device<-grDevices::dev.cur();ok<-FALSE
+  on.exit({if(device%in%grDevices::dev.list())grDevices::dev.off(device);if(!ok)unlink(path)})
+  draw();grDevices::dev.off(device)
+  bytes<-readBin(path,"raw",n=file.info(path)$size)
+  if(length(bytes)<32||!identical(bytes[1:8],as.raw(c(137,80,78,71,13,10,26,10)))||
+    !identical(tail(bytes,12),as.raw(c(0,0,0,0,73,69,78,68,174,66,96,130))))stop("Incomplete PNG: ",path)
+  dims<-vapply(list(bytes[17:20],bytes[21:24]),function(b)sum(as.integer(b)*256^(3:0)),numeric(1))
+  if(any(abs(dims-round(c(8.5,height)*a$dpi))>1))stop("Invalid PNG dimensions.")
+  a$rows[[length(a$rows)+1L]]<-data.frame(visual=id,file=file,page=page,pages=pages,status=status,rows=rows,width_px=dims[1],height_px=dims[2],dpi=a$dpi)
+  a$files<-c(a$files,file);ok<-TRUE;invisible(path)
+}
+ax_data <- function(a,id,x,suffix="data") {
+  file<-paste0(id,"_",suffix,".csv");ax_csv(x,file.path(a$stage,file));a$files<-c(a$files,file)
+}
+ax_table <- function(a,id,slug,title,data,subtitle="",note="",widths=NULL,status="AVAILABLE",body_size=11.5,highlight=integer()) {
+  data<-as.data.frame(data,check.names=FALSE);ax_data(a,id,data)
+  if(!ncol(data))data<-data.frame(Result="No matching rows",check.names=FALSE)
+  if(!nrow(data)){data[1,]<-rep("No matching rows",ncol(data));status<-"NO_MATCHING_ROWS"}
+  if(is.null(widths))widths<-if(ncol(data)==3)c(.5,.25,.25) else rep(1/ncol(data),ncol(data))
+  widths<-widths/sum(widths)*7.8;left<-.35+c(0,head(cumsum(widths),-1))
+  tmp<-tempfile(fileext=".pdf");if(capabilities("cairo"))grDevices::cairo_pdf(tmp,width=8.5,height=13,family="sans") else grDevices::pdf(tmp,width=8.5,height=13)
+  dev<-grDevices::dev.cur();on.exit({if(dev%in%grDevices::dev.list())grDevices::dev.off(dev);unlink(tmp)})
+  wraprow<-function(z,size=body_size,bold=FALSE)vapply(seq_along(z),function(j)ax_wrap(z[j],widths[j]-.16,size,bold),character(1))
+  heads<-wraprow(names(data),11.2,TRUE);head_h<-max(vapply(heads,ax_height,numeric(1),size=11.2))+.22
+  title<-ax_wrap(paste(id,title),7.8,17,TRUE);sub<-ax_wrap(subtitle,7.8,11.2);foot<-ax_wrap(note,7.8,10.6)
+  top<-.25+ax_height(title,17)+.18+if(nzchar(sub))ax_height(sub,11.2)+.18 else 0
+  bottom<-.42+if(nzchar(foot))ax_height(foot,10.6) else 0
+  budget<-12.8-top-head_h-bottom
+  cells<-list();heights<-numeric();origin<-integer()
+  # Split a very long source row into labelled continuation rows instead of truncating it.
+  for(i in seq_len(nrow(data))) {
+    line<-lapply(wraprow(as.character(data[i,])),strsplit,split="\n",fixed=TRUE);line<-lapply(line,`[[`,1)
+    cap<-max(1L,floor((min(budget,5.5)-.25)/(body_size/72*1.4)))
+    nchunks<-max(1L,ceiling(max(lengths(line))/cap))
+    for(k in seq_len(nchunks)) {
+      row<-vapply(line,function(z)paste(z[seq_along(z)>=(k-1)*cap+1L & seq_along(z)<=k*cap],collapse="\n"),character(1))
+      if(k>1&&!nzchar(row[1]))row[1]<-paste0(as.character(data[i,1])," (continued)")
+      row[1]<-ax_wrap(row[1],widths[1]-.16,body_size)
+      h<-max(vapply(row,ax_height,numeric(1),size=body_size))+.24
+      if(h>budget)stop("Audit row is too tall even after wrapping: ",id)
+      cells[[length(cells)+1L]]<-row;heights<-c(heights,h);origin<-c(origin,i)
+    }
+  }
+  pages<-list();page<-integer();used<-0
+  for(i in seq_along(cells)) {
+    if(length(page)&&used+heights[i]>budget){pages[[length(pages)+1L]]<-page;page<-integer();used<-0}
+    page<-c(page,i);used<-used+heights[i]
+  };if(length(page))pages[[length(pages)+1L]]<-page
+  grDevices::dev.off(dev)
+  for(p in seq_along(pages)) {
+    ix<-pages[[p]];height<-max(3.6,top+head_h+sum(heights[ix])+bottom)
+    draw<-function() {
+      grid::grid.newpage();ax_text(title,.35,.25,17,TRUE,col="#17384B")
+      sy<-.25+ax_height(title,17)+.18;if(nzchar(sub))ax_text(sub,.35,sy,11.2)
+      y<-top
+      for(r in c(0L,ix)) {
+        h<-if(r==0)head_h else heights[r]
+        grid::grid.rect(x=grid::unit(.35,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),
+          width=grid::unit(7.8,"in"),height=grid::unit(h,"in"),just=c("left","top"),
+          gp=grid::gpar(fill=if(r==0)"#E8EFF3" else if(origin[r]%in%highlight)"#FFF0D9" else if(origin[r]%%2==0)"#F3F6F8" else "white",col=NA))
+        values<-if(r==0)heads else cells[[r]]
+        for(j in seq_along(values))ax_text(values[j],left[j]+.08,y+.11,if(r==0)11.2 else body_size,r==0||(r>0&&j==1&&origin[r]%in%highlight),
+          col=if(r!=0&&grepl("mRNA|Vaccine",names(data)[j],ignore.case=TRUE))"#1E667D" else if(r!=0&&grepl("Placebo",names(data)[j]))"#A65B22" else "#25343D")
+        y<-y+h
+      }
+      if(nzchar(foot))ax_text(foot,.35,y+.16,10.6,col="#52616C")
+      ax_text(paste0("Page ",p," of ",length(pages)),8.15,height-.17,9.5,col="#64737D",just=c("right","bottom"))
+    }
+    ax_png(a,id,slug,draw,height,p,length(pages),status,length(unique(origin[ix])))
+  };invisible(NULL)
+}
+ax_unavailable <- function(a,id,slug,title,reason)
+  ax_table(a,id,slug,title,data.frame(Status="Not available in this run",Reason=reason,check.names=FALSE),widths=c(.3,.7),status="UNAVAILABLE")
+ax_finish <- function(a,notes=character()) {
+  if(!length(a$rows))stop("No audit assets were rendered.")
+  manifest<-do.call(rbind,a$rows);manifest$renderer_version<-"1.0.0";manifest$generated_at<-format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z")
+  manifest$run_directory<-a$out;manifest$md5<-unname(tools::md5sum(file.path(a$stage,manifest$file)))
+  mf<-paste0(a$owner,"_manifest.csv");ax_csv(manifest,file.path(a$stage,mf))
+  readme<-paste0(a$owner,"_README.txt")
+  writeLines(c("AUDIT PNG ASSETS", "8.5 inches wide; 300 dpi by default (2550 pixels). White background. Upload PNG originals to Substack.",
+    "Tables wrap and continue as _02, _03, etc.; no rows are silently omitted. Printed figures have no bibliography, footnote markers, DOI or source URLs.",
+    "Statistical definitions, endpoint labels, observation windows and denominators remain on figures. Source references stay in the main report and original provenance/method exports.",
+    "A status of UNAVAILABLE is an explicit missing-input/model notice, not a zero finding. Data CSVs preserve the displayed inputs.",notes),file.path(a$stage,readme))
+  a$files<-unique(c(a$files,mf,readme));destinations<-unique(c(file.path(a$out,"audit_assets"),a$dest))
+  # Complete rendering precedes publishing. Only files listed in this owner's
+  # previous manifest and this batch may be replaced or removed.
+  for(dest in destinations) {
+    dir.create(dest,recursive=TRUE,showWarnings=FALSE)
+    oldmf<-file.path(dest,mf);old<-if(file.exists(oldmf))ax_read(dest,mf)$file else character()
+    owned_old<-old[grepl("^V[0-9]{2}_[A-Za-z0-9_]+[.]png$",old)]
+    existing<-intersect(unique(c(a$files,owned_old)),list.files(dest))
+    backup<-tempfile("backup_",tmpdir=a$stage);dir.create(backup)
+    if(length(existing)&&!all(file.copy(file.path(dest,existing),backup,overwrite=TRUE)))stop("Cannot back up previous audit assets.")
+    success<-FALSE
+    tryCatch({
+      for(f in a$files) {
+        if(!file.copy(file.path(a$stage,f),file.path(dest,f),overwrite=TRUE))stop("Cannot publish ",f)
+        if(unname(tools::md5sum(file.path(a$stage,f)))!=unname(tools::md5sum(file.path(dest,f))))stop("Audit copy mismatch: ",f)
+      }
+      stale<-setdiff(owned_old,a$files)
+      if(length(stale)&&unlink(file.path(dest,stale))!=0L)stop("Cannot remove obsolete continuation pages.")
+      success<-TRUE
+    },finally={if(!success){unlink(file.path(dest,setdiff(a$files,existing)));file.copy(file.path(backup,existing),dest,overwrite=TRUE)}})
+    unlink(backup,recursive=TRUE)
+  }
+  unlink(a$stage,recursive=TRUE)
+  message("Audit PNGs: ",a$dest," | ",paste(unique(manifest$visual),collapse=", "))
+  invisible(list(directory=a$dest,manifest=manifest))
+}
+
+phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
+  a<-ax_begin(root,out,"V15_V23_episodes")
+  fp<-ax_read(file.path(out,"anomaly_examples"),"figure_parameters.csv")
+  setting<-function(key,default){z<-fp$value[fp$parameter==key];if(length(z)==1)as.character(z) else default}
+  cut<-as.numeric(setting("high_positivity_threshold","10"));horizon<-as.numeric(setting("onset_to_pcr_days","7"))
+  window<-setting("window","UNKNOWN")
+  high_label<-paste0("High positivity >=",cut,"% | Low <",cut,"%")
+  gettab<-function(name)if(name%in%names(audit_tables))audit_tables[[name]] else NULL
+  specs<-list(
+    V15=c("Documented testing after symptomatic episodes","episode_testing_overview"),
+    V16=c("Adjusted comparisons during higher background positivity","adjusted_testing_models"),
+    V17=c("Sites with nominal testing imbalances during higher positivity","site_testing_screen"),
+    V22=c("Sites with opposing changes across positivity periods","site_positivity_interactions"))
+  for(id in names(specs)) {
+    s<-specs[[id]];d<-gettab(s[1])
+    if(is.null(d)){ax_unavailable(a,id,s[2],s[1],if(id=="V16")"No converged, input-hash-matched adjusted models. Run analyse_site_testing_imbalance.R on this export." else "No matching comparison in this run.");next}
+    if(id=="V22") {
+      d<-do.call(rbind,lapply(seq_len(nrow(d)),function(i)data.frame(Site=d[i,1],Arm=c("mRNA-1273","Placebo"),
+        `Low positivity`=c(d[i,2],d[i,4]),`High positivity`=c(d[i,3],d[i,5]),`Interaction p`=c(d[i,6],""),check.names=FALSE)))
+    }
+    note<-switch(id,V15="Endpoint: documented COVID visit plus qualifying PCR in the configured linkage window. Repeated episodes can contribute. Differences are vaccine minus placebo; missing background remains in overall totals.",
+      V16="Site-clustered uncertainty. Odds ratios compare testing in vaccine versus placebo episodes. Onset recording source is a sensitivity adjustment. Early post-dose symptoms remain in the main comparison.",
+      V17="First eligible high-positivity episode per participant. Fisher tests are two-sided; BH q uses the complete site family. Nominal signals select records for review.",
+      V22="Low/high are pooled positivity categories, not consecutive weeks. Every arm-period cell has at least ten episodes. Interaction p values account for repeated participants and are nominal.")
+    ax_table(a,id,s[2],s[1],d,paste0("COVID forms plus matched AEs | ",window," | ",high_label),note,
+      widths=switch(id,V15=c(.30,.25,.25,.20),V16=c(.45,.16,.23,.16),V17=c(.30,.22,.22,.13,.13),V22=c(.15,.20,.25,.25,.15)))
+  }
+  ex<-file.path(out,"anomaly_examples");sel<-ax_read(ex,"example_selection.csv",FALSE)
+  if(!nrow(sel))sel<-ax_read(ex,"selected_examples.csv",FALSE)
+  site<-function(kind,fallback){z<-sel$SITEID[sel$anomaly==kind];if(length(z)==1&&nzchar(z))z else fallback}
+  chart<-function(id,slug,title,subtitle,note,fun,height=6.6){
+    draw<-function(){old<-par(no.readonly=TRUE);on.exit(par(old));par(fig=c(0,1,.18,.80),mai=c(.65,.85,.3,.35),family="sans",las=1,bty="n",cex=1)
+      fun();grid::pushViewport(grid::viewport());ax_text(ax_wrap(paste(id,title),7.8,17,TRUE),.35,.24,17,TRUE,col="#17384B")
+      ax_text(ax_wrap(subtitle,7.8,11.2),.35,.82,11.2)
+      ax_text(ax_wrap(note,7.8,10.6),.35,height-.95,10.6,col="#52616C");grid::popViewport()}
+    ax_png(a,id,slug,draw,height)
+  }
+  col<-c("#1E667D","#A65B22")
+  bars<-function(k,n,labels,main="") {
+    pct<-ifelse(n>0,100*k/n,NA_real_);x<-barplot(pct,ylim=c(0,116),col=rep(col,length.out=length(k)),border=NA,axes=FALSE,names.arg=labels,cex.names=.86,space=.55)
+    axis(2,at=seq(0,100,20),labels=paste0(seq(0,100,20),"%"),tick=FALSE,cex.axis=.86)
+    abline(h=0,col="#9EA9AF");text(x,pmin(108,ifelse(is.finite(pct),pct,0)+6),ax_rate(k,n),cex=.84,font=2,xpd=NA)
+    if(nzchar(main))mtext(main,3,adj=0,line=.6,cex=.9);invisible(x)
+  }
+  z<-ax_read(ex,"first_high_episode_site_screen.csv");s<-site("coverage","US372");z<-z[z$SITEID==s,]
+  if(nrow(z)==1){chart("V18","site_testing_example",paste(s,"Documented testing after symptoms"),paste0("First eligible high-positivity episode per participant | ",high_label),
+    paste0("Visit-plus-PCR endpoint. Two-sided Fisher p ",ax_p(z$fisher_p),"; BH q ",ax_p(z$fisher_q_BH)," across the complete site family."),
+    function()bars(c(z$v_y,z$p_y),c(z$v_n,z$p_n),c("mRNA-1273","Placebo")));ax_data(a,"V18",z)
+  }else ax_unavailable(a,"V18","site_testing_example","Site testing example","Selected site not available.")
+  z<-ax_read(ex,"pcr_episode_review.csv");s<-site("pcr","US325")
+  if(nrow(z)) {
+    chart("V19","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("Vaccine-arm high-positivity episodes without the qualifying endpoint within ",horizon," days"),
+      paste0("Blue spans: reconstructed symptom interval. Circle: later completed PCR (labelled result). Cross: NOT DONE within ",horizon," days. Shading: audit linkage interval. Missing later tests remain explicitly labelled."),function(){
+      nn<-nrow(z);late<-z$days_to_later_pcr;duration<-as.numeric(as.Date(z$last_symptom)-as.Date(z$start));limit<-max(c(22,late,duration),na.rm=TRUE)+2
+      par(mai=c(.65,1.65,.3,.45));plot(c(-1,limit),c(.3,nn+.8),type="n",axes=FALSE,xlab="",ylab="")
+      rect(0,0,horizon,nn+1,col="#EDF1F3",border=NA);axis(1,at=pretty(c(0,limit)),cex.axis=.85);mtext("Days after first recorded symptom",1,line=2,cex=.86)
+      yy<-rev(seq_len(nn));axis(2,at=yy,labels=z$subject,tick=FALSE,cex.axis=.79)
+      for(i in seq_len(nn)) {
+        segments(0,yy[i],duration[i],yy[i],col=col[1],lwd=5);points(0,yy[i],pch=16,col=col[1],cex=.6)
+        if(is.finite(late[i])){points(late[i],yy[i],pch=21,bg="white",cex=1.1);text(late[i],yy[i]+.23,paste0("Day ",late[i],": ",tolower(z$later_result[i])),cex=.76,adj=c(.5,0),xpd=NA)}
+        else text(8,yy[i]+.23,"No later completed PCR",adj=c(0,0),cex=.76)
+        if(isTRUE(z$not_done_in_horizon[i])){nd<-suppressWarnings(as.numeric(z$first_not_done_day[i]));if(is.finite(nd))points(nd,yy[i],pch=4,lwd=1.8,cex=1.2)}
+      }
+    },height=max(6.6,3.5+.7*nrow(z)));ax_data(a,"V19",z)
+  }else ax_unavailable(a,"V19","delayed_pcr_example","PCR timing review","No selected episodes.")
+  z<-ax_read(ex,"recording_source_counts.csv");s<-site("source","US352")
+  d<-data.frame(Arm=z$arm,`Onset source`=z$source,`Share of episodes`=paste0(z$episodes," (",sprintf("%.1f%%",z$share_pct),")"),
+    `Tested within source`=ax_rate(z$tested,z$episodes),check.names=FALSE)
+  # A compact table gives both the composition and the within-source denominator.
+  ax_table(a,"V20","source_composition_example",paste(s,"Recording source and documented testing"),d,
+    paste0("All eligible episodes | Source at first symptom date | ",high_label),
+    "AE = AE records only; COVID_FORM = COVID forms only; AE; COVID_FORM = both on the first symptom date. The share column describes source composition; the final column describes visit-plus-PCR testing within that source.",widths=c(.19,.24,.27,.30))
+  z<-ax_read(ex,"postdose_timing_counts.csv");s<-site("timing","US372")
+  if(nrow(z)) {
+    chart("V21","postdose_timing_example",paste(s,"Testing by post-dose symptom timing"),paste0("All eligible episodes | Repeated episodes retained | ",high_label),
+      "Each pair shows mRNA-1273 (blue) and placebo (brown). Post-dose days 0-6 remain in the main comparison. The partition localizes the difference without identifying its cause.",function(){
+      labs<-rep(c("Vaccine","Placebo"),nrow(z));k<-as.vector(rbind(z$v_y,z$p_y));n<-as.vector(rbind(z$v_n,z$p_n));x<-bars(k,n,labs)
+      for(i in seq_len(nrow(z)))mtext(z$group[i],1,at=mean(x[(2*i-1):(2*i)]),line=2.2,cex=.82)
+    });ax_data(a,"V21",z)
+  }else ax_unavailable(a,"V21","postdose_timing_example","Testing by post-dose timing","No selected episodes.")
+  z<-ax_read(ex,"site_high_low_interactions.csv");s<-site("waves","US302");z<-z[z$subset=="ALL_EPISODES"&z$SITEID==s,]
+  if(nrow(z)==1) {
+    chart("V23","positivity_testing_example",paste(s,"Testing in lower and higher positivity"),paste0("All eligible episodes | Pooled categories | ",high_label),
+      paste0("Vaccine change minus placebo change: ",sprintf("%+.1f",z$difference_in_changes_pp)," percentage points. Participant-clustered interaction p ",ax_p(z$interaction_p)," (nominal). Lines connect pooled categories, not successive calendar weeks."),function(){
+      plot(c(.65,2.35),c(0,106),type="n",axes=FALSE,xlab="",ylab="");abline(h=seq(0,100,20),col="#E1E7EB")
+      axis(2,at=seq(0,100,20),labels=paste0(seq(0,100,20),"%"),tick=FALSE,cex.axis=.85);axis(1,at=1:2,labels=c("Lower positivity","Higher positivity"),tick=FALSE,cex.axis=.85)
+      for(i in 1:2){p<-if(i==1)"v" else "p";k<-unlist(z[paste0(p,c("_low_y","_high_y"))],use.names=FALSE);n<-unlist(z[paste0(p,c("_low_n","_high_n"))],use.names=FALSE)
+        y<-100*k/n;lines(1:2,y,col=col[i],lwd=2);points(1:2,y,pch=16,col=col[i]);other<-if(i==1)100*c(z$p_low_y/z$p_low_n,z$p_high_y/z$p_high_n) else 100*c(z$v_low_y/z$v_low_n,z$v_high_y/z$v_high_n);text(1:2,y+ifelse(y>=other,8,-8),ax_rate(k,n),col=col[i],cex=.87,font=2)}
+      legend("topright",c("mRNA-1273","Placebo"),col=col,lwd=2,bty="n",cex=.86)
+    });ax_data(a,"V23",z)
+  }else ax_unavailable(a,"V23","positivity_testing_example","Testing across positivity periods","Selected site unavailable.")
+  ax_finish(a)
+}
+
 if(isTRUE(getOption("phmpt.autorun",TRUE))) {
   PHMPT_HEATMAP_RESULT <- analyse_symptom_testing_heatmaps(root=PHMPT_ROOT,release=PHMPT_RELEASE,window=PHMPT_WINDOW,
     adsl_file=PHMPT_ADSL_FILE,ae_file=PHMPT_AE_FILE,symptoms_file=PHMPT_SYMPTOMS_FILE,mb_file=PHMPT_MB_FILE,

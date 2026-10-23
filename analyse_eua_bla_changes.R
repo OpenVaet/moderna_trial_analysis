@@ -347,6 +347,8 @@ analyse_eua_bla_changes <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_DIR,
  sc_csv(cv,file.path(out,'coverage.csv'));sc_csv(mf,file.path(out,'input_manifest.csv'))
  sc_csv(data.frame(parameter=c('version','EUA_cutoff','BLA_target_cutoff','EUA_submission','BLA_submission','allow_csv','candidate_detail_limit','candidate_date_tolerance'),value=c('1.0.0',PHMPT_EUA_CUTOFF,PHMPT_BLA_CUTOFF,PHMPT_SUBMISSIONS['EUA'],PHMPT_SUBMISSIONS['BLA'],PHMPT_ALLOW_CSV_FALLBACK,PHMPT_MAX_CANDIDATES_PER_RECORD,PHMPT_CANDIDATE_DATE_TOLERANCE)),file.path(out,'parameters.csv'))
  capture.output(sessionInfo(),file=file.path(out,'sessionInfo.txt'));sc_report(results,cv,mf,roster,out)
+ sc_audit_auxiliary(root,out,ra,rb)
+ sc_export_snapshot_assets(root,out)
  failed<-any(cv$status=='FAILED'|cv$required&cv$status!='COMPARED');status<-if(failed)'PARTIAL - required domain missing or failed' else if(any(cv$status!='COMPARED'))'COMPLETE_WITH_OPTIONAL_GAPS' else 'COMPLETE'
  writeLines(status,file.path(out,'RUN_STATUS.txt'));complete<-TRUE
  message('Report: ',file.path(out,'snapshot_changes_report.html'))
@@ -499,4 +501,310 @@ ws_read_jmp <- function(path, fields, optional=character()) {
 
 
 # ---- RUN: executes when the complete standalone script is run ----
+# Audit PNG export extension v1.0.0 | 2026-10-23
+# Standalone; stable Vxx filenames in <project>/audit_assets plus this run's copy.
+# Long tables continue as _02.png, _03.png, etc. References remain in HTML/provenance.
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
+PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
+
+# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# Embedded in each script: no shared R file or browser is required.
+ax_clean <- function(x) {
+  x<-as.character(x);x[is.na(x)]<-"Unavailable"
+  x<-gsub("https?://[^[:space:]<>]+","",x,perl=TRUE)
+  x<-gsub("(?i)doi:[[:space:]]*[^[:space:]]+","",x,perl=TRUE)
+  x<-gsub("\\[[0-9]+([,; -]+[0-9]+)*\\]","",x,perl=TRUE)
+  trimws(x)
+}
+ax_path <- function(root,p)if(grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)",p))p else file.path(root,p)
+ax_root <- function(root="",out=getwd()) {
+  if(nzchar(root))return(normalizePath(root,winslash="/",mustWork=TRUE))
+  for(start in unique(c(getwd(),out))) {
+    p<-normalizePath(start,winslash="/",mustWork=TRUE)
+    repeat {
+      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(basename(p)=="analysis")return(dirname(p))
+      up<-dirname(p);if(up==p)break;p<-up
+    }
+  }
+  stop("Set PHMPT_ROOT or phmpt.root to the project folder for audit_assets exports.")
+}
+ax_read <- function(out,file,required=TRUE) {
+  p<-file.path(out,file)
+  if(!file.exists(p)){if(required)stop("Missing export: ",p);return(data.frame())}
+  read.csv(p,check.names=FALSE,stringsAsFactors=FALSE,fileEncoding="UTF-8-BOM")
+}
+ax_csv <- function(x,path) {
+  con<-file(path,"wb");on.exit(close(con));writeBin(as.raw(c(239,187,191)),con)
+  write.table(x,con,sep=",",row.names=FALSE,quote=TRUE,na="",qmethod="double")
+}
+ax_num <- function(x)ifelse(is.na(x),"Unavailable",format(x,big.mark=",",scientific=FALSE,trim=TRUE))
+ax_rate <- function(k,n,digits=1)ifelse(is.na(k)|is.na(n),"Unavailable",ifelse(n>0,
+  paste0(ax_num(k),"/",ax_num(n),sprintf(paste0(" (%.",digits,"f%%)"),100*k/n)),"0/0 (not estimable)"))
+ax_p <- function(p) {
+  z<-ifelse(is.finite(p),formatC(p,digits=4,format="f"),"Not estimable")
+  for(i in 2:6)z[is.finite(p)&p<10^-i]<-paste0("< ",format(10^-i,scientific=FALSE,trim=TRUE))
+  z
+}
+ax_text <- function(s,x,y,size=11.5,bold=FALSE,col="#25343D",just=c("left","top"))
+  grid::grid.text(ax_clean(s),x=grid::unit(x,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),just=just,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain",col=col,lineheight=1.12))
+ax_height <- function(s,size=11.5)grid::convertHeight(grid::grobHeight(grid::textGrob(s,
+  gp=grid::gpar(fontfamily="sans",fontsize=size,lineheight=1.12))),"in",valueOnly=TRUE)
+ax_wrap <- function(s,width,size=11.5,bold=FALSE) {
+  measure<-function(t)grid::convertWidth(grid::grobWidth(grid::textGrob(t,
+    gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold" else "plain"))),"in",valueOnly=TRUE)
+  paragraphs<-strsplit(ax_clean(s),"\n",fixed=TRUE)[[1]];all<-character()
+  for(p in paragraphs) {
+    words<-strsplit(gsub("[[:space:]]+"," ",trimws(p))," ",fixed=TRUE)[[1]];lines<-character();line<-""
+    for(w in words) {
+      z<-paste(c(if(nzchar(line))line,w),collapse=" ")
+      if(measure(z)<=width){line<-z;next}
+      if(nzchar(line)){lines<-c(lines,line);line<-""}
+      while(nchar(w)>1L&&measure(w)>width) {
+        n<-nchar(w)-1L;while(n>1L&&measure(substr(w,1,n))>width)n<-n-1L
+        lines<-c(lines,substr(w,1,n));w<-substring(w,n+1L)
+      };line<-w
+    };all<-c(all,lines,line)
+  };paste(all,collapse="\n")
+}
+ax_begin <- function(root,out,owner,dpi=PHMPT_AUDIT_DPI,asset_dir=PHMPT_AUDIT_ASSET_DIR) {
+  if(length(dpi)!=1||!is.finite(dpi)||dpi<150||dpi>600)stop("Audit DPI must be 150-600.")
+  if(length(asset_dir)!=1||is.na(asset_dir)||!nzchar(asset_dir))stop("Audit asset directory is empty.")
+  a<-new.env(parent=emptyenv());a$root<-ax_root(root,out);a$out<-normalizePath(out,winslash="/",mustWork=TRUE)
+  a$owner<-owner;a$dpi<-dpi;a$dest<-ax_path(a$root,asset_dir)
+  a$stage<-tempfile(paste0("audit_",owner,"_"),tmpdir=out);dir.create(a$stage)
+  a$rows<-list();a$files<-character();a
+}
+ax_png <- function(a,id,slug,draw,height=7,page=1L,pages=1L,status="AVAILABLE",rows=NA_integer_) {
+  file<-paste0(id,"_",slug,if(page>1)sprintf("_%02d",page) else "",".png");path<-file.path(a$stage,file)
+  grDevices::png(path,width=8.5,height=height,units="in",res=a$dpi,pointsize=13,bg="white",
+    type=if(capabilities("cairo"))"cairo" else if(.Platform$OS.type=="windows")"windows" else getOption("bitmapType","Xlib"))
+  device<-grDevices::dev.cur();ok<-FALSE
+  on.exit({if(device%in%grDevices::dev.list())grDevices::dev.off(device);if(!ok)unlink(path)})
+  draw();grDevices::dev.off(device)
+  bytes<-readBin(path,"raw",n=file.info(path)$size)
+  if(length(bytes)<32||!identical(bytes[1:8],as.raw(c(137,80,78,71,13,10,26,10)))||
+    !identical(tail(bytes,12),as.raw(c(0,0,0,0,73,69,78,68,174,66,96,130))))stop("Incomplete PNG: ",path)
+  dims<-vapply(list(bytes[17:20],bytes[21:24]),function(b)sum(as.integer(b)*256^(3:0)),numeric(1))
+  if(any(abs(dims-round(c(8.5,height)*a$dpi))>1))stop("Invalid PNG dimensions.")
+  a$rows[[length(a$rows)+1L]]<-data.frame(visual=id,file=file,page=page,pages=pages,status=status,rows=rows,width_px=dims[1],height_px=dims[2],dpi=a$dpi)
+  a$files<-c(a$files,file);ok<-TRUE;invisible(path)
+}
+ax_data <- function(a,id,x,suffix="data") {
+  file<-paste0(id,"_",suffix,".csv");ax_csv(x,file.path(a$stage,file));a$files<-c(a$files,file)
+}
+ax_table <- function(a,id,slug,title,data,subtitle="",note="",widths=NULL,status="AVAILABLE",body_size=11.5,highlight=integer()) {
+  data<-as.data.frame(data,check.names=FALSE);ax_data(a,id,data)
+  if(!ncol(data))data<-data.frame(Result="No matching rows",check.names=FALSE)
+  if(!nrow(data)){data[1,]<-rep("No matching rows",ncol(data));status<-"NO_MATCHING_ROWS"}
+  if(is.null(widths))widths<-if(ncol(data)==3)c(.5,.25,.25) else rep(1/ncol(data),ncol(data))
+  widths<-widths/sum(widths)*7.8;left<-.35+c(0,head(cumsum(widths),-1))
+  tmp<-tempfile(fileext=".pdf");if(capabilities("cairo"))grDevices::cairo_pdf(tmp,width=8.5,height=13,family="sans") else grDevices::pdf(tmp,width=8.5,height=13)
+  dev<-grDevices::dev.cur();on.exit({if(dev%in%grDevices::dev.list())grDevices::dev.off(dev);unlink(tmp)})
+  wraprow<-function(z,size=body_size,bold=FALSE)vapply(seq_along(z),function(j)ax_wrap(z[j],widths[j]-.16,size,bold),character(1))
+  heads<-wraprow(names(data),11.2,TRUE);head_h<-max(vapply(heads,ax_height,numeric(1),size=11.2))+.22
+  title<-ax_wrap(paste(id,title),7.8,17,TRUE);sub<-ax_wrap(subtitle,7.8,11.2);foot<-ax_wrap(note,7.8,10.6)
+  top<-.25+ax_height(title,17)+.18+if(nzchar(sub))ax_height(sub,11.2)+.18 else 0
+  bottom<-.42+if(nzchar(foot))ax_height(foot,10.6) else 0
+  budget<-12.8-top-head_h-bottom
+  cells<-list();heights<-numeric();origin<-integer()
+  # Split a very long source row into labelled continuation rows instead of truncating it.
+  for(i in seq_len(nrow(data))) {
+    line<-lapply(wraprow(as.character(data[i,])),strsplit,split="\n",fixed=TRUE);line<-lapply(line,`[[`,1)
+    cap<-max(1L,floor((min(budget,5.5)-.25)/(body_size/72*1.4)))
+    nchunks<-max(1L,ceiling(max(lengths(line))/cap))
+    for(k in seq_len(nchunks)) {
+      row<-vapply(line,function(z)paste(z[seq_along(z)>=(k-1)*cap+1L & seq_along(z)<=k*cap],collapse="\n"),character(1))
+      if(k>1&&!nzchar(row[1]))row[1]<-paste0(as.character(data[i,1])," (continued)")
+      row[1]<-ax_wrap(row[1],widths[1]-.16,body_size)
+      h<-max(vapply(row,ax_height,numeric(1),size=body_size))+.24
+      if(h>budget)stop("Audit row is too tall even after wrapping: ",id)
+      cells[[length(cells)+1L]]<-row;heights<-c(heights,h);origin<-c(origin,i)
+    }
+  }
+  pages<-list();page<-integer();used<-0
+  for(i in seq_along(cells)) {
+    if(length(page)&&used+heights[i]>budget){pages[[length(pages)+1L]]<-page;page<-integer();used<-0}
+    page<-c(page,i);used<-used+heights[i]
+  };if(length(page))pages[[length(pages)+1L]]<-page
+  grDevices::dev.off(dev)
+  for(p in seq_along(pages)) {
+    ix<-pages[[p]];height<-max(3.6,top+head_h+sum(heights[ix])+bottom)
+    draw<-function() {
+      grid::grid.newpage();ax_text(title,.35,.25,17,TRUE,col="#17384B")
+      sy<-.25+ax_height(title,17)+.18;if(nzchar(sub))ax_text(sub,.35,sy,11.2)
+      y<-top
+      for(r in c(0L,ix)) {
+        h<-if(r==0)head_h else heights[r]
+        grid::grid.rect(x=grid::unit(.35,"in"),y=grid::unit(1,"npc")-grid::unit(y,"in"),
+          width=grid::unit(7.8,"in"),height=grid::unit(h,"in"),just=c("left","top"),
+          gp=grid::gpar(fill=if(r==0)"#E8EFF3" else if(origin[r]%in%highlight)"#FFF0D9" else if(origin[r]%%2==0)"#F3F6F8" else "white",col=NA))
+        values<-if(r==0)heads else cells[[r]]
+        for(j in seq_along(values))ax_text(values[j],left[j]+.08,y+.11,if(r==0)11.2 else body_size,r==0||(r>0&&j==1&&origin[r]%in%highlight),
+          col=if(r!=0&&grepl("mRNA|Vaccine",names(data)[j],ignore.case=TRUE))"#1E667D" else if(r!=0&&grepl("Placebo",names(data)[j]))"#A65B22" else "#25343D")
+        y<-y+h
+      }
+      if(nzchar(foot))ax_text(foot,.35,y+.16,10.6,col="#52616C")
+      ax_text(paste0("Page ",p," of ",length(pages)),8.15,height-.17,9.5,col="#64737D",just=c("right","bottom"))
+    }
+    ax_png(a,id,slug,draw,height,p,length(pages),status,length(unique(origin[ix])))
+  };invisible(NULL)
+}
+ax_unavailable <- function(a,id,slug,title,reason)
+  ax_table(a,id,slug,title,data.frame(Status="Not available in this run",Reason=reason,check.names=FALSE),widths=c(.3,.7),status="UNAVAILABLE")
+ax_finish <- function(a,notes=character()) {
+  if(!length(a$rows))stop("No audit assets were rendered.")
+  manifest<-do.call(rbind,a$rows);manifest$renderer_version<-"1.0.0";manifest$generated_at<-format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z")
+  manifest$run_directory<-a$out;manifest$md5<-unname(tools::md5sum(file.path(a$stage,manifest$file)))
+  mf<-paste0(a$owner,"_manifest.csv");ax_csv(manifest,file.path(a$stage,mf))
+  readme<-paste0(a$owner,"_README.txt")
+  writeLines(c("AUDIT PNG ASSETS", "8.5 inches wide; 300 dpi by default (2550 pixels). White background. Upload PNG originals to Substack.",
+    "Tables wrap and continue as _02, _03, etc.; no rows are silently omitted. Printed figures have no bibliography, footnote markers, DOI or source URLs.",
+    "Statistical definitions, endpoint labels, observation windows and denominators remain on figures. Source references stay in the main report and original provenance/method exports.",
+    "A status of UNAVAILABLE is an explicit missing-input/model notice, not a zero finding. Data CSVs preserve the displayed inputs.",notes),file.path(a$stage,readme))
+  a$files<-unique(c(a$files,mf,readme));destinations<-unique(c(file.path(a$out,"audit_assets"),a$dest))
+  # Complete rendering precedes publishing. Only files listed in this owner's
+  # previous manifest and this batch may be replaced or removed.
+  for(dest in destinations) {
+    dir.create(dest,recursive=TRUE,showWarnings=FALSE)
+    oldmf<-file.path(dest,mf);old<-if(file.exists(oldmf))ax_read(dest,mf)$file else character()
+    owned_old<-old[grepl("^V[0-9]{2}_[A-Za-z0-9_]+[.]png$",old)]
+    existing<-intersect(unique(c(a$files,owned_old)),list.files(dest))
+    backup<-tempfile("backup_",tmpdir=a$stage);dir.create(backup)
+    if(length(existing)&&!all(file.copy(file.path(dest,existing),backup,overwrite=TRUE)))stop("Cannot back up previous audit assets.")
+    success<-FALSE
+    tryCatch({
+      for(f in a$files) {
+        if(!file.copy(file.path(a$stage,f),file.path(dest,f),overwrite=TRUE))stop("Cannot publish ",f)
+        if(unname(tools::md5sum(file.path(a$stage,f)))!=unname(tools::md5sum(file.path(dest,f))))stop("Audit copy mismatch: ",f)
+      }
+      stale<-setdiff(owned_old,a$files)
+      if(length(stale)&&unlink(file.path(dest,stale))!=0L)stop("Cannot remove obsolete continuation pages.")
+      success<-TRUE
+    },finally={if(!success){unlink(file.path(dest,setdiff(a$files,existing)));file.copy(file.path(backup,existing),dest,overwrite=TRUE)}})
+    unlink(backup,recursive=TRUE)
+  }
+  unlink(a$stage,recursive=TRUE)
+  message("Audit PNGs: ",a$dest," | ",paste(unique(manifest$visual),collapse=", "))
+  invisible(list(directory=a$dest,manifest=manifest))
+}
+
+sc_audit_aux_read <- function(path,domain="ADSL") {
+  fields<-if(domain=="ADSL")c("STUDYID","USUBJID","RANDFL","TRT01P","CUTOFFDT") else c("STUDYID","USUBJID")
+  optional<-c("FASFL","SAFFL","MITTFL","PPROTFL","DOSE1FL","DOSE2FL","TR01SDT","DOSE2DT","RANDDT","FASEREAS","SAFEREAS","SITEID","ARM")
+  ext<-tolower(tools::file_ext(path))
+  x<-if(ext=="jmp")ws_read_jmp(path,fields,optional) else if(ext=="csv")
+    tryCatch(read.csv(path,check.names=FALSE,colClasses="character",fileEncoding="UTF-8-BOM"),error=function(e)read.csv(path,check.names=FALSE,colClasses="character",fileEncoding="windows-1252")) else {
+      if(!requireNamespace("haven",quietly=TRUE))stop("Package haven required for ",path)
+      if(ext=="xpt")haven::read_xpt(path) else if(ext=="sas7bdat")haven::read_sas(path) else stop("Unsupported auxiliary format.")
+    }
+  x<-as.data.frame(x);names(x)<-toupper(names(x));if(!all(fields%in%names(x)))stop("Missing auxiliary fields: ",path)
+  x<-x[sc_norm(x$STUDYID)=="MRNA-1273-P301",intersect(c(fields,optional),names(x)),drop=FALSE]
+  if(!nrow(x))stop("No P301 rows in auxiliary input.")
+  for(n in intersect(c("TR01SDT","DOSE2DT","RANDDT","CUTOFFDT"),names(x))) {
+    if(inherits(x[[n]],"POSIXt"))x[[n]]<-format(x[[n]],"%Y-%m-%d")
+    else if(inherits(x[[n]],"Date"))x[[n]]<-format(x[[n]],"%Y-%m-%d")
+    else if(is.numeric(x[[n]]))x[[n]]<-format(as.Date(x[[n]],origin="1960-01-01"),"%Y-%m-%d")
+    else {ii<-!is.na(x[[n]])&grepl("^-?[0-9]+([.]0+)?$",x[[n]]);if(any(ii)){if(!nzchar(PHMPT_CSV_DATE_ORIGIN))stop("Set PHMPT_CSV_DATE_ORIGIN for numeric auxiliary CSV dates.");x[[n]][ii]<-format(as.Date(as.numeric(x[[n]][ii]),origin=PHMPT_CSV_DATE_ORIGIN),"%Y-%m-%d")}}
+  }
+  x$subject<-sc_sid(x$USUBJID);if(anyDuplicated(x$subject))stop("Duplicate auxiliary subject IDs.")
+  x
+}
+sc_audit_auxiliary <- function(root,out,ra,rb) {
+  unlink(file.path(out,c("audit_EUA_ADSL_fields.csv","audit_BLA_ADSL_fields.csv","audit_BLA_DM_subjects.csv","audit_auxiliary_inputs.csv")))
+  log<-list();add<-function(domain,path,status,detail=""){log[[length(log)+1L]]<<-data.frame(domain=domain,path=path,status=status,detail=detail,md5=if(file.exists(path))unname(tools::md5sum(path)) else "")}
+  for(rel in c("EUA","BLA")) {
+    item<-if(rel=="EUA")ra else rb
+    if(is.null(item)){add(paste(rel,"ADSL"),"","UNAVAILABLE");next}
+    x<-tryCatch(sc_audit_aux_read(item$path),error=function(e)e)
+    if(inherits(x,"error")){add(paste(rel,"ADSL"),item$path,"UNAVAILABLE",conditionMessage(x));next}
+    ax_csv(x,file.path(out,paste0("audit_",rel,"_ADSL_fields.csv")));add(paste(rel,"ADSL"),item$path,"SELECTED")
+  }
+  explicit<-PHMPT_FILES$BLA$DM;if(is.null(explicit))explicit<-""
+  p<-if(nzchar(explicit))sc_path(root,explicit) else {
+    all<-list.files(file.path(root,"prod_data"),recursive=TRUE,full.names=TRUE,pattern="[.](csv|xpt|sas7bdat)$",ignore.case=TRUE)
+    all[grepl("(^|[_ -])dm([_. -]|$)",basename(all),ignore.case=TRUE)&grepl(paste0(PHMPT_SUBMISSIONS[['BLA']],"_"),basename(all),ignore.case=TRUE)]
+  }
+  selected<-NULL;conflict<-FALSE
+  for(path in p) {
+    x<-tryCatch(sc_audit_aux_read(path,"DM"),error=function(e)e)
+    if(inherits(x,"error")){add("BLA DM",path,"UNREADABLE",conditionMessage(x));next}
+    ids<-sort(x$subject)
+    if(is.null(selected)){selected<-ids;add("BLA DM",path,"SELECTED")}
+    else if(identical(ids,selected))add("BLA DM",path,"EQUIVALENT_SUBJECT_IDS")
+    else {conflict<-TRUE;add("BLA DM",path,"CONFLICTING_SUBJECT_IDS")}
+  }
+  if(!length(p))add("BLA DM","","UNAVAILABLE","No matching production submission DM")
+  if(!is.null(selected)&&!conflict)ax_csv(data.frame(subject=selected),file.path(out,"audit_BLA_DM_subjects.csv"))
+  if(conflict)warning("Conflicting BLA DM rosters: DM presence unavailable in audit figures; set PHMPT_FILES$BLA$DM.")
+  ax_csv(do.call(rbind,log),file.path(out,"audit_auxiliary_inputs.csv"))
+}
+sc_export_snapshot_assets <- function(root,out) {
+  a<-ax_begin(root,out,"V28_V32_snapshots");r<-ax_read(out,"subject_roster_comparison.csv")
+  dm<-ax_read(out,"audit_BLA_DM_subjects.csv",FALSE);old<-ax_read(out,"audit_EUA_ADSL_fields.csv",FALSE);new<-ax_read(out,"audit_BLA_ADSL_fields.csv",FALSE)
+  dmcheck<-file.exists(file.path(out,"audit_BLA_DM_subjects.csv"));dmcount<-function(ids)if(dmcheck)as.character(sum(ids%in%dm$subject)) else "Not checked: DM unavailable"
+  y<-function(x)!is.na(x)&toupper(x)=="Y";removed<-r$eua_present&!r$bla_present;added<-!r$eua_present&r$bla_present
+  d<-data.frame(Measure=c("ADSL subject IDs","Randomized flag = Y","Shared subject IDs","IDs present only in this snapshot","EUA-randomized IDs absent from BLA ADSL","EUA-only ADSL IDs still present in BLA DM","EUA-only ADSL IDs absent from checked BLA DM"),
+    EUA=c(ax_num(sum(r$eua_present)),ax_num(sum(y(r$eua_randomized))),ax_num(sum(r$eua_present&r$bla_present)),ax_num(sum(removed)),"Not applicable",ax_num(sum(removed)),"Not applicable"),
+    BLA=c(ax_num(sum(r$bla_present)),ax_num(sum(y(r$bla_randomized))),ax_num(sum(r$eua_present&r$bla_present)),ax_num(sum(added)),ax_num(sum(y(r$eua_randomized)&!r$bla_present)),dmcount(r$subject[removed]),if(dmcheck)ax_num(sum(!r$subject[removed]%in%dm$subject)) else "Not checked: DM unavailable"),check.names=FALSE)
+  roster_ok<-nrow(r)>0&&any(r$eua_present)&&any(r$bla_present)
+  if(roster_ok)ax_table(a,"V28","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation",d,
+    "P301 | Selected EUA and production submission snapshots",
+    "ADSL membership, randomized flags and DM membership are different checks. An ID missing from ADSL is not necessarily absent from the submission. DM is checked directly only when a compatible DM input is readable.")
+  else ax_unavailable(a,"V28","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation","Both readable ADSL rosters are required; unavailable releases are not zero participants.")
+  z<-r[roster_ok&((r$eua_present&r$bla_present&y(r$eua_randomized)!=y(r$bla_randomized))|(!r$eua_present&r$bla_present&y(r$bla_randomized))),]
+  if(nrow(z)) {
+    value<-function(data,ids,col){if(!col%in%names(data))return(rep("Unavailable",length(ids)));v<-as.character(data[[col]][match(ids,data$subject)]);v[is.na(v)]<-"Unavailable";v[v==""]<-"Blank";v}
+    # Context is transcribed from the reviewer guide, never inferred from an AE/flag.
+    duplicates<-c("US3132036","US3162112","US3172220","US3352166","US3522027")
+    context<-ifelse(z$subject%in%duplicates,"Reviewer-guide context: duplicate / invalid randomization","No reviewer-guide classification supplied")
+    d<-data.frame(`Participant / arm`=paste(z$subject,z$arm,sep="\n"),
+      `RANDFL EUA -> BLA`=paste(ifelse(z$eua_present,z$eua_randomized,"Absent"),z$bla_randomized,sep=" -> "),
+      `BLA dose and population fields`=paste0("Dose 1: ",value(new,z$subject,"TR01SDT"),"\nDose 2: ",value(new,z$subject,"DOSE2DT"),
+        "\nFAS / safety: ",value(new,z$subject,"FASFL")," / ",value(new,z$subject,"SAFFL"),"\nmITT / PP: ",value(new,z$subject,"MITTFL")," / ",value(new,z$subject,"PPROTFL")),
+      `Recorded reasons / separate context`=paste0("FAS: ",value(new,z$subject,"FASEREAS"),"\nSafety: ",value(new,z$subject,"SAFEREAS"),"\n",context),check.names=FALSE)
+    ax_table(a,"V29","randomization_flag_changes","Changes in randomized-population flags",d,
+      "Changed RANDFL and newly included randomized IDs | Dose dates and analysis flags from BLA ADSL",
+      "Blank means the field was present but empty; unavailable means it could not be read. Reviewer-guide context is a separate annotation, not a dataset-derived reason. Dose dates alone do not resolve analysis-population eligibility.",widths=c(.19,.14,.32,.35),highlight=which(z$subject=="US3952070"))
+    ax_data(a,"V29",data.frame(subject=z$subject,context=context,context_source="ADRG reviewer-guide discussion of duplicate/invalid randomization; see report references"),"guide_context")
+  }else ax_unavailable(a,"V29","randomization_flag_changes","Randomized-population flags","No changed shared-subject flags, or required roster inputs unavailable.")
+  f<-ax_read(out,"AE/field_changes.csv",FALSE);u<-ax_read(out,"AE/unmatched_eua_records.csv",FALSE)
+  if(file.exists(file.path(out,"AE/field_changes.csv"))&&file.exists(file.path(out,"AE/unmatched_eua_records.csv"))) {
+    f<-f[f$field=="AESER",];f<-f[(f$eua_value=="Y"&f$bla_value=="N")|(f$eua_value=="N"&f$bla_value=="Y"),]
+    down<-f[f$eua_value=="Y",];up<-f[f$eua_value=="N",];us<-u[u$.window=="ON_OR_BEFORE_EUA"&u$.original_serious,]
+    cnt<-function(x,ar,sid="subject",arm="arm")paste0(sum(x[[arm]]==ar)," records / ",length(unique(x[[sid]][x[[arm]]==ar]))," participants")
+    rows<-list("Serious -> non-serious (all linked EUA records)"=down,"Non-serious -> serious (all linked EUA records)"=up)
+    d<-do.call(rbind,lapply(names(rows),function(n)data.frame(Change=n,`mRNA-1273`=cnt(rows[[n]],"mRNA-1273"),Placebo=cnt(rows[[n]],"Placebo"),check.names=FALSE)))
+    d<-rbind(d,data.frame(Change=c("Pre-EUA serious records with no linked counterpart","Subset with no possible review candidate"),
+      `mRNA-1273`=c(cnt(us,"mRNA-1273",".sid",".arm"),cnt(us[us$.candidate_count==0,],"mRNA-1273",".sid",".arm")),
+      Placebo=c(cnt(us,"Placebo",".sid",".arm"),cnt(us[us$.candidate_count==0,],"Placebo",".sid",".arm")),check.names=FALSE))
+    ax_table(a,"V30","ae_seriousness_changes","AE seriousness changes and unmatched records",d,
+      "Record linkage across selected snapshots | AESER indicates seriousness, not severity",
+      "Linked seriousness changes include undated records; unmatched rows are restricted to onset on/before the EUA cutoff. Record counts and unique participant counts are shown separately. Possible counterparts require review and are not treated as confirmed matches.")
+    ax_data(a,"V30",f,"linked_seriousness_changes")
+    counts<-ax_read(out,"AE/subject_record_counts.csv",FALSE)
+    v<-us[us$.candidate_count==0&us$.sid%in%counts$subject[counts$bla_records==0],]
+    d<-if(!nrow(v))data.frame(`Participant / arm`=character(),`EUA serious event / onset`=character(),`BLA records`=character(),check.names=FALSE) else data.frame(`Participant / arm`=paste(v$.sid,v$.arm,sep="\n"),`EUA serious event / onset`=paste(v$AETERM,v$AESTDTC,sep="\n"),
+      `BLA records`=paste0("AE: 0\nADSL: ",if(any(r$bla_present))ifelse(v$.sid%in%r$subject[r$bla_present],"present","absent") else rep("not checked",nrow(v)),"\nDM: ",if(dmcheck)ifelse(v$.sid%in%dm$subject,"present","absent") else "not checked"),check.names=FALSE)
+    ax_table(a,"V31","unmatched_serious_events","Serious-event participants with no BLA AE rows",d,
+      "Pre-EUA serious event | No linked counterpart or possible review candidate",
+      "Zero AE rows refers to the selected production AE snapshot. ADSL and DM membership are independently checked. This identifies records requiring reconciliation; it does not establish deletion from the original clinical database.",widths=c(.25,.49,.26))
+  }else {ax_unavailable(a,"V30","ae_seriousness_changes","AE seriousness changes","AE comparison unavailable.");ax_unavailable(a,"V31","unmatched_serious_events","Unmatched serious events","AE comparison unavailable.")}
+  f<-ax_read(out,"ADSYMP/field_changes.csv",FALSE)
+  if(file.exists(file.path(out,"ADSYMP/field_changes.csv"))) {
+    f<-f[f$field=="AVALC",];fv<-sc_class(f$eua_value);bv<-sc_class(f$bla_value)
+    rows<-list();for(same in c(FALSE,TRUE))for(direction in c("YES -> NO","NO -> YES")) {
+      sel<-if(direction=="YES -> NO")fv=="POSITIVE_OR_YES"&bv=="NEGATIVE_OR_NO" else fv=="NEGATIVE_OR_NO"&bv=="POSITIVE_OR_YES"
+      if(same)sel<-sel&!is.na(f$eua_date)&nzchar(f$eua_date)&f$eua_date==f$bla_date
+      z<-f[which(sel),];rows[[length(rows)+1L]]<-data.frame(`Linked-record scope / transition`=paste(if(same)"Same date" else "All linked dates",direction,sep="\n"),
+        `mRNA-1273`=ax_num(sum(z$arm=="mRNA-1273")),Placebo=ax_num(sum(z$arm=="Placebo")),Total=ax_num(nrow(z)),check.names=FALSE)
+    }
+    ax_table(a,"V32","symptom_response_reversals","Changes in recorded symptom responses",do.call(rbind,rows),
+      "ADSYMP AVALC | Counts of linked records, not unique participants",
+      "Same-date rows are a subset of all linked dates. Reference and provisional clinical links retain their original classification in the CSV crosswalk. Revised dates and response fields require source-level reconciliation.",widths=c(.43,.19,.19,.19))
+  }else ax_unavailable(a,"V32","symptom_response_reversals","Symptom response changes","ADSYMP comparison unavailable.")
+  ax_finish(a)
+}
+
 if(isTRUE(getOption("phmpt.autorun",TRUE)))analyse_eua_bla_changes()
