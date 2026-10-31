@@ -1,8 +1,10 @@
-# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.1.0
+# Moderna P301 - weekly doses, symptom groups and AE recording share - v1.2.0
 # Stand-alone, R >= 4.3: save in the project root, then Select All / Run in RStudio.
 # CSV/JMP and charts: base R. XPT/SAS7BDAT: install.packages("haven").
 # No positivity filter. This measures documented symptoms, not COVID diagnoses.
 
+# v1.2.0: calendar unblinding shading in FULL plots (V09 and V10), including
+# continuation panels and PDF/SVG exports. Aggregations and dose logic unchanged.
 # ---- SETTINGS ----
 PHMPT_ROOT <- ""                 # Auto-detect, or D:/Projects/moderna_trial_analysis
 PHMPT_RELEASE <- "auto"          # Prod preferred; otherwise EUA. Never pools releases.
@@ -16,6 +18,10 @@ PHMPT_WINDOWS <- c("BLINDED", "EUA", "FULL")
 # Audit V09/V10 PNGs default to FULL so post-unblinding doses are visible.
 # Set options(phmpt.audit_window="BLINDED") before running for blinded PNGs.
 PHMPT_EUA_CUTOFF <- "2020-11-25" # EUA data cutoff, not authorization date
+# The audit's calendar reference, also used in V07. This is NOT every subject's
+# unblinding date. Shading is shown only for FULL follow-up; individual blinded
+# censoring still uses ADSL dates. Override with an ISO date if the audit changes.
+PHMPT_UNBLIND_REFERENCE <- getOption("phmpt.unblind_reference", "2020-12-14")
 PHMPT_AE_TIMING <- "interval"    # "interval": known active AE weeks; "onset": onset week only
 PHMPT_OUTPUT_DIR <- ""           # Default: analysis/weekly_symptoms_ae_<timestamp>
 PHMPT_CSV_ENCODING <- "auto"     # UTF-8-BOM then Windows-1252
@@ -457,6 +463,45 @@ ws_label_positions <- function(target,height,lower,upper,gap) {
   if(y[1]<lower+h[1])y<-y+(lower+h[1]-y[1])
   ans<-numeric(length(y));ans[ord]<-y;ans
 }
+# Plot decoration only: a shared calendar reference, not a new analysis boundary.
+ws_unblind_day <- function(reference=PHMPT_UNBLIND_REFERENCE) {
+  if(length(reference)!=1L||is.na(reference)||
+     !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$",as.character(reference)))
+    stop("PHMPT_UNBLIND_REFERENCE must be one complete ISO date (YYYY-MM-DD).")
+  day<-suppressWarnings(as.Date(as.character(reference),"%Y-%m-%d"))
+  if(is.na(day)||format(day,"%Y-%m-%d")!=as.character(reference))
+    stop("Invalid PHMPT_UNBLIND_REFERENCE date.")
+  day
+}
+ws_unblind_label <- function() {
+  d<-ws_unblind_day()
+  paste(format(d,"%d"),month.abb[as.integer(format(d,"%m"))],format(d,"%Y"))
+}
+ws_unblind_note <- function() paste0("Shading: from the ",ws_unblind_label(),
+  " unblinding reference; individual dates differ.")
+ws_unblind_bounds <- function(q,window,reference=PHMPT_UNBLIND_REFERENCE) {
+  day<-ws_unblind_day(reference)
+  if(window!="FULL"||!nrow(q))return(NULL)
+  weeks<-as.Date(q$week_start)
+  if(anyNA(weeks)||is.unsorted(weeks,strictly=TRUE)||
+     (length(weeks)>1L&&any(diff(as.numeric(weeks))!=7)))
+    stop("Unblinding shading requires consecutive, ordered weekly rows.")
+  if(day>=max(weeks)+7)return(NULL)
+  # Weekly bars are centered at 1,2,...; date boundaries are measured from
+  # the first cell's left edge. A mid-week reference shades only that fraction.
+  boundary<-.5+as.numeric(day-min(weeks))/7
+  c(boundary=boundary,right=nrow(q)+.5)
+}
+ws_shade_unblinding <- function(q,window) {
+  bounds<-ws_unblind_bounds(q,window)
+  if(is.null(bounds))return(invisible(FALSE))
+  usr<-par("usr");left<-max(usr[1],unname(bounds["boundary"]))
+  rect(left,usr[3],usr[2],usr[4],col="#E5EAF0",border=NA)
+  if(bounds["boundary"]>=usr[1]&&bounds["boundary"]<=usr[2])
+    abline(v=bounds["boundary"],col="#8795A5",lty=2,lwd=.8)
+  invisible(TRUE)
+}
+
 ws_plot_arm <- function(w,ctx,window,release,ae_timing,arm) {
   old<-par(no.readonly=TRUE);on.exit({layout(1);par(old)})
   layout(matrix(1:3,ncol=1),heights=c(.92,6.0,.83))
@@ -477,6 +522,7 @@ ws_plot_arm <- function(w,ctx,window,release,ae_timing,arm) {
   if(!n)stop("No weekly rows for arm ",arm)
   par(mar=c(3.3,4.8,2.1,4.8),mgp=c(2.7,.65,0),las=1,bty="n",xaxs="i",yaxs="i")
   plot(c(.35,n+.7),c(0,top),type="n",axes=FALSE,xlab="",ylab="Weekly count",cex.lab=.88)
+  ws_shade_unblinding(q,window)
   ticks<-pretty(c(0,top),n=5);abline(h=ticks,col="#DFE5E8",lwd=.55)
   ws_background_doses(q,xx,crossover)
   base<-rep(0,n);centers<-matrix(0,nrow=n,ncol=3)
@@ -536,7 +582,8 @@ ws_plot_arm <- function(w,ctx,window,release,ae_timing,arm) {
     paste0("One participant x symptom group x week; Monday start. AE timing: ",if(ae_timing=="interval")"known active intervals" else "onset week only",". Symptom table: positive assessments."),
     if(window=="FULL")if(anyNA(q[c("dose_3","dose_4")]))"Original arms retained. Open-label dose counts unavailable in this ADSL; see dose evidence CSV." else "Original arms retained. Placebo chart includes open-label doses 3/4; symptoms are not confirmed infections."
       else "Original doses 1/2 only. Counts depend on documentation and follow-up; these symptoms are not confirmed infections.")
-  text(.02,seq(.87,.12,length.out=4),notes,adj=0,cex=.70,col="#405865")
+  if(!is.null(ws_unblind_bounds(q,window)))notes<-c(notes,ws_unblind_note())
+  text(.02,seq(.89,.08,length.out=length(notes)),notes,adj=0,cex=.70,col="#405865")
 }
 ws_plot <- function(w,ctx,window,release,ae_timing,arm=NULL) {
   arms<-if(is.null(arm))c("mRNA-1273","Placebo") else match.arg(arm,c("mRNA-1273","Placebo"))
@@ -563,6 +610,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
   if(!ae_timing %in% c("interval","onset"))stop("AE timing must be interval or onset.")
   if(length(png_dpi)!=1L||!is.finite(png_dpi)||png_dpi<72||png_dpi>1200)stop("PNG DPI must be between 72 and 1200.")
   cutoff<-ws_dates(eua_cutoff,"EUA cutoff","",TRUE);if(length(cutoff)!=1L||!is.finite(cutoff))stop("Complete EUA cutoff required.")
+  ws_unblind_day() # validate the display setting before reading large source files
   root<-ws_root(root)
   out<-if(nzchar(output_dir))ws_path(root,output_dir) else file.path(root,"analysis",paste0("weekly_symptoms_ae_",format(Sys.time(),"%Y%m%d_%H%M%S")))
   dir.create(out,recursive=TRUE,showWarnings=FALSE)
@@ -576,6 +624,12 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
   }
   a<-ws_pick(root,release,"ADSL",adsl_file,out,encoding,numeric_date_origin,min_randomized)
   ctx<-ws_context(a$x,numeric_date_origin);submission<-ws_submission(a$manifest$path)
+  recorded<-ctx$UBLDDT[is.finite(ctx$UBLDDT)]
+  ws_csv(data.frame(reference_date=as.character(ws_unblind_day()),
+    source="Audit calendar reference (same default as V07); not individual censoring",
+    first_recorded_UBLDDT=if(length(recorded))ws_iso(min(recorded)) else "",
+    shaded_windows="FULL",changes_analysis_counts=FALSE),
+    file.path(out,"unblinding_shading_reference.csv"))
   dose_evidence<-ws_crossover_evidence(ctx)
   ws_csv(dose_evidence,file.path(out,"placebo_open_label_dose_evidence.csv"))
   ws_csv(dose_evidence[!dose_evidence$status%in%c("INCLUDED","NO_RECORDED_DOSE"),,drop=FALSE],file.path(out,"placebo_open_label_dose_issues.csv"))
@@ -612,7 +666,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
       covid_only=sum(z$covid_only),ae_only=sum(z$ae_only),both=sum(z$both),symptom_group_weeks=den,
       pct_ae_any=if(den>0)100*sum(z$ae_symptom_groups)/den else NA_real_)
   }));rownames(totals)<-NULL;ws_csv(totals,file.path(out,"window_totals.csv"))
-  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.1.0", "",
+  notes<-c("MODERNA P301 - WEEKLY DOSES, SYMPTOM GROUPS AND AE RECORDING SHARE - v1.2.0", "",
     paste("Release:",release,"; source cutoff:",ws_iso(ctx$CUTOFFDT[1]),"; randomized population:",nrow(ctx)),
     paste("AE timing:",ae_timing,"; windows:",paste(windows,collapse=", ")),"",
     "COUNTING UNIT: a distinct participant x symptom group x Monday-Sunday week. Repeated records, days and related parameters within that group/week count once. One participant with three groups contributes three units. This is not a count of visits, raw AE records, clinical episodes or infections. Units in different weeks are not unique participants.",
@@ -624,6 +678,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
     "AE interval mode uses AESTDTC through a complete AEENDTC, inclusive, clipped to follow-up. Missing/partial end dates contribute only the onset day; ongoing duration is not imputed. Onset mode uses AESTDTC only. Missing/partial starts and end-before-start records are excluded and logged. Different collection frequencies and incomplete durations can affect the line.",
     "FOLLOW-UP: RANDFL Y, planned original arm TRT01P, from RANDDT. FULL ends at the earliest CUTOFFDT/EOSDT/DTHDT. BLINDED additionally ends at AP01EDT or the day before UBLDDT/AP02SDT/TR02SDT/EUAVACDT, whichever comes first. Missing individual boundaries fall back to the full endpoint and are exposed in the context CSV. EUA uses the blinded endpoint capped at the configured EUA date.",
     "FULL retains original randomization labels after unblinding/crossover; placebo-assigned participants may subsequently receive vaccine. It is a descriptive follow-up view. The blinded comparison also has changing follow-up: weekly subjects_in_followup and person_days are exported. No causal conclusion is established by these curves.",
+    paste0("UNBLINDING SHADING: ",ws_unblind_note()," FULL plots only. The same date is used across both original arms and all continuation panels. Shading is clipped to the displayed weeks and is drawn behind bars/lines. No arm assignment, event count, follow-up boundary or percentage is changed. See unblinding_shading_reference.csv."),
     "DOSES: background columns show original DOSE1FL/TR01SDT and DOSE2FL/DOSE2DT administrations in the same population/window. Placebo injections are included. FULL also shows doses 3/4 for the original placebo arm, using OLDOS1FL/TR02SDT and OLDOS2FL/OLDOS2DT (open-label injections 1/2). Recorded flags and complete dates must agree and fall within follow-up, after any recorded original doses and on/after any recorded unblinding/open-label-period start. Dose 3/4 labels refer to the scheduled open-label injections 1/2; an incomplete original series is exposed in the evidence CSV, not grounds to drop an otherwise documented open-label dose. These doses are zero in BLINDED/EUA windows. In FULL, unavailable source fields produce NA, not a zero-dose count. Missing source fields, inconsistent records and exclusions are exported in the open-label dose evidence/status/issue CSVs. Missing UBLDDT remains explicit; a dedicated open-label dose flag is not replaced with an imputed unblinding date. EUAVACDT/outside-study vaccination dates are not counted as administered study doses. mRNA-1273-assigned open-label doses are outside this requested overlay. The left axis is unscaled weekly counts shared between arms; the right axis is a fixed 0-100% for the AE share. Bar and line heights use different units.",
     "MAPPING: an external assets/ae_covid_symptom_mapping.csv takes precedence; otherwise the embedded field-specific v1.0.0 asset is used. Specific AETERM then AELLT evidence takes precedence over AEDECOD for each symptom parameter, before include_default is applied. Review-only matches are excluded. Equivalent normalized mapping rows are consolidated only when their classification, inclusion and qualification decisions agree. Original mapping rows, duplicate aliases and genuine conflicts are exported separately. All matching evidence, excluded dates and unmapped terms are exported for review.",
     "SCOPE: COVID forms plus mapped raw AE records, regardless of PCR/serology, severity or investigator causal attribution. Solicited reactogenicity diaries are a separate collection source and are not included. No duration/fever threshold for protocol-trigger eligibility is imposed. Compatible symptoms do not establish COVID-19 or a missed PCR test.",
@@ -1094,7 +1149,7 @@ ws_embedded_mapping <- function() read.csv(text=paste(c(
   "1.0.0,AETERM,LOOSE STOOLS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE"
 ),collapse="\n"),colClasses="character",check.names=FALSE)
 # ---- RUN: select and run the whole script in RStudio ----
-# Audit PNG export extension v1.1.0 | 2026-10-23
+# Audit PNG export extension v1.2.0 | 2026-10-31
 # Standalone; stable Vxx filenames in <project>/audit_assets plus this run's copy.
 # Long tables continue as _02.png, _03.png, etc. References remain in HTML/provenance.
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
@@ -1288,7 +1343,10 @@ ws_export_audit_assets <- function(root,out,weekly,ctx,release,ae_timing,window=
   a<-ax_begin(root,out,"V09_V10_weekly_symptoms")
   w<-weekly[weekly$window==window,];if(!nrow(w))stop("Requested audit symptom window unavailable: ",window)
   dates<-sort(unique(w$week_start));blocks<-split(dates,ceiling(seq_along(dates)/18))
-  height<-1.5+5.15*length(blocks)+.85
+  shade<-!is.null(ws_unblind_bounds(w[w$arm=="mRNA-1273",],window))
+  header_height<-if(shade)1.78 else 1.5
+  footer_height<-if(shade)1.10 else .85
+  height<-header_height+5.15*length(blocks)+footer_height
   top<-max(pretty(c(0,max(c(1,w$dose_1,w$dose_2,w$dose_3,w$dose_4,w$total_symptom_groups),na.rm=TRUE)*1.1),n=5))
   fills<-c("#367E8A","#A65B31","#785E91");arms<-c("mRNA-1273","Placebo")
   for(ar in arms) {
@@ -1296,11 +1354,12 @@ ws_export_audit_assets <- function(root,out,weekly,ctx,release,ae_timing,window=
     draw<-function() {
       old<-par(no.readonly=TRUE);on.exit(par(old))
       for(k in seq_along(blocks)) {
-        panel_top<-1.5+(k-1)*5.15;panel_bottom<-panel_top+5.15
+        panel_top<-header_height+(k-1)*5.15;panel_bottom<-panel_top+5.15
         par(fig=c(0,1,1-panel_bottom/height,1-panel_top/height),mai=c(.77,.86,.34,.86),
           new=k>1,family="sans",las=1,xaxs="i",yaxs="i",bty="n",mgp=c(2.5,.5,0),cex=1)
         q<-w[w$arm==ar&w$week_start%in%blocks[[k]],];q<-q[order(q$week_start),];xx<-seq_len(nrow(q));n<-length(xx)
         plot(c(.45,n+.55),c(0,top),type="n",axes=FALSE,xlab="",ylab="")
+        ws_shade_unblinding(q,window)
         ticks<-pretty(c(0,top),n=5);ticks<-ticks[ticks>=0&ticks<=top];abline(h=ticks,col="#E2E7EA",lwd=.6)
         ws_background_doses(q,xx,window=="FULL"&&ar=="Placebo")
         base<-rep(0,n);centres<-matrix(0,n,3)
@@ -1340,13 +1399,19 @@ ws_export_audit_assets <- function(root,out,weekly,ctx,release,ae_timing,window=
       xs<-if(crossover)c(.35,1.65,3.0,5.45,.35,2.85,4.35,6.0) else c(.35,1.65,.35,2.85,4.35,6.0)
       ys<-if(crossover)c(rep(1.04,4),rep(1.30,4)) else c(rep(1.04,2),rep(1.30,4))
       for(i in seq_along(labels)){grid::grid.rect(x=grid::unit(xs[i]+.06,"in"),y=grid::unit(1,"npc")-grid::unit(ys[i]+.06,"in"),width=grid::unit(.12,"in"),height=grid::unit(.12,"in"),gp=grid::gpar(fill=colors[i],col=if(i<=(if(crossover)4 else 2))ws_dose_borders[i] else NA));ax_text(labels[i],xs[i]+.17,ys[i],10.5)}
+      if(shade) {
+        grid::grid.rect(x=grid::unit(.41,"in"),y=grid::unit(1,"npc")-grid::unit(1.61,"in"),
+          width=grid::unit(.12,"in"),height=grid::unit(.12,"in"),
+          gp=grid::gpar(fill="#E5EAF0",col="#8795A5"))
+        ax_text(paste0("Shaded: unblinding period from ",ws_unblind_label()),.52,1.55,10.5)
+      }
       dose_note<-if(window=="FULL"&&anyNA(w[w$arm==ar,c("dose_3","dose_4")]))"Open-label dose counts unavailable in this ADSL; see dose evidence CSV." else if(window=="FULL")"Doses 3/4 are open-label injections in the original placebo arm." else "Doses 1/2 only within this follow-up window."
-      ax_text(ax_wrap(paste("One participant x symptom group x week. Colored badges show source shares; black badges show (AE only + both) / all sources. Zero-denominator weeks have no percentage. Offset labels retain the actual bar heights.",dose_note,"Both arms and all panels share the same scales."),7.8,10.6),.35,height-.72,10.6,col="#52616C")
+      ax_text(ax_wrap(paste("One participant x symptom group x week. Colored badges show source shares; black badges show (AE only + both) / all sources. Zero-denominator weeks have no percentage. Offset labels retain the actual bar heights.",dose_note,"Both arms and all panels share the same scales.",if(shade)ws_unblind_note() else ""),7.8,10.6),.35,height-footer_height+.13,10.6,col="#52616C")
       grid::popViewport()
     }
     ax_png(a,id,if(ar=="mRNA-1273")"weekly_symptoms_mrna1273" else "weekly_symptoms_placebo",draw,height)
     ax_data(a,id,w[w$arm==ar,])
-  };ax_finish(a,paste("Selected audit window:",window))
+  };ax_finish(a,c(paste("Selected audit window:",window),if(shade)ws_unblind_note() else "No unblinding shading in this selected window."))
 }
 
 if(isTRUE(getOption("phmpt.autorun",TRUE))) {
