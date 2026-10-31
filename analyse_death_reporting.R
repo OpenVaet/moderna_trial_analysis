@@ -1,4 +1,4 @@
-# Moderna P301: EUA death reporting and CRF review | v1.1.0 | 2026-10-24
+# Moderna P301: EUA death reporting and CRF review | v1.2.0 | 2026-10-31
 # Standalone R >=4.3. Run the entire file from the RStudio project root.
 # Reads local PHMPT releases only; does not download trial documents.
 # XPT/SAS7BDAT: haven. Optional PDF text: pdftools (or pdftotext). ZIP: zip.
@@ -18,7 +18,7 @@ PHMPT_BLA_CUTOFF <- as.Date("2021-03-26")
 PHMPT_REVIEW_FILE <- getOption("phmpt.deaths_review", "assets/death_reporting_review.csv")
 PHMPT_CSV_DATE_ORIGIN <- ""  # set only for documented numeric CSV dates, e.g. "1960-01-01"
 PHMPT_CSV_ENCODING <- "auto"
-PHMPT_PDF_ROOTS <- c("eua_data", "prod_data")
+PHMPT_PDF_ROOTS <- c("eua_data_moderna", "prod_data_moderna", "eua_data", "prod_data")
 PHMPT_PDF_TEXT_SCAN <- TRUE # scans copied subject documents, not the entire PDF collection
 PHMPT_COPY_PDFS <- TRUE
 PHMPT_MAKE_ZIP <- TRUE
@@ -30,7 +30,7 @@ PHMPT_SHOW_REPORT <- interactive()
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-DR_VERSION <- "1.1.0"
+DR_VERSION <- "1.2.0"
 dr_domains <- c("ADSL","DM","DS","AE","ADAE","DV","SUPPDM","SUPPDS","SUPPAE")
 dr_text <- function(x) {
   missing <- is.na(x)
@@ -56,9 +56,9 @@ dr_path <- function(root,p)if(grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)",p))p else f
 dr_root <- function(root) {
   if(nzchar(root))return(normalizePath(root,winslash="/",mustWork=TRUE))
   p<-normalizePath(getwd(),winslash="/");repeat {
-    if(any(dir.exists(file.path(p,c("eua_data","prod_data")))))return(p)
+    if(any(dir.exists(file.path(p,c("eua_data_moderna","prod_data_moderna","eua_data","prod_data")))))return(p)
     up<-dirname(p);if(up==p)break;p<-up
-  };stop("Open the RStudio project, or set PHMPT_ROOT to the folder containing eua_data and prod_data.")
+  };stop("Open the RStudio project, or set PHMPT_ROOT to the folder containing eua_data_moderna/prod_data_moderna (or legacy eua_data/prod_data).")
 }
 dr_sid <- function(x) {
   x<-toupper(dr_text(x));m<-regexpr("(?<![A-Z0-9])US[ _-]*[0-9]{3}[ _-]*[0-9]{4}(?![0-9])",x,perl=TRUE)
@@ -72,7 +72,7 @@ dr_arm <- function(x) {
   z<-gsub("[^A-Z0-9]","",dr_norm(x));ifelse(grepl("PLACEBO",z),"Placebo",ifelse(grepl("MRNA1273",z),"mRNA-1273","UNASSIGNED"))
 }
 dr_projection <- function(domain) switch(domain,
-  ADSL=c("STUDYID","USUBJID","SUBJID","SITEID","RANDFL","TRT01P","TRT01A","ARM","SAFFL","FASFL","DTHFL","DTHDT","DTHDTC","DTHDTF","DTHCAUS","EOSDT","EOSSTT","CUTOFFDT","TR01SDT","DOSE2DT","UBLDDT"),
+  ADSL=c("STUDYID","USUBJID","SUBJID","SITEID","RANDFL","TRT01P","TRT01A","ARM","SAFFL","FASFL","DTHFL","DTHDT","DTHDTC","DTHDTF","DTHCAUS","EOSDT","EOSSTT","CUTOFFDT","TR01SDT","DOSE2DT","UBLDDT","TRT02A","OLDOS1FL","OLDOS2FL","TR02SDT","TR02SDTF","OLDOS2DT","AP02SDT","EUAVACDT","AGE","SEX"),
   NULL)
 
 dr_read <- function(path,domain) {
@@ -90,8 +90,9 @@ dr_read <- function(path,domain) {
   }else stop("Unsupported file type.")
   x<-as.data.frame(x,stringsAsFactors=FALSE);names(x)<-toupper(names(x));if(anyDuplicated(names(x)))stop("Duplicate column names.")
   if(!all(c("STUDYID","USUBJID")%in%names(x)))stop("Missing STUDYID/USUBJID.")
+  if(!is.null(wanted))x<-x[intersect(wanted,names(x))]
   meta<-data.frame(variable=names(x),label=vapply(x,function(z){a<-attr(z,"label");if(is.null(a))"" else as.character(a)},""),type=vapply(x,function(z)paste(class(z),collapse="/"),""))
-  dates<-intersect(names(x),c("DTHDT","EOSDT","CUTOFFDT","TR01SDT","DOSE2DT","UBLDDT","ASTDT","AENDT","ADT"))
+  dates<-intersect(names(x),c("DTHDT","EOSDT","CUTOFFDT","TR01SDT","DOSE2DT","UBLDDT","TR02SDT","OLDOS2DT","AP02SDT","EUAVACDT","ASTDT","AENDT","ADT"))
   for(n in dates)if(is.numeric(x[[n]])&&!inherits(x[[n]],c("Date","POSIXt")))x[[n]]<-as.Date(x[[n]],origin="1960-01-01")
   x[]<-lapply(x,dr_text)
   for(n in intersect(names(x),c(dates,"DTHDTC","DSSTDTC")))x[[n]][dr_norm(x[[n]])%in%c("NA","N/A","NULL",".")]<-""
@@ -111,6 +112,21 @@ dr_key <- function(x) {
 dr_equivalent <- function(a,b) {
   nm<-sort(setdiff(names(a),".row"));if(!identical(nm,sort(setdiff(names(b),".row")))||nrow(a)!=nrow(b))return(FALSE)
   identical(sort(dr_key(a)),sort(dr_key(b)))
+}
+# Prefer a richer ADSL projection only when every shared value agrees for the
+# same subjects. This avoids discarding new dose fields because an old CSV
+# export omitted them. Conflicting values are never merged or overwritten.
+dr_adsl_superset <- function(a,b) {
+  na<-setdiff(names(a),".row");nb<-setdiff(names(b),".row")
+  common<-intersect(na,nb)
+  if(!all(c("STUDYID","USUBJID","TRT01P",".subject")%in%common)||
+     nrow(a)!=nrow(b)||anyDuplicated(a$.subject)||anyDuplicated(b$.subject)||
+     !setequal(a$.subject,b$.subject))return("")
+  ia<-order(a$.subject);ib<-order(b$.subject)
+  if(!all(vapply(common,function(n)identical(dr_text(a[[n]][ia]),dr_text(b[[n]][ib])),logical(1))))return("")
+  if(all(na%in%nb)&&length(nb)>length(na))return("CANDIDATE")
+  if(all(nb%in%na)&&length(na)>length(nb))return("SELECTED")
+  ""
 }
 dr_pick <- function(root,rel,domain,out,inventory) {
   explicit<-PHMPT_FILES[[rel]][[domain]];if(is.null(explicit))explicit<-""
@@ -134,6 +150,11 @@ dr_pick <- function(root,rel,domain,out,inventory) {
     seen<-c(seen,a$md5);if(ext%in%c("xpt","sas7bdat"))successful_stems<-c(successful_stems,stem)
     if(is.null(selected)){selected<-a;add(p,"SELECTED")}
     else if(dr_equivalent(selected$data,a$data))add(p,"EQUIVALENT_PROJECTED_VALUES")
+    else if(domain=="ADSL"&&dr_adsl_superset(selected$data,a$data)=="CANDIDATE") {
+      selected<-a;add(p,"SELECTED_RICHER_PROJECTION","All shared values agree; candidate retains additional ADSL fields.")
+    }
+    else if(domain=="ADSL"&&dr_adsl_superset(selected$data,a$data)=="SELECTED")
+      add(p,"AGREEING_REDUCED_PROJECTION","All shared values agree; richer selected ADSL retained.")
     else {conflict<-TRUE;add(p,"CONFLICTING_SNAPSHOT","Set PHMPT_FILES explicitly. This domain is not used.")}
   }
   if(!length(paths))add("","MISSING","No file in the configured submission.")
@@ -595,7 +616,7 @@ analyse_death_reporting <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_DIR)
   out<-if(nzchar(output_dir))dr_path(root,output_dir) else file.path(root,"analysis",paste0("death_reporting_",format(Sys.time(),"%Y%m%d_%H%M%S"),"_",Sys.getpid()))
   if(dir.exists(out)&&length(list.files(out,all.files=TRUE,no..=TRUE)))stop("Output folder is not empty; select a new PHMPT_OUTPUT_DIR to preserve provenance.")
   dir.create(out,recursive=TRUE,showWarnings=FALSE);export<-file.path(out,"review_export");dir.create(export)
-  inventory<-list(EUA=list.files(file.path(root,"eua_data"),pattern="[.](csv|xpt|sas7bdat|jmp)$",recursive=TRUE,full.names=TRUE,ignore.case=TRUE),BLA=list.files(file.path(root,"prod_data"),pattern="[.](csv|xpt|sas7bdat|jmp)$",recursive=TRUE,full.names=TRUE,ignore.case=TRUE))
+  inventory<-list(EUA=list.files(file.path(root,c("eua_data_moderna","eua_data")),pattern="[.](csv|xpt|sas7bdat|jmp)$",recursive=TRUE,full.names=TRUE,ignore.case=TRUE),BLA=list.files(file.path(root,c("prod_data_moderna","prod_data")),pattern="[.](csv|xpt|sas7bdat|jmp)$",recursive=TRUE,full.names=TRUE,ignore.case=TRUE))
   inputs<-logs<-coverage<-list()
   for(rel in c("EUA","BLA"))for(dom in dr_domains){p<-dr_pick(root,rel,dom,out,inventory);logs[[length(logs)+1L]]<-p$log
     coverage[[length(coverage)+1L]]<-data.frame(release=rel,domain=dom,status=p$status,death_evidence_fields=if(is.null(p$input))"" else dr_join(intersect(names(p$input$data),switch(dom,ADSL=c("DTHFL","DTHDT","DTHDTC","EOSSTT"),DM=c("DTHFL","DTHDTC"),AE=c("AESDTH","AEOUT"),ADAE=c("AESDTH","AEOUT"),DS=c("DSDECOD","DSTERM"),c("QNAM","QVAL")))),n_rows=if(is.null(p$input))NA_integer_ else nrow(p$input$data),file=if(is.null(p$input))"" else p$input$path)
@@ -671,7 +692,7 @@ dr36_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(file.path(p,c("prod_data_moderna","eua_data_moderna","prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }
@@ -848,7 +869,8 @@ dr36_references <- function() data.frame(
     "FDA EUA review\nReports through 3 Dec 2020",
     "Blinded-phase publication\nBlinded follow-up",
     "FDA BLA review\nFollow-up through 4 May 2021"),
-  vaccine=c(2L,6L,16L,24L),placebo=c(3L,7L,16L,20L),total=c(5L,13L,32L,44L),
+  vaccine=c(2L,6L,16L,24L),placebo=c(3L,7L,16L,17L),crossover=c(0L,0L,0L,3L),
+  placebo_original=c(3L,7L,16L,20L),total=c(5L,13L,32L,44L),
   source=c("Baden et al.; safety results and supplementary Table S8, p. 33",
     "FDA EUA final review memorandum, 18 December 2020, printed p. 44",
     "El Sahly et al.; safety results and Tables S19/S26",
@@ -863,10 +885,84 @@ dr36_references <- function() data.frame(
     "Original randomized arms: 24 vaccine, 17 placebo plus 3 after crossover = 20 original placebo. Extended death surveillance through database lock."),
   stringsAsFactors=FALSE)
 
+# Crossover is based on administered study vaccine, never UBLDDT alone.
+# A blank dosing field is not a negative flag. Outside-study vaccination is
+# retained as context and is not silently treated as study crossover.
+dr36_crossover <- function(z,death_day) {
+  n<-nrow(z);original<-dr_arm(dr_col(z,"TRT01P"))
+  first<-dr_col(z,"TR02SDT");second<-dr_col(z,"OLDOS2DT")
+  f1<-dr_norm(dr_col(z,"OLDOS1FL"));f2<-dr_norm(dr_col(z,"OLDOS2FL"))
+  treatment<-dr_col(z,"TRT02A");bd<-dr_day_bounds(first);b2<-dr_day_bounds(second)
+  ub<-dr_day_bounds(dr_col(z,"UBLDDT"));original_date<-dr_day_bounds(dr_col(z,"TR01SDT"))
+  cls<-rep("NOT_APPLICABLE",n);why<-rep("Original mRNA-1273 assignment",n);issues<-rep("",n)
+  for(i in which(original=="Placebo")) {
+    cls[i]<-"UNRESOLVED";why[i]<-"Crossover status not established"
+    if(!is.finite(death_day[i])) {why[i]<-"Exact death date unavailable";next}
+    if(!all(c("OLDOS1FL","TR02SDT","TRT02A")%in%names(z))) {
+      why[i]<-"Required crossover source field unavailable (OLDOS1FL, TR02SDT or TRT02A)";next
+    }
+    actual1<-dr_col(z,"TRT01A")[i]
+    if(nzchar(actual1)&&dr_arm(actual1)!="Placebo") {
+      why[i]<-"Original planned placebo differs from recorded initial actual treatment";next
+    }
+    if(!f1[i]%in%c("Y","N")) {why[i]<-"Missing or unexpected open-label first-dose flag";next}
+    if(!f2[i]%in%c("","Y","N")) {why[i]<-"Unexpected open-label second-dose flag";next}
+    if(f1[i]=="N") {
+      if(nzchar(first[i])||nzchar(treatment[i])||f2[i]=="Y"||nzchar(second[i])) {
+        why[i]<-"No-dose flag conflicts with recorded open-label treatment/date";next
+      }
+      cls[i]<-"NO_STUDY_CROSSOVER";why[i]<-"Explicit OLDOS1FL=N and no conflicting open-label exposure evidence"
+      next
+    }
+    if(dr_arm(treatment[i])!="mRNA-1273") {why[i]<-"Open-label actual treatment is missing or not mRNA-1273";next}
+    if(bd$precision[i]!="DAY") {why[i]<-"Open-label first-dose date missing, partial or invalid";next}
+    if(nzchar(dr_col(z,"TR02SDTF")[i])) {why[i]<-"Open-label first-dose date flagged as imputed";next}
+    if(bd$lower[i]>death_day[i]) {why[i]<-"Recorded first crossover dose is after death";next}
+    if(bd$lower[i]==death_day[i]) {why[i]<-"Death and first crossover dose share a date; order unresolved";next}
+    if(original_date$precision[i]=="DAY"&&bd$lower[i]<original_date$lower[i]) {
+      why[i]<-"Open-label first dose precedes initial study exposure";next
+    }
+    if(ub$precision[i]=="DAY"&&bd$lower[i]<ub$lower[i]) {
+      why[i]<-"Open-label first dose precedes recorded unblinding; review chronology";next
+    }
+    cls[i]<-"AFTER_STUDY_CROSSOVER";why[i]<-"OLDOS1FL=Y, TRT02A=mRNA-1273 and TR02SDT strictly before death"
+    if(f2[i]=="Y"&&b2$precision[i]!="DAY")issues[i]<-"Second-dose flag without exact date"
+    if(nzchar(second[i])&&f2[i]!="Y")issues[i]<-"Second-dose date/flag disagreement"
+    if(b2$precision[i]=="DAY"&&(b2$lower[i]<bd$lower[i]||b2$lower[i]>death_day[i]))
+      issues[i]<-"Second-dose chronology inconsistent; first-dose exposure remains documented"
+  }
+  data.frame(crossover_class=cls,crossover_reason=why,crossover_secondary_issue=issues,
+    open_label_first_flag=f1,open_label_actual_treatment=treatment,
+    open_label_first_date_raw=first,open_label_second_flag=f2,open_label_second_date_raw=second,
+    days_first_open_label_to_death=ifelse(cls=="AFTER_STUDY_CROSSOVER",death_day-bd$lower,NA_real_),
+    days_second_open_label_to_death=ifelse(cls=="AFTER_STUDY_CROSSOVER"&f2=="Y"&b2$precision=="DAY"&
+      b2$lower>=bd$lower&b2$lower<=death_day,death_day-b2$lower,NA_real_),
+    outside_study_vaccination_date=dr_col(z,"EUAVACDT"),stringsAsFactors=FALSE)
+}
+
+dr36_display <- function(refs,q) {
+  shown<-function(v)ifelse(is.na(v),"Unavailable",as.character(v))
+  published<-data.frame(`Reporting scope`=refs$scope,Origin="Published",
+    `Original mRNA-1273`=shown(refs$vaccine),`Placebo: no study crossover`=shown(refs$placebo),
+    `Placebo: after mRNA-1273 crossover`=shown(refs$crossover),
+    `Crossover unresolved`="0",Total=shown(refs$total),check.names=FALSE)
+  label<-ifelse(q$exposure_status=="MATCH","Split matches published counts",
+    ifelse(q$exposure_status=="DIFFERS","Split differs from reference",
+      ifelse(q$exposure_status=="UNRESOLVED","Crossover evidence incomplete","Not reconstructed")))
+  computed<-data.frame(`Reporting scope`=paste(c("BLA ADSL: blinded","BLA ADSL: extended"),label,sep="\n"),Origin="Computed",
+    `Original mRNA-1273`=shown(q$vaccine),`Placebo: no study crossover`=shown(q$placebo_no_crossover),
+    `Placebo: after mRNA-1273 crossover`=shown(q$placebo_after_crossover),
+    `Crossover unresolved`=shown(q$placebo_crossover_unresolved),Total=shown(q$total),check.names=FALSE)
+  rbind(published,computed)
+}
+
+
 dr36_reconstruct <- function(inputs) {
   refs<-dr36_references()[3:4,]
   q<-data.frame(scope_id=refs$scope_id,vaccine=NA_integer_,placebo=NA_integer_,total=NA_integer_,
-    reference_vaccine=refs$vaccine,reference_placebo=refs$placebo,reference_total=refs$total,
+    reference_vaccine=refs$vaccine,reference_placebo=refs$placebo_original,reference_total=refs$total,
+    placebo_no_crossover=NA_integer_,placebo_after_crossover=NA_integer_,placebo_crossover_unresolved=NA_integer_,
+    exposure_status="NOT_RECONSTRUCTED",exposure_reason="No usable BLA ADSL selected.",
     status="NOT_RECONSTRUCTED",reason="No usable BLA ADSL selected.",
     adsl_rows=NA_integer_,source_path="",source_md5="",stringsAsFactors=FALSE)
   participants<-data.frame(subject=character(),arm=character(),safety_flag=character(),
@@ -876,7 +972,7 @@ dr36_reconstruct <- function(inputs) {
   result<-function()list(summary=q,subjects=participants)
   a<-inputs[["BLA_ADSL"]];if(is.null(a))return(result())
   x<-a$data;q$adsl_rows<-nrow(x);q$source_path<-a$path;q$source_md5<-a$md5
-  reject<-function(reason){q$reason<<-reason;result()}
+  reject<-function(reason){q$reason<<-reason;q$exposure_reason<<-reason;result()}
   if(as.character(PHMPT_BLA_CUTOFF)!="2021-03-26")return(reject("Configured BLA cutoff differs from the published 26 March 2021 analysis."))
   # The selected complete S3 ADSL has 30,423 unique IDs. A review-export subset
   # can contain every early death yet cannot establish the full death count.
@@ -918,42 +1014,60 @@ dr36_reconstruct <- function(inputs) {
     death_date_raw=vapply(seq_len(n),function(i)paste(vapply(fields,function(f)paste0(f,"=",dr_col(z,f)[i]),character(1)),collapse="; "),character(1)),
     death_date=dr_iso(dd),unblinding_raw=rawub,death_date_issue=issues,blinding_issue=ub_issue,
     included_blinded=inc_blinded,included_extended=inc_extended,stringsAsFactors=FALSE)
+  participants<-cbind(participants,dr36_crossover(z,dd))
+  participants$death_cause<-dr_col(z,"DTHCAUS")
+  participants$age<-dr_col(z,"AGE");participants$sex<-dr_col(z,"SEX")
   unknown_safety<-any(!sz%in%c("Y","N"))
   for(j in 1:2) {
     bad<-sum(eligible&nzchar(issues))
     if(j==1L)bad<-bad+sum(eligible&known&dd<=as.numeric(as.Date("2021-03-26"))&nzchar(ub_issue),na.rm=TRUE)
     if(bad||unknown_safety|| (j==1L&&!"UBLDDT"%in%names(x))) {
       q$reason[j]<-"Unresolved death dates, safety membership or required unblinding data; counts withheld."
+      q$exposure_reason[j]<-q$reason[j]
       next
     }
     take<-if(j==1L)inc_blinded else inc_extended
     q$vaccine[j]<-sum(take&az=="mRNA-1273");q$placebo[j]<-sum(take&az=="Placebo");q$total[j]<-sum(take)
-    matches<-identical(as.integer(q[j,c("vaccine","placebo","total")]),as.integer(refs[j,c("vaccine","placebo","total")]))
+    matches<-identical(as.integer(q[j,c("vaccine","placebo","total")]),as.integer(refs[j,c("vaccine","placebo_original","total")]))
     q$status[j]<-if(matches)"MATCH" else "DIFFERS"
     q$reason[j]<-if(matches)"Recorded-date counts agree in both original arms and total." else "Computed counts differ from the published reference; inspect V36_subjects.csv."
+    cp<-participants$crossover_class[take&az=="Placebo"]
+    q$placebo_no_crossover[j]<-sum(cp=="NO_STUDY_CROSSOVER")
+    q$placebo_after_crossover[j]<-sum(cp=="AFTER_STUDY_CROSSOVER")
+    q$placebo_crossover_unresolved[j]<-sum(!cp%in%c("NO_STUDY_CROSSOVER","AFTER_STUDY_CROSSOVER"))
+    if(sum(q[j,c("placebo_no_crossover","placebo_after_crossover","placebo_crossover_unresolved")])!=q$placebo[j])
+      stop("Crossover classification does not reconcile to original placebo deaths.")
+    split_match<-matches&&q$placebo_no_crossover[j]==refs$placebo[j]&&q$placebo_after_crossover[j]==refs$crossover[j]
+    q$exposure_status[j]<-if(q$placebo_crossover_unresolved[j]>0)"UNRESOLVED" else if(split_match)"MATCH" else "DIFFERS"
+    q$exposure_reason[j]<-if(q$exposure_status[j]=="MATCH")"Original mRNA-1273, placebo without study crossover, and placebo after study mRNA-1273 agree separately." else
+      if(q$exposure_status[j]=="UNRESOLVED")"Some placebo-assigned deaths lack conclusive dose evidence; inspect V36_crossover_review.csv." else "Exposure split differs from reference; inspect V36_subjects.csv."
+
   }
   result()
 }
 
 dr36_export <- function(root,out,export,inputs) {
   a<-dr36_begin(root,out,"V36_deaths");refs<-dr36_references();r<-dr36_reconstruct(inputs);q<-r$summary
-  display<-data.frame(`Reporting scope`=refs$scope,Origin="Published",
-    `mRNA-1273`=as.character(refs$vaccine),Placebo=as.character(refs$placebo),Total=as.character(refs$total),check.names=FALSE)
-  labels<-c("BLA ADSL: blinded reconstruction","BLA ADSL: extended reconstruction")
-  status_label<-ifelse(q$status=="MATCH","Matches published counts",ifelse(q$status=="DIFFERS","Differs from published counts","Not reconstructed"))
-  shown<-function(v)ifelse(is.na(v),"Unavailable",as.character(v))
-  display<-rbind(display,data.frame(`Reporting scope`=paste(labels,status_label,sep="\n"),Origin="Computed",
-    `mRNA-1273`=shown(q$vaccine),Placebo=shown(q$placebo),Total=shown(q$total),check.names=FALSE))
-  status<-if(any(q$status=="DIFFERS"))"RECONCILIATION_DIFFERENCE" else if(all(q$status=="MATCH"))"RECONCILED" else if(any(q$status=="MATCH"))"PARTIAL_RECONSTRUCTION" else "REFERENCE_ONLY"
+  display<-dr36_display(refs,q)
+  status<-if(any(q$status=="DIFFERS"|q$exposure_status=="DIFFERS"))"RECONCILIATION_DIFFERENCE" else
+    if(all(q$status=="MATCH"&q$exposure_status=="MATCH"))"RECONCILED" else
+    if(any(q$status=="MATCH"))"PARTIAL_RECONSTRUCTION" else "REFERENCE_ONLY"
   dr36_data(a,"V36",refs,"references")
   dr36_data(a,"V36",q,"reconciliation")
   dr36_data(a,"V36",r$subjects,"subjects")
-  dr36_table(a,"V36","death_totals_by_reporting_scope","Deaths by reporting scope",display,
-    subtitle="Published totals and reconstruction from released BLA ADSL",
-    note="Original randomized arms. Extended follow-up includes crossover. Published rows are reference figures; only the ADSL rows are computed. Death dates do not establish when deaths became known.",
-    widths=c(.46,.12,.15,.15,.12),status=status,highlight=5:6)
+  cp<-if("crossover_class"%in%names(r$subjects))r$subjects[r$subjects$arm=="Placebo",,drop=FALSE] else r$subjects
+  dr36_data(a,"V36",cp,"crossover_review")
+  visual<-display
+  visual[[1]]<-paste(visual$Origin,visual[[1]],sep=" | ");visual$Origin<-NULL
+  names(visual)<-c("Reporting scope","Original\nmRNA-1273","Placebo:\nno crossover","Placebo:\nafter crossover","Dose status\nunclear","Total")
+  dr36_table(a,"V36","death_totals_by_reporting_scope","Deaths by reporting scope",visual,
+    subtitle="Published totals and ADSL reconstruction | Study crossover shown separately",
+    note="Crossover = placebo assignment followed by study mRNA-1273 before death. Extended total: 24 + 17 + 3 = 44; by original assignment: 24 versus 20. Unblinding alone is not vaccination. Outside-study vaccination is separate. Unclear means dose evidence is insufficient. Published and computed rows are distinct.",
+    widths=c(.34,.16,.16,.16,.10,.08),status=status,highlight=5:6)
   saved<-dr36_finish(a,c(
-    "V36 shows published reference totals separately from computed BLA ADSL counts. No prior manual CRF finding is hard-coded as a new result.",
+    "V36 shows published reference totals separately from computed BLA ADSL counts. The extended FDA reference is 24 original mRNA-1273, 17 placebo without study crossover, and 3 placebo after study crossover; 20 is the ORIGINAL placebo total, not the unvaccinated death count.",
+    "CROSSOVER: a first open-label dose flag OLDOS1FL=Y, actual treatment TRT02A=mRNA-1273, and exact TR02SDT strictly before death establish study-vaccine exposure. OLDOS1FL=N with no contradictory exposure evidence establishes no recorded study crossover. Missing columns/flags, conflicting chronology, partial/imputed first-dose dates and same-day first-dose/death are UNRESOLVED. UBLDDT alone is never used to infer vaccination. Second-dose dates/flags and outside-study EUAVACDT are retained for review; these do not erase a valid first-dose exposure.",
+    "V36_crossover_review.csv includes every placebo-assigned death candidate, the dosing evidence, classification, unresolved reason and intervals from open-label vaccination to death. V36_reconciliation.csv retains original-arm totals alongside separate crossover counts/status. A MATCH for original totals does not imply a MATCH for exposure classification.",
     "V36_data.csv contains the displayed table; V36_references.csv carries document links and definitions; V36_reconciliation.csv gives counts/status/reasons and source MD5; V36_subjects.csv contains all death candidates in the selected BLA ADSL and inclusion flags.",
     "Completeness gates: S3 ADSL must contain 30,423 unique P301 IDs and 30,346 safety participants with identifiable original arms. Actual-treatment safety-arm totals are not imposed on the original randomized arms. These are roster checks, not validation of every medical observation. Subsets and incompatible snapshots are not reported as complete reconciliations.",
     "Reconstruction uses SAFFL=Y and original TRT01P. Blinded: recorded death on/before 26 March 2021 and on/before recorded UBLDDT, or UBLDDT blank. Extended: recorded death on/before 4 May 2021. A same-day death/unblinding sequence cannot be resolved from date-only data.",
@@ -969,8 +1083,9 @@ dr36_export <- function(root,out,export,inputs) {
   for(p in paths)if(unname(tools::md5sum(p))!=unname(tools::md5sum(file.path(target,basename(p)))))stop("V36 review-export copy mismatch.")
   block<-paste0("<h2>V36: death totals by reporting scope</h2><p>Published reference figures and local ADSL reconstruction are labelled separately. Current status: <strong>",status,
     "</strong>. This table does not establish notification timeliness.</p><a href='audit_assets/V36_death_totals_by_reporting_scope.png'><img src='audit_assets/V36_death_totals_by_reporting_scope.png' alt='V36: death totals by reporting scope' style='width:100%;max-width:1000px;height:auto'></a>",
-    dr_table(q[,c("scope_id","vaccine","placebo","total","status","reason")]),
-    "<p><a href='audit_assets/V36_data.csv'>Displayed table</a> | <a href='audit_assets/V36_reconciliation.csv'>Reconciliation</a> | <a href='audit_assets/V36_subjects.csv'>Subject-level inclusion</a> | <a href='audit_assets/V36_references.csv'>Sources and definitions</a></p>")
+    "<p>The extended published comparison is <strong>24 original vaccine / 17 placebo without study crossover / 3 placebo after crossover</strong>. The original placebo assignment still totals 20. Actual crossover requires dose evidence; it is not inferred from unblinding.</p>",
+    dr_table(q[,c("scope_id","vaccine","placebo","placebo_no_crossover","placebo_after_crossover","placebo_crossover_unresolved","total","status","exposure_status","exposure_reason")]),
+    "<p><a href='audit_assets/V36_data.csv'>Displayed table</a> | <a href='audit_assets/V36_reconciliation.csv'>Reconciliation</a> | <a href='audit_assets/V36_subjects.csv'>Subject-level inclusion</a> | <a href='audit_assets/V36_crossover_review.csv'>Crossover dose evidence</a> | <a href='audit_assets/V36_references.csv'>Sources and definitions</a></p>")
   list(directory=saved$directory,manifest=saved$manifest,summary=q,html=block)
 }
 
