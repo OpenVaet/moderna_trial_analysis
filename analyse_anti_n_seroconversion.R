@@ -10,6 +10,12 @@
 # No downloads, additional scripts, or installation are triggered automatically.
 # Load functions only: options(phmpt.autorun=FALSE) before source().
 # =============================================================================
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- getOption('phmpt.root','')
 PHMPT_OUTPUT_DIR <- getOption('phmpt.output_dir','')
 PHMPT_ADSL_FILE <- ''
@@ -228,7 +234,7 @@ ws_read <- function(path,domain,encoding="auto") {
   x
 }
 ws_candidates <- function(root,release,domain) {
-  p<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
+  p<-list.files(audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
     pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
   token<-if(domain=="ADSYMP")"(adsymp|adsy)" else tolower(domain)
   p<-p[grepl(paste0("(^|[_ -])",token,"([_. -]|$)"),basename(p),ignore.case=TRUE)]
@@ -345,7 +351,7 @@ ws_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
@@ -798,7 +804,7 @@ analyse_anti_n_seroconversion <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPU
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V08-V36), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -813,7 +819,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }
@@ -982,16 +988,16 @@ ax_finish <- function(a,notes=character()) {
 }
 
 sc_export_seroconversion_assets <- function(root,out,b) {
-  a<-ax_begin(root,out,"V24_seroconversion")
+  a<-ax_begin(root,out,"V25_seroconversion")
   d<-sc_display(b,TRUE)
   ci<-b$reference
   d<-rbind(d,data.frame(Measure="95% CI reported in study Table 1",`mRNA-1273`=sprintf("%.1f%% to %.1f%%",100*ci$table1_ci_lower[1],100*ci$table1_ci_upper[1]),
     Placebo=sprintf("%.1f%% to %.1f%%",100*ci$table1_ci_lower[2],100*ci$table1_ci_upper[2]),check.names=FALSE))
-  ax_table(a,"V24","published_anti_n_seroconversion","Anti-N detection after PCR-confirmed illness",d,
+  ax_table(a,"V25","published_anti_n_seroconversion","Anti-N detection after PCR-confirmed illness",d,
     "Published-count recalculation | Blinded phase through March 2021 | Participant decision visit (PDV)",
     paste0("Fisher exact p ",ax_p(b$contrast$fisher_p),"; vaccine minus placebo: ",sprintf("%+.1f",b$contrast$difference_pp),
       " percentage points. Published viral-load association: OR 1.90 (95% CI 1.59-2.28) per 1-log10 increase in copies/mL, adjusted for arm; this OR is not refitted here. Median diagnosis-to-sample interval: 53 days. Published and recalculated confidence intervals remain distinct."))
-  ax_data(a,"V24",b$arms,"recalculated_counts");ax_finish(a)
+  ax_data(a,"V25",b$arms,"recalculated_counts");ax_finish(a)
 }
 
 if(isTRUE(getOption('phmpt.autorun',TRUE)))PHMPT_ANTI_N_RESULT<-analyse_anti_n_seroconversion()

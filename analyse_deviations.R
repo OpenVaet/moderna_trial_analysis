@@ -7,6 +7,12 @@
 # Weekly charts count records for seven staff-related types, across ALL sites.
 
 # ---- SETTINGS ----
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- ""                         # Auto-detect, or D:/Projects/moderna_trial_analysis
 PHMPT_RELEASES <- c("EUA", "Prod")         # Missing releases are documented and skipped
 PHMPT_ADSL_FILES <- c(EUA = "", Prod = "") # Optional explicit paths, relative to root or absolute
@@ -28,7 +34,7 @@ PHMPT_UNBLINDING_START <- "2020-12-14"   # EUA-era calendar reference, not first
 # Earlier UBLDDT dates are retained and audited. Scheduled open-label visits began
 # 2020-12-24; see weekly_staff_deviations_methods.txt for these distinct milestones.
 
-PHMPT_AUDIT_ASSET_DIR <- "audit_assets"  # Stable V05-V07 PNGs, relative to project root
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets")  # Stable V05-V07 PNGs, relative to project root
 PHMPT_AUDIT_DPI <- 300L                   # 8.5-inch width = 2550 px at 300 dpi
 PHMPT_AUDIT_WINDOW <- "Prod_BLINDED"     # V05/V06: do not combine submission windows
 PHMPT_AUDIT_WEEKLY_WINDOW <- "Prod_ALL_FOLLOWUP" # V07 includes post-unblinding follow-up
@@ -52,7 +58,7 @@ dv_root <- function(root = "") {
   for (p in unique(candidates[dir.exists(candidates)])) {
     p <- normalizePath(p, winslash = "/", mustWork = TRUE)
     for (i in seq_len(8L)) {
-      if (dir.exists(file.path(p,"prod_data")) || dir.exists(file.path(p,"eua_data"))) return(p)
+      if (dir.exists(audit_release_dir(p,"prod_data")) || dir.exists(audit_release_dir(p,"eua_data"))) return(p)
       parent <- dirname(p); if (parent == p) break; p <- parent
     }
   }
@@ -158,7 +164,7 @@ dv_normalize <- function(x,kind,release,cutoff,min_randomized,origin) {
   x
 }
 dv_candidates <- function(root,release,kind) {
-  dir <- file.path(root,if(release=="Prod")"prod_data" else "eua_data")
+  dir <- audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data")
   files <- list.files(dir,recursive=TRUE,full.names=TRUE,ignore.case=TRUE,
     pattern="\\.(csv|xpt|sas7bdat|jmp)$")
   files <- unique(files[grepl(paste0("(^|[_ -])",tolower(kind),"([_. -]|$)"),basename(files),ignore.case=TRUE)])
@@ -1222,7 +1228,7 @@ analyse_deviations <- function(root="",releases=c("EUA","Prod"),adsl_files=c(EUA
   out<-output_dir;status<-list();all<-list();dens<-list();sites<-list();inputs<-list();site_runs<-list();weekly_runs<-list();unblinding_audits<-list()
   explicit<-function(x,r)if(r%in%names(x))unname(x[r]) else ""
   for(release in releases) {
-    base<-file.path(root,if(release=="Prod")"prod_data" else "eua_data")
+    base<-audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data")
     any_explicit<-any(nzchar(c(explicit(adsl_files,release),explicit(dv_files,release),explicit(addv_files,release))))
     if(!any_explicit && !length(dv_candidates(root,release,"DV")) && !length(dv_candidates(root,release,"ADDV"))) {
       status[[release]]<-data.frame(Release=release,Status="UNAVAILABLE",Detail="No local DV/ADDV source found; not interpreted as zero deviations.")

@@ -24,6 +24,12 @@
 # Comprehensive symptom/cohort tables remain available as secondary HTML reports.
 # Load functions only: options(phmpt.autorun=FALSE) before source().
 # =============================================================================
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- getOption('phmpt.root', '')
 PHMPT_OUTPUT_DIR <- getOption('phmpt.output_dir', '')
 # Optional: set this to an existing COMPLETE results folder to rebuild HTML only.
@@ -117,7 +123,7 @@ ws_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
@@ -317,7 +323,7 @@ pt_domain_aliases <- function(domain) {
  if(domain=='ADSYMP')c('adsymp','adsy') else tolower(domain)
 }
 pt_candidates <- function(root,release,domain) {
- folder<-file.path(root,if(release=='Prod')'prod_data' else 'eua_data')
+ folder<-audit_release_dir(root,if(release=='Prod')'prod_data' else 'eua_data')
  p<-list.files(folder,recursive=TRUE,full.names=TRUE,pattern='\\.(csv|xpt|sas7bdat|jmp)$',ignore.case=TRUE)
  tokens<-paste(pt_domain_aliases(domain),collapse='|')
  p<-p[grepl(paste0('(^|[_ -])(',tokens,')([_. -]|$)'),basename(p),ignore.case=TRUE)]
@@ -1664,7 +1670,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }

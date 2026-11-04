@@ -4,6 +4,12 @@
 # Numerator: AE_ONLY + BOTH. Denominator: all distinct subject x symptom-group x week units.
 # These are recording-source shares, NOT percentages of subjects or diagnoses.
 
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- getOption("phmpt.root", getwd())
 PHMPT_WEEKLY_DIR <- getOption("phmpt.weekly_dir", "") # folder or exported ZIP; blank discovers latest complete export
 PHMPT_BACKGROUND_FILE <- getOption("phmpt.background_file", "") # site_weekly.csv or site_background_used.csv
@@ -388,7 +394,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }

@@ -9,6 +9,7 @@
 # cutoff. An EUA-date row is NOT the original November 2020 database snapshot.
 # Counts measure documented assay results, not orders, blood draws or positivity.
 # =============================================================================
+audit_release_dir <- function(root,legacy){modern<-paste0(legacy,"_moderna");file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))}
 PHMPT_ROOT <- ""
 PHMPT_ADSL_FILE <- ""
 PHMPT_IS_FILE <- ""                 # SDTM IS: Elecsys SARSCOV2
@@ -365,7 +366,7 @@ ws_read <- function(path,domain,encoding="auto") {
   x
 }
 ws_candidates <- function(root,release,domain) {
-  p<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
+  p<-list.files(audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
     pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
   token<-if(domain=="ADSYMP")"(adsymp|adsy)" else tolower(domain)
   p<-p[grepl(paste0("(^|[_ -])",token,"([_. -]|$)"),basename(p),ignore.case=TRUE)]
@@ -482,7 +483,7 @@ ws_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")

@@ -7,6 +7,12 @@
 # Explicit export can be its extracted folder or the original audit ZIP.
 # options(phmpt.autorun=FALSE) loads functions without executing the analysis.
 # =============================================================================
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- getOption('phmpt.root', '')
 PHMPT_EXPORT <- getOption('phmpt.export', '')
 PHMPT_ADSL_FILE <- ''
@@ -223,7 +229,7 @@ ws_read <- function(path,domain,encoding="auto") {
   x
 }
 ws_candidates <- function(root,release,domain) {
-  p<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
+  p<-list.files(audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
     pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
   token<-if(domain=="ADSYMP")"(adsymp|adsy)" else tolower(domain)
   p<-p[grepl(paste0("(^|[_ -])",token,"([_. -]|$)"),basename(p),ignore.case=TRUE)]
@@ -340,7 +346,7 @@ ws_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
@@ -943,7 +949,7 @@ analyse_day57_anti_n_sensitivity <- function(root=PHMPT_ROOT,export=PHMPT_EXPORT
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V08-V36), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -958,7 +964,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }
@@ -1127,7 +1133,7 @@ ax_finish <- function(a,notes=character()) {
 }
 
 d57_export_audit_assets <- function(root,out,summary,cal,std,scenario) {
-  a<-ax_begin(root,out,"V25_V27_day57")
+  a<-ax_begin(root,out,"V26_V28_day57")
   subjects<-ax_read(out,"subjects_BLA_PRIMARY.csv")
   arms<-c("mRNA-1273","Placebo")
   prior<-vapply(arms,function(ar)sum(subjects$arm==ar & subjects$binary &
@@ -1137,12 +1143,12 @@ d57_export_audit_assets <- function(root,out,summary,cal,std,scenario) {
   d<-d57_display(summary)
   d<-rbind(d,data.frame(Finding=c("Earlier positive, Day 57 negative, no positive PCR","Ever anti-N positive through Day 57, no positive PCR"),
     `mRNA-1273`=ax_num(c(prior[1],z$anti_n_positive_no_pcr[1]+prior[1])),Placebo=ax_num(c(prior[2],z$anti_n_positive_no_pcr[2]+prior[2])),check.names=FALSE))
-  ax_table(a,"V25","day57_observed_results","Day 57 anti-N results and PCR history",d,
+  ax_table(a,"V26","day57_observed_results","Day 57 anti-N results and PCR history",d,
     "Baseline PCR/anti-N negative | Strict blinded samples | BLA cutoff | Original randomized arms",
     "PCR history ends at the selected blood draw. Coverage uses participants whose Day 57 window was due; anti-N-only percentages use the evaluable paired cohort. Earlier positive serology is retained separately. The generic prior-positive row may include participants with positive PCR; the final two rows explicitly exclude them.")
   c<-d57_cal_display(cal);s<-std[std$scope=="BLA",];s<-s[match(arms,s$arm),]
   c<-rbind(c,data.frame(Stratum="Standardized to pooled PCR-to-draw interval weights",`mRNA-1273`=d57_pct(s$standardized_response[1]),Placebo=d57_pct(s$standardized_response[2]),check.names=FALSE))
-  ax_table(a,"V26","day57_pcr_positive_calibration","Day 57 response among PCR-positive participants",c,
+  ax_table(a,"V27","day57_pcr_positive_calibration","Day 57 response among PCR-positive participants",c,
     "Same Day 57 blood draw | BLA restriction | Exact binomial 95% confidence intervals",
     "Interval standardization uses common pooled weights for 0-13, 14-27 and >=28 days. These are selected PCR-detected infections with available serology; the fractions do not identify detection probabilities among infections that escaped PCR.")
   t<-scenario$transfer;t<-t[t$scope=="BLA"&t$calibration=="LAG_14_PLUS"&t$transfer_multiplier==1,];t<-t[match(arms,t$arm),]
@@ -1157,10 +1163,10 @@ d57_export_audit_assets <- function(root,out,summary,cal,std,scenario) {
     "Remaining after both current and earlier serology"=ifelse(is.finite(remaining)&remaining>=0,fmt(remaining),"Incompatible with known positives"),
     "Minimum infections already identified through serology"=ax_num(K+prior))
   d<-data.frame(Calculation=names(values),`mRNA-1273`=vapply(values,`[`,character(1),1),Placebo=vapply(values,`[`,character(1),2),check.names=FALSE)
-  ax_table(a,"V27","day57_sensitivity_scenario","Illustrative anti-N detection scenario",d,
+  ax_table(a,"V28","day57_sensitivity_scenario","Illustrative anti-N detection scenario",d,
     "Perfect specificity assumed | Transfer of >=14-day PCR-positive response fractions | Measured Day 57 cohort",
     "Fractional values are scenario expectations, not identified participants or an alternative efficacy. The scenario must accommodate every earlier positive record. PCR-undetected infections are not total infections; PCR-detected cases are separate.")
-  ax_data(a,"V27",data.frame(arm=arms,K=K,q=t$q,implied=U,earlier_positive=prior,remaining=remaining,compatible_with_prior=is.finite(remaining)&remaining>=0),"numeric_scenario")
+  ax_data(a,"V28",data.frame(arm=arms,K=K,q=t$q,implied=U,earlier_positive=prior,remaining=remaining,compatible_with_prior=is.finite(remaining)&remaining>=0),"numeric_scenario")
   ax_finish(a)
 }
 

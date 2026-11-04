@@ -5,6 +5,12 @@
 # a diagnosis of COVID-19. It maps symptom compatibility, not visit eligibility.
 
 # ---- SETTINGS ----
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- ""                  # Auto-detect, or D:/Projects/moderna_trial_analysis
 PHMPT_RELEASES <- c("EUA", "Prod")
 PHMPT_AE_FILES <- list(EUA=character(), Prod=character()) # Optional explicit paths
@@ -42,7 +48,7 @@ am_root <- function(root="") {
     if(nzchar(p)) cand <- c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)])) for(i in seq_len(8)) {
-    if(any(dir.exists(file.path(p,c("eua_data","prod_data")))))
+    if(any(dir.exists(audit_release_dir(p,c("eua_data","prod_data")))))
       return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent <- dirname(p); if(parent==p) break; p <- parent
   }
@@ -125,7 +131,7 @@ am_read <- function(p,encoding="auto") {
   x[] <- lapply(x,am_text); x
 }
 am_candidates <- function(root,release) {
-  p <- file.path(root,if(release=="EUA")"eua_data" else "prod_data")
+  p <- audit_release_dir(root,if(release=="EUA")"eua_data" else "prod_data")
   x <- list.files(p,recursive=TRUE,full.names=TRUE,pattern="\\.(csv|xpt|sas7bdat)$",ignore.case=TRUE)
   x <- x[grepl("(^|[_ -])ae([._ -]|$)",basename(x),ignore.case=TRUE)]
   x <- x[!grepl("p101|p201|dmid",basename(x),ignore.case=TRUE)]
@@ -372,7 +378,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }

@@ -7,6 +7,12 @@
 # DOSE1FL / DOSE2FL independently identify recorded administration.
 
 # ---- SETTINGS ----
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- ""                    # Auto-detect; or D:/Projects/moderna_trial_analysis
 PHMPT_RELEASE <- "auto"             # "auto" prefers Prod, otherwise EUA; never combines them
 PHMPT_ADSL_FILE <- ""               # Optional explicit CSV, XPT, SAS7BDAT or JMP path
@@ -16,7 +22,7 @@ PHMPT_CSV_ENCODING <- "auto"        # UTF-8-BOM, then Windows-1252 if decoding f
 PHMPT_NUMERIC_DATE_ORIGIN <- ""     # For unformatted CSV dates only; never guessed
 PHMPT_MIN_RANDOMIZED <- 30000L      # Reject subject subsets and incomplete extracts
 PHMPT_PNG_DPI <- 300L
-PHMPT_AUDIT_ASSET_DIR <- "audit_assets" # Relative to project root; stable V04 PNG
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets") # Relative to project root; stable V04 PNG
 PHMPT_AUDIT_DPI <- 300L                # 8.5-inch width = 2550 px at 300 dpi
 PHMPT_SHOW_VALUES <- FALSE          # Optional count labels above individual columns
 PHMPT_SHOW_CHART <- interactive()
@@ -47,7 +53,7 @@ dt_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
@@ -120,7 +126,7 @@ dt_read <- function(path,encoding="auto",origin="",min_randomized=30000L) {
   x
 }
 dt_candidates <- function(root,release) {
-  paths<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
+  paths<-list.files(audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
   paths<-paths[grepl("(^|[_ -])adsl([_. -]|$)",basename(paths),ignore.case=TRUE)]
   paths<-paths[!grepl("p101|p201|dmid",basename(paths),ignore.case=TRUE)]
   paths[order(match(tolower(tools::file_ext(paths)),c("csv","jmp","xpt","sas7bdat")),paths)]

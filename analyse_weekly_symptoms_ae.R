@@ -6,6 +6,12 @@
 # v1.2.0: calendar unblinding shading in FULL plots (V09 and V10), including
 # continuation panels and PDF/SVG exports. Aggregations and dose logic unchanged.
 # ---- SETTINGS ----
+
+audit_release_dir <- function(root, legacy) {
+  modern<-paste0(legacy,"_moderna")
+  file.path(root,ifelse(dir.exists(file.path(root,modern)),modern,legacy))
+}
+
 PHMPT_ROOT <- ""                 # Auto-detect, or D:/Projects/moderna_trial_analysis
 PHMPT_RELEASE <- "auto"          # Prod preferred; otherwise EUA. Never pools releases.
 PHMPT_ADSL_FILE <- ""            # Optional explicit path; CSV, XPT, SAS7BDAT or JMP
@@ -23,7 +29,7 @@ PHMPT_EUA_CUTOFF <- "2020-11-25" # EUA data cutoff, not authorization date
 # censoring still uses ADSL dates. Override with an ISO date if the audit changes.
 PHMPT_UNBLIND_REFERENCE <- getOption("phmpt.unblind_reference", "2020-12-14")
 PHMPT_AE_TIMING <- "interval"    # "interval": known active AE weeks; "onset": onset week only
-PHMPT_OUTPUT_DIR <- ""           # Default: analysis/weekly_symptoms_ae_<timestamp>
+PHMPT_OUTPUT_DIR <- getOption("phmpt.weekly_output","")           # Default: analysis/weekly_symptoms_ae_<timestamp>
 PHMPT_CSV_ENCODING <- "auto"     # UTF-8-BOM then Windows-1252
 PHMPT_NUMERIC_DATE_ORIGIN <- "" # Unformatted numeric CSV dates: set documented origin
 PHMPT_MIN_RANDOMIZED <- 30000L   # Reject incomplete ADSL subsets
@@ -114,7 +120,7 @@ ws_read <- function(path,domain,encoding="auto") {
   x
 }
 ws_candidates <- function(root,release,domain) {
-  p<-list.files(file.path(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
+  p<-list.files(audit_release_dir(root,if(release=="Prod")"prod_data" else "eua_data"),recursive=TRUE,full.names=TRUE,
     pattern="\\.(csv|xpt|sas7bdat|jmp)$",ignore.case=TRUE)
   token<-if(domain=="ADSYMP")"(adsymp|adsy)" else tolower(domain)
   p<-p[grepl(paste0("(^|[_ -])",token,"([_. -]|$)"),basename(p),ignore.case=TRUE)]
@@ -618,7 +624,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
     release<-if(length(ws_candidates(root,"Prod","ADSL")))"Prod" else "EUA"
     if(nzchar(adsl_file)) {
       p<-tolower(gsub("\\\\","/",ws_path(root,adsl_file)))
-      if(grepl("/prod_data/",p,fixed=TRUE))release<-"Prod" else if(grepl("/eua_data/",p,fixed=TRUE))release<-"EUA"
+      if(grepl("/prod_data(_moderna)?/",p))release<-"Prod" else if(grepl("/eua_data(_moderna)?/",p))release<-"EUA"
       else stop("For an explicit ADSL outside eua_data/prod_data, set PHMPT_RELEASE to EUA or Prod.")
     }
   }
@@ -718,7 +724,7 @@ ws_root <- function(root="") {
     if(nzchar(p))cand<-c(cand,dirname(p))
   }
   for(p in unique(cand[dir.exists(cand)]))for(i in seq_len(8L)) {
-    if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
+    if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(normalizePath(p,winslash="/",mustWork=TRUE))
     parent<-dirname(p);if(parent==p)break;p<-parent
   }
   stop("Cannot locate eua_data/prod_data. Set PHMPT_ROOT to the project root.")
@@ -1171,7 +1177,7 @@ ax_root <- function(root="",out=getwd()) {
   for(start in unique(c(getwd(),out))) {
     p<-normalizePath(start,winslash="/",mustWork=TRUE)
     repeat {
-      if(any(dir.exists(file.path(p,c("prod_data","eua_data")))))return(p)
+      if(any(dir.exists(audit_release_dir(p,c("prod_data","eua_data")))))return(p)
       if(basename(p)=="analysis")return(dirname(p))
       up<-dirname(p);if(up==p)break;p<-up
     }

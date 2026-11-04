@@ -26,7 +26,7 @@ PHMPT_INCLUDE_TEXT_ONLY <- TRUE # separate review queue; never counted as confir
 PHMPT_PDF_LINKS_FILE <- "" # optional CSV with subject,path for PDFs whose names lack an ID
 PHMPT_EXTRA_SUBJECTS <- character() # optional additional P301 subject IDs to export
 PHMPT_SHOW_REPORT <- interactive()
-# V36: print-ready Substack table, plus CSV inputs and provenance.
+# V37: print-ready Substack table, plus CSV inputs and provenance.
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
@@ -573,7 +573,7 @@ dr_methods <- function() c(
   "PDF page hits are search aids and may be blank form prompts. pdftools (or an installed pdftotext executable) text extraction is optional; image-only PDFs require separate OCR. Missing PDF/text does not imply absent reporting. Complete PDFs are copied without alteration, including potentially redacted/placeholder variants.",
   "Discovery uses configured submissions only; ambiguous snapshots are not concatenated. Same-stem readable XPT/SAS takes priority over CSV; exact copies are deduplicated. Conflicts are logged and the affected domain is withheld until explicitly selected with PHMPT_FILES.",
   "JMP ADSL reading is limited to the declared projection; CSV/XPT preserve all fields. Tables without a usable subject identifier or unexpected schema are logged as unreadable. Missing/ambiguous inputs lead to a partial report, not a claim of no deaths.",
-  "V36: audit_assets/V36_death_totals_by_reporting_scope.png, 8.5 inches wide at 300 dpi by default. Published benchmarks and reconstructed BLA ADSL counts are distinct. CSV inputs, per-subject inclusion and source references accompany the PNG; the visual contains no reference markers or source URLs.",
+  "V37: audit_assets/V37_death_totals_by_reporting_scope.png, 8.5 inches wide at 300 dpi by default. Published benchmarks and reconstructed BLA ADSL counts are distinct. CSV inputs, per-subject inclusion and source references accompany the PNG; the visual contains no reference markers or source URLs.",
   "Outputs: report.html; review_export/index.html, records/, documents/, death_evidence.csv, deaths_by_subject.csv, fatal_AE_comparison.csv, reporting_date_candidates.csv, review worksheet, timeliness results and CRF manifests. Optional ZIP contains the whole review_export folder.",
   "FDA EUA review: https://www.fda.gov/media/144434/download (pages 42-43). Sponsor briefing: https://www.fda.gov/media/144452/download (section 7.2.4.3).",
   "Released protocol collection: https://phmpt.org/wp-content/uploads/2025/04/125752_S3_M5_5351_mrna1273p301-16-1-1.pdf . Local Amendment 4 filename: 19745_S42_M5_protocol-mrna-1273-p301-amend-4.pdf.",
@@ -678,7 +678,7 @@ analyse_death_reporting <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_DIR)
   if(PHMPT_SHOW_REPORT&&interactive())browseURL(file.path(export,"index.html"))
   invisible(list(output=out,subjects=subjects,evidence=evidence,assessment=assessment,coverage=coverage,crf=crf,visual=visual))
 }
-# ---- Embedded V36 renderer: no shared R file or browser required ----
+# ---- Embedded V37 renderer: no shared R file or browser required ----
 dr36_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
   x<-gsub("https?://[^[:space:]<>]+","",x,perl=TRUE)
@@ -861,7 +861,7 @@ dr36_finish <- function(a,notes=character()) {
 }
 
 
-# V36 keeps published benchmarks separate from locally reconstructed counts.
+# V37 keeps published benchmarks separate from locally reconstructed counts.
 # No manually reviewed CRF finding is silently treated as an automated result.
 dr36_references <- function() data.frame(
   scope_id=c("EUA_PAPER_28D","EUA_FDA_DEC03","BLA_BLINDED","BLA_EXTENDED"),
@@ -1030,7 +1030,7 @@ dr36_reconstruct <- function(inputs) {
     q$vaccine[j]<-sum(take&az=="mRNA-1273");q$placebo[j]<-sum(take&az=="Placebo");q$total[j]<-sum(take)
     matches<-identical(as.integer(q[j,c("vaccine","placebo","total")]),as.integer(refs[j,c("vaccine","placebo_original","total")]))
     q$status[j]<-if(matches)"MATCH" else "DIFFERS"
-    q$reason[j]<-if(matches)"Recorded-date counts agree in both original arms and total." else "Computed counts differ from the published reference; inspect V36_subjects.csv."
+    q$reason[j]<-if(matches)"Recorded-date counts agree in both original arms and total." else "Computed counts differ from the published reference; inspect V37_subjects.csv."
     cp<-participants$crossover_class[take&az=="Placebo"]
     q$placebo_no_crossover[j]<-sum(cp=="NO_STUDY_CROSSOVER")
     q$placebo_after_crossover[j]<-sum(cp=="AFTER_STUDY_CROSSOVER")
@@ -1040,35 +1040,35 @@ dr36_reconstruct <- function(inputs) {
     split_match<-matches&&q$placebo_no_crossover[j]==refs$placebo[j]&&q$placebo_after_crossover[j]==refs$crossover[j]
     q$exposure_status[j]<-if(q$placebo_crossover_unresolved[j]>0)"UNRESOLVED" else if(split_match)"MATCH" else "DIFFERS"
     q$exposure_reason[j]<-if(q$exposure_status[j]=="MATCH")"Original mRNA-1273, placebo without study crossover, and placebo after study mRNA-1273 agree separately." else
-      if(q$exposure_status[j]=="UNRESOLVED")"Some placebo-assigned deaths lack conclusive dose evidence; inspect V36_crossover_review.csv." else "Exposure split differs from reference; inspect V36_subjects.csv."
+      if(q$exposure_status[j]=="UNRESOLVED")"Some placebo-assigned deaths lack conclusive dose evidence; inspect V37_crossover_review.csv." else "Exposure split differs from reference; inspect V37_subjects.csv."
 
   }
   result()
 }
 
 dr36_export <- function(root,out,export,inputs) {
-  a<-dr36_begin(root,out,"V36_deaths");refs<-dr36_references();r<-dr36_reconstruct(inputs);q<-r$summary
+  a<-dr36_begin(root,out,"V37_deaths");refs<-dr36_references();r<-dr36_reconstruct(inputs);q<-r$summary
   display<-dr36_display(refs,q)
   status<-if(any(q$status=="DIFFERS"|q$exposure_status=="DIFFERS"))"RECONCILIATION_DIFFERENCE" else
     if(all(q$status=="MATCH"&q$exposure_status=="MATCH"))"RECONCILED" else
     if(any(q$status=="MATCH"))"PARTIAL_RECONSTRUCTION" else "REFERENCE_ONLY"
-  dr36_data(a,"V36",refs,"references")
-  dr36_data(a,"V36",q,"reconciliation")
-  dr36_data(a,"V36",r$subjects,"subjects")
+  dr36_data(a,"V37",refs,"references")
+  dr36_data(a,"V37",q,"reconciliation")
+  dr36_data(a,"V37",r$subjects,"subjects")
   cp<-if("crossover_class"%in%names(r$subjects))r$subjects[r$subjects$arm=="Placebo",,drop=FALSE] else r$subjects
-  dr36_data(a,"V36",cp,"crossover_review")
+  dr36_data(a,"V37",cp,"crossover_review")
   visual<-display
   visual[[1]]<-paste(visual$Origin,visual[[1]],sep=" | ");visual$Origin<-NULL
   names(visual)<-c("Reporting scope","Original\nmRNA-1273","Placebo:\nno crossover","Placebo:\nafter crossover","Dose status\nunclear","Total")
-  dr36_table(a,"V36","death_totals_by_reporting_scope","Deaths by reporting scope",visual,
+  dr36_table(a,"V37","death_totals_by_reporting_scope","Deaths by reporting scope",visual,
     subtitle="Published totals and ADSL reconstruction | Study crossover shown separately",
     note="Crossover = placebo assignment followed by study mRNA-1273 before death. Extended total: 24 + 17 + 3 = 44; by original assignment: 24 versus 20. Unblinding alone is not vaccination. Outside-study vaccination is separate. Unclear means dose evidence is insufficient. Published and computed rows are distinct.",
     widths=c(.34,.16,.16,.16,.10,.08),status=status,highlight=5:6)
   saved<-dr36_finish(a,c(
-    "V36 shows published reference totals separately from computed BLA ADSL counts. The extended FDA reference is 24 original mRNA-1273, 17 placebo without study crossover, and 3 placebo after study crossover; 20 is the ORIGINAL placebo total, not the unvaccinated death count.",
+    "V37 shows published reference totals separately from computed BLA ADSL counts. The extended FDA reference is 24 original mRNA-1273, 17 placebo without study crossover, and 3 placebo after study crossover; 20 is the ORIGINAL placebo total, not the unvaccinated death count.",
     "CROSSOVER: a first open-label dose flag OLDOS1FL=Y, actual treatment TRT02A=mRNA-1273, and exact TR02SDT strictly before death establish study-vaccine exposure. OLDOS1FL=N with no contradictory exposure evidence establishes no recorded study crossover. Missing columns/flags, conflicting chronology, partial/imputed first-dose dates and same-day first-dose/death are UNRESOLVED. UBLDDT alone is never used to infer vaccination. Second-dose dates/flags and outside-study EUAVACDT are retained for review; these do not erase a valid first-dose exposure.",
-    "V36_crossover_review.csv includes every placebo-assigned death candidate, the dosing evidence, classification, unresolved reason and intervals from open-label vaccination to death. V36_reconciliation.csv retains original-arm totals alongside separate crossover counts/status. A MATCH for original totals does not imply a MATCH for exposure classification.",
-    "V36_data.csv contains the displayed table; V36_references.csv carries document links and definitions; V36_reconciliation.csv gives counts/status/reasons and source MD5; V36_subjects.csv contains all death candidates in the selected BLA ADSL and inclusion flags.",
+    "V37_crossover_review.csv includes every placebo-assigned death candidate, the dosing evidence, classification, unresolved reason and intervals from open-label vaccination to death. V37_reconciliation.csv retains original-arm totals alongside separate crossover counts/status. A MATCH for original totals does not imply a MATCH for exposure classification.",
+    "V37_data.csv contains the displayed table; V37_references.csv carries document links and definitions; V37_reconciliation.csv gives counts/status/reasons and source MD5; V37_subjects.csv contains all death candidates in the selected BLA ADSL and inclusion flags.",
     "Completeness gates: S3 ADSL must contain 30,423 unique P301 IDs and 30,346 safety participants with identifiable original arms. Actual-treatment safety-arm totals are not imposed on the original randomized arms. These are roster checks, not validation of every medical observation. Subsets and incompatible snapshots are not reported as complete reconciliations.",
     "Reconstruction uses SAFFL=Y and original TRT01P. Blinded: recorded death on/before 26 March 2021 and on/before recorded UBLDDT, or UBLDDT blank. Extended: recorded death on/before 4 May 2021. A same-day death/unblinding sequence cannot be resolved from date-only data.",
     "Missing, partial, conflicting or explicitly imputed death dates prevent a full reconstruction unless an exact non-imputed DTHDTC is available. A missing UBLDDT column prevents the blinded comparison; a blank value is treated as no recorded unblinding.",
@@ -1076,16 +1076,16 @@ dr36_export <- function(root,out,export,inputs) {
     "EUA reference counts are not reconstructed from later death dates: awareness and reporting-cutoff information is needed. The existing verified-review worksheet remains the basis for any 24-hour notification assessment.",
     "Full reconstruction is independent of availability of AE/DM/DS in the wider death audit. A partial-domain audit can still reconcile the complete ADSL counts; that does not certify reporting compliance.",
     paste(q$scope_id,q$status,q$reason,sep=" | ")))
-  # The self-contained review ZIP includes V36 and its provenance files.
+  # The self-contained review ZIP includes V37 and its provenance files.
   target<-file.path(export,"audit_assets");dir.create(target,recursive=TRUE,showWarnings=FALSE)
-  paths<-list.files(file.path(out,"audit_assets"),pattern="^V36_",full.names=TRUE)
-  if(!all(file.copy(paths,target,overwrite=TRUE)))stop("Cannot copy V36 into the review export.")
-  for(p in paths)if(unname(tools::md5sum(p))!=unname(tools::md5sum(file.path(target,basename(p)))))stop("V36 review-export copy mismatch.")
-  block<-paste0("<h2>V36: death totals by reporting scope</h2><p>Published reference figures and local ADSL reconstruction are labelled separately. Current status: <strong>",status,
-    "</strong>. This table does not establish notification timeliness.</p><a href='audit_assets/V36_death_totals_by_reporting_scope.png'><img src='audit_assets/V36_death_totals_by_reporting_scope.png' alt='V36: death totals by reporting scope' style='width:100%;max-width:1000px;height:auto'></a>",
+  paths<-list.files(file.path(out,"audit_assets"),pattern="^V37_",full.names=TRUE)
+  if(!all(file.copy(paths,target,overwrite=TRUE)))stop("Cannot copy V37 into the review export.")
+  for(p in paths)if(unname(tools::md5sum(p))!=unname(tools::md5sum(file.path(target,basename(p)))))stop("V37 review-export copy mismatch.")
+  block<-paste0("<h2>V37: death totals by reporting scope</h2><p>Published reference figures and local ADSL reconstruction are labelled separately. Current status: <strong>",status,
+    "</strong>. This table does not establish notification timeliness.</p><a href='audit_assets/V37_death_totals_by_reporting_scope.png'><img src='audit_assets/V37_death_totals_by_reporting_scope.png' alt='V37: death totals by reporting scope' style='width:100%;max-width:1000px;height:auto'></a>",
     "<p>The extended published comparison is <strong>24 original vaccine / 17 placebo without study crossover / 3 placebo after crossover</strong>. The original placebo assignment still totals 20. Actual crossover requires dose evidence; it is not inferred from unblinding.</p>",
     dr_table(q[,c("scope_id","vaccine","placebo","placebo_no_crossover","placebo_after_crossover","placebo_crossover_unresolved","total","status","exposure_status","exposure_reason")]),
-    "<p><a href='audit_assets/V36_data.csv'>Displayed table</a> | <a href='audit_assets/V36_reconciliation.csv'>Reconciliation</a> | <a href='audit_assets/V36_subjects.csv'>Subject-level inclusion</a> | <a href='audit_assets/V36_crossover_review.csv'>Crossover dose evidence</a> | <a href='audit_assets/V36_references.csv'>Sources and definitions</a></p>")
+    "<p><a href='audit_assets/V37_data.csv'>Displayed table</a> | <a href='audit_assets/V37_reconciliation.csv'>Reconciliation</a> | <a href='audit_assets/V37_subjects.csv'>Subject-level inclusion</a> | <a href='audit_assets/V37_crossover_review.csv'>Crossover dose evidence</a> | <a href='audit_assets/V37_references.csv'>Sources and definitions</a></p>")
   list(directory=saved$directory,manifest=saved$manifest,summary=q,html=block)
 }
 
