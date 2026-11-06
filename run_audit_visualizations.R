@@ -1,4 +1,4 @@
-# Moderna COVE audit V01–V37 | standalone launcher | 2026-11-03
+# Moderna COVE audit V01–V40 | standalone launcher | 2026-11-06
 # Extract the script bundle into your project root, open the project in RStudio,
 # select this entire file and Run, or: Rscript run_audit_visualizations.R
 # Include four unnumbered supplemental charts/maps: options(phmpt.figures_include_supplementary=TRUE).
@@ -10,10 +10,10 @@ figure_plan <- function(include_supplementary=FALSE) {
     "analyse_ae_covid_symptoms","analyse_weekly_symptoms_ae","analyse_background_covid",
     "analyse_site_symptom_recording","analyse_pcr_testing_by_lab","analyse_symptom_testing_heatmaps",
     "analyse_site_testing_imbalance","analyse_anti_n_seroconversion","analyse_day57_anti_n_sensitivity",
-    "analyse_eua_bla_changes","analyse_efficacy_cases","analyse_death_reporting"),".R"),
+    "analyse_eua_bla_changes","analyse_efficacy_cases","analyse_death_reporting","analyse_subject_numbering"),".R"),
     ids=c("V01–V03","V04","V05–V07","V08","V09–V10","background prerequisite","V11","V12–V14",
     "V15–V24: episode data and descriptive plots","V15–V24: final models and plots","V25","V26–V28",
-    "V29–V33","V34–V36","V37"),stringsAsFactors=FALSE)
+    "V29–V33","V34–V36","V37","V38–V40"),stringsAsFactors=FALSE)
   if(!include_supplementary)return(numbered)
   rbind(numbered,data.frame(script=c("analyse_anti_n_testing.R","analyse_us_weekly_covid_tests.R",
     "analyse_background_covid_map_sites_only.R","analyse_background_covid_map.R"),
@@ -64,7 +64,7 @@ figure_manifest <- function(dir) {
 figure_previous_name <- function(n) {
   matches<-gregexpr("V[0-9]{2}(?![0-9])",n,perl=TRUE)
   vals<-regmatches(n,matches)
-  regmatches(n,matches)<-lapply(vals,function(v){i<-as.integer(substring(v,2));sprintf("V%02d",ifelse(i>=18L,i-1L,i))})
+  regmatches(n,matches)<-lapply(vals,function(v){i<-as.integer(substring(v,2));sprintf("V%02d",ifelse(i>=18L & i<=37L,i-1L,i))})
   n
 }
 figure_publish <- function(stage,dest,run) {
@@ -129,7 +129,10 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     phmpt.weekly_output=weekly,phmpt.weekly_dir=weekly,phmpt.heatmap_output=heat,
     phmpt.audit_data_dir=heat,phmpt.audit_output_dir=site,phmpt.report_only=FALSE,
     phmpt.background_file=bg,
-    phmpt.v17_adjustment=match.arg(getOption("phmpt.v17_adjustment","nominal"),c("nominal","bonferroni")))
+    phmpt.v17_loess_span=getOption("phmpt.v17_loess_span",0.40),
+    phmpt.v17_p0_randomized=getOption("phmpt.v17_p0_randomized"),
+    phmpt.v17_p0_eligible=getOption("phmpt.v17_p0_eligible"),
+    phmpt.v17_adjustment=match.arg(getOption("phmpt.v17_adjustment","funnel"),c("funnel","nominal","bonferroni")))
   state<-data.frame(step=seq_len(nrow(plan)),plan,status="PENDING",started="",seconds=NA_real_,log="",message="",stringsAsFactors=FALSE)
   save_state<-function()figure_csv(state,file.path(run,"launcher_status.csv"))
   save_state();message("Run directory: ",run)
@@ -162,7 +165,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     }
     state$status[i]<-"DONE";save_state()
   }
-  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:37)
+  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:40)
   if(!nrow(mf)||!setequal(expected,unique(mf$visual))||anyDuplicated(mf$file))
     stop("Final figure inventory incomplete or duplicated: ",paste(setdiff(expected,mf$visual),collapse=", "),". Inspect ",run)
   files<-file.path(stage,mf$file)
@@ -173,7 +176,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   if(any(flagged)&&!allow_flagged)stop("Flagged output(s): ",paste(unique(mf$visual[flagged]),collapse=", "),
     ". See ",file.path(run,"figure_inventory.csv"),". Previous audit_assets remains active. Set options(phmpt.figures_allow_flagged=TRUE) only to publish explicitly flagged figures.")
   dest<-file.path(root,"audit_assets");figure_publish(stage,dest,run)
-  message("Published V01–V37 in ",dest,". Status, checksums and logs: ",run)
+  message("Published V01–V40 in ",dest,". Status, checksums and logs: ",run)
   invisible(list(directory=dest,run=run,inventory=mf))
 }
 if(isTRUE(getOption("phmpt.launcher_autorun",TRUE)))run_audit_visualizations()
