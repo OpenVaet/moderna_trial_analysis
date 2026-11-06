@@ -1,4 +1,4 @@
-# Moderna COVE audit V01–V40 | standalone launcher | 2026-11-06
+# Moderna COVE audit V01–V41 | standalone launcher | 2026-11-06
 # Extract the script bundle into your project root, open the project in RStudio,
 # select this entire file and Run, or: Rscript run_audit_visualizations.R
 # Include four unnumbered supplemental charts/maps: options(phmpt.figures_include_supplementary=TRUE).
@@ -13,7 +13,7 @@ figure_plan <- function(include_supplementary=FALSE) {
     "analyse_eua_bla_changes","analyse_efficacy_cases","analyse_death_reporting","analyse_subject_numbering"),".R"),
     ids=c("V01–V03","V04","V05–V07","V08","V09–V10","background prerequisite","V11","V12–V14",
     "V15–V24: episode data and descriptive plots","V15–V24: final models and plots","V25","V26–V28",
-    "V29–V33","V34–V36","V37","V38–V40"),stringsAsFactors=FALSE)
+    "V29–V33","V34–V36","V37","V38–V41"),stringsAsFactors=FALSE)
   if(!include_supplementary)return(numbered)
   rbind(numbered,data.frame(script=c("analyse_anti_n_testing.R","analyse_us_weekly_covid_tests.R",
     "analyse_background_covid_map_sites_only.R","analyse_background_covid_map.R"),
@@ -65,6 +65,13 @@ figure_previous_name <- function(n) {
   matches<-gregexpr("V[0-9]{2}(?![0-9])",n,perl=TRUE)
   vals<-regmatches(n,matches)
   regmatches(n,matches)<-lapply(vals,function(v){i<-as.integer(substring(v,2));sprintf("V%02d",ifelse(i>=18L & i<=37L,i-1L,i))})
+  n<-sub("^V39_missing_identifier_timeline", "V38_missing_identifier_timeline",n)
+  n<-sub("^V40_site_identifier_example", "V39_site_identifier_example",n)
+  n<-sub("^V41_consecutive_gap_distribution", "V40_consecutive_gap_distribution",n)
+  n<-sub("^V38_V41_(manifest|methods)", "V38_V40_\\1",n)
+  n<-sub("^V39_(numbering_gaps|weekly|later_neighbor_sensitivity|sites|summary|input_provenance|index_source_files)","V38_\\1",n)
+  n<-sub("^V40_site_example", "V39_site_example",n)
+  n<-sub("^V41_(gap_runs|run_distribution)","V40_\\1",n)
   n
 }
 figure_publish <- function(stage,dest,run) {
@@ -165,7 +172,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     }
     state$status[i]<-"DONE";save_state()
   }
-  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:40)
+  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:41)
   if(!nrow(mf)||!setequal(expected,unique(mf$visual))||anyDuplicated(mf$file))
     stop("Final figure inventory incomplete or duplicated: ",paste(setdiff(expected,mf$visual),collapse=", "),". Inspect ",run)
   files<-file.path(stage,mf$file)
@@ -176,7 +183,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   if(any(flagged)&&!allow_flagged)stop("Flagged output(s): ",paste(unique(mf$visual[flagged]),collapse=", "),
     ". See ",file.path(run,"figure_inventory.csv"),". Previous audit_assets remains active. Set options(phmpt.figures_allow_flagged=TRUE) only to publish explicitly flagged figures.")
   dest<-file.path(root,"audit_assets");figure_publish(stage,dest,run)
-  message("Published V01–V40 in ",dest,". Status, checksums and logs: ",run)
+  message("Published V01–V41 in ",dest,". Status, checksums and logs: ",run)
   invisible(list(directory=dest,run=run,inventory=mf))
 }
 if(isTRUE(getOption("phmpt.launcher_autorun",TRUE)))run_audit_visualizations()
