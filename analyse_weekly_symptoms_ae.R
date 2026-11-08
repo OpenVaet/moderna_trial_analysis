@@ -3,7 +3,7 @@
 # CSV/JMP and charts: base R. XPT/SAS7BDAT: install.packages("haven").
 # No positivity filter. This measures documented symptoms, not COVID diagnoses.
 
-# v1.2.0: calendar unblinding shading in FULL plots (V11 and V12), including
+# v1.2.0: calendar unblinding shading in FULL plots (V13 and V14), including
 # continuation panels and PDF/SVG exports. Aggregations and dose logic unchanged.
 # ---- SETTINGS ----
 
@@ -21,10 +21,10 @@ PHMPT_MAPPING_FILE <- ""         # Defaults to assets/ae_covid_symptom_mapping.c
 # If no external mapping is present, the embedded, previously supplied v1.0.0
 # field-specific mapping is used and exported. No other R script is sourced.
 PHMPT_WINDOWS <- c("BLINDED", "EUA", "FULL")
-# Audit V11/V12 PNGs default to FULL so post-unblinding doses are visible.
+# Audit V13/V14 PNGs default to FULL so post-unblinding doses are visible.
 # Set options(phmpt.audit_window="BLINDED") before running for blinded PNGs.
 PHMPT_EUA_CUTOFF <- "2020-11-25" # EUA data cutoff, not authorization date
-# The audit's calendar reference, also used in V09. This is NOT every subject's
+# The audit's calendar reference, also used in V11. This is NOT every subject's
 # unblinding date. Shading is shown only for FULL follow-up; individual blinded
 # censoring still uses ADSL dates. Override with an ISO date if the audit changes.
 PHMPT_UNBLIND_REFERENCE <- getOption("phmpt.unblind_reference", "2020-12-14")
@@ -672,7 +672,7 @@ analyse_weekly_symptoms_ae <- function(root="",release="auto",adsl_file="",ae_fi
   ctx<-ws_context(a$x,numeric_date_origin);submission<-ws_submission(a$manifest$path)
   recorded<-ctx$UBLDDT[is.finite(ctx$UBLDDT)]
   ws_csv(data.frame(reference_date=as.character(ws_unblind_day()),
-    source="Audit calendar reference (same default as V09); not individual censoring",
+    source="Audit calendar reference (same default as V11); not individual censoring",
     first_recorded_UBLDDT=if(length(recorded))ws_iso(min(recorded)) else "",
     shaded_windows="FULL",changes_analysis_counts=FALSE),
     file.path(out,"unblinding_shading_reference.csv"))
@@ -1210,7 +1210,7 @@ PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 PHMPT_AUDIT_WINDOW <- getOption("phmpt.audit_window", "FULL")
 
-# ---- Standalone audit-asset renderer (V10-V38), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V12-V40), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -1394,7 +1394,7 @@ ax_finish <- function(a,notes=character()) {
 }
 
 ws_export_audit_assets <- function(root,out,weekly,ctx,release,ae_timing,window=PHMPT_AUDIT_WINDOW) {
-  a<-ax_begin(root,out,"V11_V12_weekly_symptoms")
+  a<-ax_begin(root,out,"V13_V14_weekly_symptoms")
   w<-weekly[weekly$window==window,];if(!nrow(w))stop("Requested audit symptom window unavailable: ",window)
   dates<-sort(unique(w$week_start));blocks<-split(dates,ceiling(seq_along(dates)/18))
   shade<-!is.null(ws_unblind_bounds(w[w$arm=="mRNA-1273",],window))
@@ -1404,7 +1404,7 @@ ws_export_audit_assets <- function(root,out,weekly,ctx,release,ae_timing,window=
   top<-max(pretty(c(0,max(c(1,w$dose_1,w$dose_2,w$dose_3,w$dose_4,w$total_symptom_groups),na.rm=TRUE)*1.1),n=5))
   fills<-c("#367E8A","#A65B31","#785E91");arms<-c("mRNA-1273","Placebo")
   for(ar in arms) {
-    id<-if(ar=="mRNA-1273")"V11" else "V12"
+    id<-if(ar=="mRNA-1273")"V13" else "V14"
     draw<-function() {
       old<-par(no.readonly=TRUE);on.exit(par(old))
       for(k in seq_along(blocks)) {

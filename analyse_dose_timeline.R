@@ -22,7 +22,7 @@ PHMPT_CSV_ENCODING <- "auto"        # UTF-8-BOM, then Windows-1252 if decoding f
 PHMPT_NUMERIC_DATE_ORIGIN <- ""     # For unformatted CSV dates only; never guessed
 PHMPT_MIN_RANDOMIZED <- 30000L      # Reject subject subsets and incomplete extracts
 PHMPT_PNG_DPI <- 300L
-PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets") # Relative to project root; stable V04 PNG
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets") # Relative to project root; stable V06 PNG
 PHMPT_AUDIT_DPI <- 300L                # 8.5-inch width = 2550 px at 300 dpi
 PHMPT_SHOW_VALUES <- FALSE          # Optional count labels above individual columns
 PHMPT_SHOW_CHART <- interactive()
@@ -288,7 +288,7 @@ dt_audit_chart <- function(weekly,totals,pop_n,population,cutoff,release) {
   legend("topright",legend=paste0(c("Dose 1: ","Dose 2: "),dt_n(totals$n_administered)),
     fill=c("#1E667D","#D27C34"),border=NA,bty="n",cex=.95,inset=.015)
   grid::pushViewport(grid::viewport())
-  dt_audit_text("V04  Weekly dose 1 and dose 2 administrations",.35,.25,17,TRUE,col="#172F3C")
+  dt_audit_text("V06  Weekly dose 1 and dose 2 administrations",.35,.25,17,TRUE,col="#172F3C")
   dt_audit_text(paste0("Moderna P301 | ",if(population=="randomized")"Randomized population" else "All ADSL participants",
     ": ",dt_n(pop_n)),.35,.69,12.2)
   dt_audit_text(paste0(release," data cutoff: ",cutoff," | mRNA-1273 and placebo combined"),.35,.99,11.5)
@@ -301,25 +301,25 @@ dt_audit_chart <- function(weekly,totals,pop_n,population,cutoff,release) {
 dt_export_audit <- function(weekly,totals,pop_n,population,cutoff,release,source,root,out,
     asset_dir="audit_assets",dpi=300L) {
   stage<-file.path(out,"audit_assets");dir.create(stage,recursive=TRUE,showWarnings=FALSE)
-  name<-"V04_weekly_dose_administrations.png"
+  name<-"V06_weekly_dose_administrations.png"
   dims<-dt_audit_png(file.path(stage,name),function()dt_audit_chart(weekly,totals,pop_n,population,cutoff,release),height=7,dpi=dpi)
-  manifest<-data.frame(visual="V04",file=name,width_px=dims[1],height_px=dims[2],dpi=dpi,
+  manifest<-data.frame(visual="V06",file=name,width_px=dims[1],height_px=dims[2],dpi=dpi,
     release=release,cutoff=cutoff,population=population,cohort_n=pop_n,source_adsl_md5=source$md5,
     generated_at=format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z"),run_directory=normalizePath(out,winslash="/"),
     md5=unname(tools::md5sum(file.path(stage,name))))
-  dt_csv(manifest,file.path(stage,"V04_dose_manifest.csv"))
-  dt_csv(weekly,file.path(stage,"V04_weekly_dose_data.csv"))
-  writeLines(c("V04: WEEKLY ORIGINAL BLINDED DOSE ADMINISTRATIONS",
+  dt_csv(manifest,file.path(stage,"V06_dose_manifest.csv"))
+  dt_csv(weekly,file.path(stage,"V06_weekly_dose_data.csv"))
+  writeLines(c("V06: WEEKLY ORIGINAL BLINDED DOSE ADMINISTRATIONS",
     "8.5 x 7 inches, opaque white PNG; default 300 dpi = 2550 x 2100 pixels.",
     "Use the original PNG for Substack/print, not a screenshot. Counts are identical to weekly_doses.csv.",
     "Bars count dose administrations, grouped by dose; both randomized arms combined. Weeks start Monday.",
     "Original dose dates only: dose 1 TR01SDT/DOSE1FL; dose 2 DOSE2DT/DOSE2FL. Crossover is excluded.",
     "Source file/hash and cohort are recorded in the manifest and selected_adsl.csv in the run directory.",
-    "Only this script's named V04 files are refreshed in audit_assets. Other figures are retained."),
-    file.path(stage,"V04_dose_README.txt"))
-  files<-c(name,"V04_dose_manifest.csv","V04_weekly_dose_data.csv","V04_dose_README.txt")
+    "Only this script's named V06 files are refreshed in audit_assets. Other figures are retained."),
+    file.path(stage,"V06_dose_README.txt"))
+  files<-c(name,"V06_dose_manifest.csv","V06_weekly_dose_data.csv","V06_dose_README.txt")
   destination<-dt_path(root,asset_dir)
-  dt_audit_publish(stage,destination,files,"^(V04_weekly_dose_administrations[.]png|V04_dose_(manifest[.]csv|README[.]txt)|V04_weekly_dose_data[.]csv)$")
+  dt_audit_publish(stage,destination,files,"^(V06_weekly_dose_administrations[.]png|V06_dose_(manifest[.]csv|README[.]txt)|V06_weekly_dose_data[.]csv)$")
   message("Audit PNG: ",file.path(destination,name)," (",dpi," dpi)")
   list(directory=destination,manifest=manifest)
 }
@@ -392,7 +392,7 @@ analyse_dose_timeline <- function(root="",release="auto",adsl_file="",population
     "Automatic selection prefers a complete production ADSL and its latest CUTOFFDT. EUA is a fallback and is never pooled with production. Conflicting latest-cutoff inputs require an explicit PHMPT_ADSL_FILE.",
     "CSV dates must be ISO, English SAS-style DDMMMYYYY, or use an explicitly documented numeric origin. Haven dates and JMP date metadata are decoded directly.",
     "CSV/JMP processing and plots use base R. XPT/SAS7BDAT require haven. The embedded JMP reader supports the released P301 fixed-width/Float64 format and stops on unsupported layouts.",
-    "AUDIT OUTPUT: audit_assets/V04_weekly_dose_administrations.png, with data CSV, provenance manifest and README; dedicated print/article layout (default 2550 px wide at 300 dpi).",
+    "AUDIT OUTPUT: audit_assets/V06_weekly_dose_administrations.png, with data CSV, provenance manifest and README; dedicated print/article layout (default 2550 px wide at 300 dpi).",
     "Outputs: weekly_doses.pdf/.png/.svg; weekly_doses.csv; weekly_doses_by_arm.csv; subject_dose_dates.csv; dose_totals_and_dates.csv; source and exception logs.",
     "Protocol/metadata reference: production P301 ADaM define.xml, ADSL TR01SDT, DOSE2DT, DOSE1FL, DOSE2FL and RANDFL derivations.","",
     capture.output(print(totals,row.names=FALSE)))

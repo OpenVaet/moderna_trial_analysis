@@ -34,12 +34,12 @@ PHMPT_UNBLINDING_START <- "2020-12-14"   # EUA-era calendar reference, not first
 # Earlier UBLDDT dates are retained and audited. Scheduled open-label visits began
 # 2020-12-24; see weekly_staff_deviations_methods.txt for these distinct milestones.
 
-PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets")  # Stable V05-V09 PNGs, relative to project root
+PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets")  # Stable V07-V11 PNGs, relative to project root
 PHMPT_AUDIT_DPI <- 300L                   # 8.5-inch width = 2550 px at 300 dpi
-PHMPT_AUDIT_WINDOW <- "Prod_BLINDED"     # V05/V08: do not combine submission windows
-PHMPT_AUDIT_WEEKLY_WINDOW <- "Prod_ALL_FOLLOWUP" # V09 includes post-unblinding follow-up
-PHMPT_AUDIT_MIN_AFFECTED <- 40L           # V05 display filter: strictly more than this many
-PHMPT_AUDIT_GLOBAL_P <- 0.000001          # V05 report selection; raw p strictly below threshold
+PHMPT_AUDIT_WINDOW <- "Prod_BLINDED"     # V07/V10: do not combine submission windows
+PHMPT_AUDIT_WEEKLY_WINDOW <- "Prod_ALL_FOLLOWUP" # V11 includes post-unblinding follow-up
+PHMPT_AUDIT_MIN_AFFECTED <- 40L           # V07 display filter: strictly more than this many
+PHMPT_AUDIT_GLOBAL_P <- 0.000001          # V07 report selection; raw p strictly below threshold
 # These are display filters only. Original full analyses and PHMPT_ALPHA are unchanged.
 # Tables paginate at readable font sizes when needed (_02.png, _03.png, ...).
 # Load functions without running: options(phmpt.autorun=FALSE) before source().
@@ -1081,8 +1081,8 @@ dv_audit_weekly <- function(data,coverage,breakdown,window,marker) {
   arms<-c("mRNA-1273","Placebo");colors<-c("#1E667D","#D27C34")
   weeks<-sort(unique(as.Date(z$week_start)));x<-as.numeric(weeks)
   vals<-vapply(arms,function(a)z$records[match(paste(weeks,a),paste(as.Date(z$week_start),z$arm))],numeric(length(weeks)))
-  if(anyNA(vals))stop("Incomplete arm/week grid for V09.")
-  for(a in arms)if(sum(z$records[z$arm==a])!=cov$records[cov$arm==a])stop("V09 weekly and coverage totals disagree.")
+  if(anyNA(vals))stop("Incomplete arm/week grid for V11.")
+  for(a in arms)if(sum(z$records[z$arm==a])!=cov$records[cov$arm==a])stop("V11 weekly and coverage totals disagree.")
   old<-par(no.readonly=TRUE);on.exit(par(old))
   par(fig=c(0,1,.52,.85),mai=c(.62,1.02,.15,.25),mgp=c(3,.6,0),family="sans",las=1,xaxs="i",yaxs="i",bty="n")
   ymax<-max(pretty(c(0,max(1,vals)*1.15),n=5))
@@ -1100,7 +1100,7 @@ dv_audit_weekly <- function(data,coverage,breakdown,window,marker) {
   ref<-as.numeric(as.Date(marker));in_window<-ref>=min(x)&ref<=max(x)+6
   if(in_window)abline(v=ref,col="#BB302A",lty=2,lwd=1.8)
   grid::pushViewport(grid::viewport())
-  dv_audit_text("V09  Weekly staff-related deviations",.35,.25,17,TRUE,col="#172F3C")
+  dv_audit_text("V11  Weekly staff-related deviations",.35,.25,17,TRUE,col="#172F3C")
   dv_audit_text(paste0("Moderna P301 | ",dv_audit_window_label(window)),.35,.69,11.5)
   dv_audit_text(paste0("All sites | ",min(cov$window_start)," to ",max(cov$window_end)," | Seven predefined types"),.35,.98,11.5)
   for(i in seq_along(arms)) {
@@ -1148,7 +1148,7 @@ dv_export_audit <- function(results,den,site_results,weekly_results,root,out,alp
   if(!weekly_window%in%weekly_results$data$window)stop("Audit weekly window unavailable: ",weekly_window,". Set PHMPT_AUDIT_WEEKLY_WINDOW explicitly. Existing analysis outputs are retained in ",out)
   if(length(global_p)!=1||!is.finite(global_p)||global_p<=0||global_p>alpha)stop("Audit global p threshold must be >0 and <= alpha.")
   if(length(min_affected)!=1||!is.finite(min_affected)||min_affected<0||min_affected!=floor(min_affected))stop("Invalid audit affected-participant threshold.")
-  if(!nrow(site_results$results))stop("V08 site analysis unavailable; inspect site_fisher_methods.txt. Stable audit PNGs were not replaced.")
+  if(!nrow(site_results$results))stop("V10 site analysis unavailable; inspect site_fisher_methods.txt. Stable audit PNGs were not replaced.")
   stage<-file.path(out,"audit_assets");dir.create(stage,recursive=TRUE,showWarnings=FALSE)
   x<-results[which(results$window==window & results$level=="term" & results$p_raw<global_p &
     results$vaccine_n+results$placebo_n>min_affected),,drop=FALSE]
@@ -1163,41 +1163,41 @@ dv_export_audit <- function(results,den,site_results,weekly_results,root,out,alp
     "; placebo ",dv_audit_num(n['Placebo']),". Difference = vaccine minus placebo, in percentage points (pp); pointwise 95% Newcombe CI. Holm p retains the original all-term testing family across analyzed windows/releases, before display filtering. ",sum(x$p_holm<alpha,na.rm=TRUE)," of ",nrow(x)," selected rows have Holm p < ",alpha,".")
   ssubtitle<-paste0("Type-specific comparisons with >=",site_min_records," records across arms and two-sided Fisher p < ",alpha,"; ",length(unique(s$SITEID))," sites.")
   sfooter<-paste0("Cells: affected participants / within-site randomized-arm denominator (%). Records are a separate volume filter; repeated records do not increase the affected count. Difference = vaccine minus placebo (pp); pointwise 95% Newcombe CI. Holm p retains all site/type tests across analyzed windows/releases before filtering. ",sum(s$p_holm<alpha,na.rm=TRUE)," of ",nrow(s)," selected rows have Holm p < ",alpha,".")
-  a<-dv_audit_table(x,"V05","V05_imbalanced_deviations",stage,dpi,window,gsubtitle,gfooter)
-  b<-dv_audit_table(s,"V08","V08_site_deviation_imbalances",stage,dpi,window,ssubtitle,sfooter,site=TRUE)
-  file<-"V09_weekly_staff_deviations.png"
+  a<-dv_audit_table(x,"V07","V07_imbalanced_deviations",stage,dpi,window,gsubtitle,gfooter)
+  b<-dv_audit_table(s,"V10","V10_site_deviation_imbalances",stage,dpi,window,ssubtitle,sfooter,site=TRUE)
+  file<-"V11_weekly_staff_deviations.png"
   dims<-dv_audit_png(file.path(stage,file),function()dv_audit_weekly(weekly_results$data,weekly_results$coverage,
     weekly_results$breakdown,weekly_window,unblinding_start),height=11.5,dpi=dpi)
-  c<-data.frame(visual="V09",file=file,page=1L,pages=1L,window=weekly_window,rows_on_page=NA_integer_,selected_comparisons=NA_integer_,width_px=dims[1],height_px=dims[2],dpi=dpi)
+  c<-data.frame(visual="V11",file=file,page=1L,pages=1L,window=weekly_window,rows_on_page=NA_integer_,selected_comparisons=NA_integer_,width_px=dims[1],height_px=dims[2],dpi=dpi)
   manifest<-rbind(a,b,c)
   manifest$generated_at<-format(Sys.time(),"%Y-%m-%dT%H:%M:%S%z")
   manifest$run_directory<-normalizePath(out,winslash="/")
   manifest$source_manifest_md5<-unname(tools::md5sum(file.path(out,"source_manifest.csv")))
   manifest$md5<-unname(tools::md5sum(file.path(stage,manifest$file)))
-  dv_csv(manifest,file.path(stage,"V05_V09_deviations_manifest.csv"))
-  dv_csv(x,file.path(stage,"V05_deviations_data.csv"));dv_csv(s,file.path(stage,"V08_sites_data.csv"))
+  dv_csv(manifest,file.path(stage,"V07_V11_deviations_manifest.csv"))
+  dv_csv(x,file.path(stage,"V07_deviations_data.csv"));dv_csv(s,file.path(stage,"V10_sites_data.csv"))
   weekly<-weekly_results$data;coverage<-weekly_results$coverage;breakdown<-weekly_results$breakdown
-  dv_csv(weekly[weekly$window==weekly_window & weekly$category=="ANY_OF_SEVEN",],file.path(stage,"V09_weekly_data.csv"))
-  dv_csv(coverage[coverage$window==weekly_window & coverage$category=="ANY_OF_SEVEN",],file.path(stage,"V09_coverage_data.csv"))
-  dv_csv(breakdown[breakdown$window==weekly_window & breakdown$category=="ANY_OF_SEVEN",],file.path(stage,"V09_before_after_data.csv"))
-  writeLines(c("V05-V09: PRINT / SUBSTACK AUDIT ASSETS",
+  dv_csv(weekly[weekly$window==weekly_window & weekly$category=="ANY_OF_SEVEN",],file.path(stage,"V11_weekly_data.csv"))
+  dv_csv(coverage[coverage$window==weekly_window & coverage$category=="ANY_OF_SEVEN",],file.path(stage,"V11_coverage_data.csv"))
+  dv_csv(breakdown[breakdown$window==weekly_window & breakdown$category=="ANY_OF_SEVEN",],file.path(stage,"V11_before_after_data.csv"))
+  writeLines(c("V07-V11: PRINT / SUBSTACK AUDIT ASSETS",
     "All PNGs are 8.5 inches wide, opaque white, default 300 dpi = 2550 pixels wide.",
     "Tables wrap full source descriptions and paginate at readable font sizes; continuation names end _02, _03, etc. All selected rows are retained.",
-    paste0("V05 window: ",window,". ",gsubtitle),
-    "V05 uses the narrower display selection in the current report. This does not change alpha or filter the full global analysis outputs. Counts are recomputed from input data, never hardcoded.",
-    paste0("V08 window: ",window,". ",ssubtitle),
-    "V08 screens the seven predefined staff-related categories, separately; the combined ANY_OF_SEVEN site test is not displayed in V08.",
-    paste0("V09 window: ",weekly_window,"; all seven categories and sites, without volume/p-value filtering. Dashed marker: ",unblinding_start,"."),
-    "V09 includes both the exact-date calendar split and participant UBLDDT split. Full follow-up retains original randomized arms after crossover.",
+    paste0("V07 window: ",window,". ",gsubtitle),
+    "V07 uses the narrower display selection in the current report. This does not change alpha or filter the full global analysis outputs. Counts are recomputed from input data, never hardcoded.",
+    paste0("V10 window: ",window,". ",ssubtitle),
+    "V10 screens the seven predefined staff-related categories, separately; the combined ANY_OF_SEVEN site test is not displayed in V10.",
+    paste0("V11 window: ",weekly_window,"; all seven categories and sites, without volume/p-value filtering. Dashed marker: ",unblinding_start,"."),
+    "V11 includes both the exact-date calendar split and participant UBLDDT split. Full follow-up retains original randomized arms after crossover.",
     "Global/site tests are unaltered. Holm adjustment covers the original families across all successfully analyzed windows/releases, BEFORE the audit display filters. Results can differ when release coverage differs.",
     "Matching CSVs preserve unrounded numeric results. Source hashes and complete methods remain in the run directory, linked by the manifest.",
     "No unavailable requested window is silently replaced. Set PHMPT_AUDIT_WINDOW/PHMPT_AUDIT_WEEKLY_WINDOW explicitly for other windows.",
-    "Stable images are published only after all requested PNGs validate. This script refreshes only its named V05-V09 assets; V01-V04 and other assets are retained."),file.path(stage,"V05_V09_deviations_README.txt"))
-  files<-c(manifest$file,"V05_V09_deviations_manifest.csv","V05_V09_deviations_README.txt","V05_deviations_data.csv","V08_sites_data.csv","V09_weekly_data.csv","V09_coverage_data.csv","V09_before_after_data.csv")
-  pattern<-"^(V05_imbalanced_deviations(_[0-9]+)?[.]png|V08_site_deviation_imbalances(_[0-9]+)?[.]png|V09_weekly_staff_deviations[.]png|V05_V09_deviations_(manifest[.]csv|README[.]txt)|V05_deviations_data[.]csv|V08_sites_data[.]csv|V09_(weekly|coverage|before_after)_data[.]csv)$"
+    "Stable images are published only after all requested PNGs validate. This script refreshes only its named V07-V11 assets; V03-V06 and other assets are retained."),file.path(stage,"V07_V11_deviations_README.txt"))
+  files<-c(manifest$file,"V07_V11_deviations_manifest.csv","V07_V11_deviations_README.txt","V07_deviations_data.csv","V10_sites_data.csv","V11_weekly_data.csv","V11_coverage_data.csv","V11_before_after_data.csv")
+  pattern<-"^(V07_imbalanced_deviations(_[0-9]+)?[.]png|V10_site_deviation_imbalances(_[0-9]+)?[.]png|V11_weekly_staff_deviations[.]png|V07_V11_deviations_(manifest[.]csv|README[.]txt)|V07_deviations_data[.]csv|V10_sites_data[.]csv|V11_(weekly|coverage|before_after)_data[.]csv)$"
   destination<-dv_path(root,asset_dir)
   dv_audit_publish(stage,destination,files,pattern)
-  message("Audit PNGs: ",destination," (V05-V09, ",dpi," dpi; ",nrow(manifest)," images)")
+  message("Audit PNGs: ",destination," (V07-V11, ",dpi," dpi; ",nrow(manifest)," images)")
   list(directory=destination,manifest=manifest)
 }
 
@@ -1287,7 +1287,7 @@ analyse_deviations <- function(root="",releases=c("EUA","Prod"),adsl_files=c(EUA
   audit_assets<-dv_export_audit(results,den,site_results,weekly_results,root,out,alpha,site_min_records,
     unblinding_start,audit_asset_dir,audit_dpi,audit_window,audit_weekly_window,audit_min_affected,audit_global_p)
   writeLines(c("MODERNA P301 DEVIATION ANALYSIS v1.4.0","",notes,"",
-    "AUDIT PNG OUTPUTS: V05_imbalanced_deviations.png; V08_site_deviation_imbalances.png; V09_weekly_staff_deviations.png in project audit_assets. Tables may continue as _02, _03, etc. Data CSVs, manifest and selection rules accompany them. Default 2550 px wide / 300 dpi. Original full results are preserved.",
+    "AUDIT PNG OUTPUTS: V07_imbalanced_deviations.png; V10_site_deviation_imbalances.png; V11_weekly_staff_deviations.png in project audit_assets. Tables may continue as _02, _03, etc. Data CSVs, manifest and selection rules accompany them. Default 2550 px wide / 300 dpi. Original full results are preserved.",
     "OUTPUTS: deviation_imbalances.pdf (A4 landscape); deviation_imbalances.html (print CSS); deviations_all_tests.csv (all results, including nonsignificant); deviations_imbalanced.csv (nominal p<alpha term rows); denominators.csv; release_status.csv; source_manifest.csv.",
     "SITE OUTPUTS: site_fisher_imbalances.pdf/html; site_fisher_all_tests.csv; site_fisher_volume_qualified.csv; site_fisher_imbalanced.csv; site_fisher_coverage.csv; site_deviation_mapping.csv; site_deviation_rules.csv; site_fisher_methods.txt. These cover the seven deviation types specified in the earlier audit, jointly and individually. The volume filter counts records; Fisher tests count affected participants against within-site randomized-arm denominators. No global-significance prefilter is applied. See site_fisher_methods.txt for multiplicity and interpretation.",
     "WEEKLY OUTPUTS: weekly_staff_deviations.pdf (A4 landscape vector charts); weekly_staff_deviations_*.png (one page per image, default 300 dpi); weekly_staff_deviations.csv (records, distinct affected participants and follow-up by arm/week/type); weekly_staff_deviations_coverage.csv; weekly_staff_deviations_methods.txt; weekly_staff_deviations_pages.csv. All sites and the seven specified types are retained, without a volume/significance filter. Combined and type-specific counts use Monday-Sunday bins by recorded deviation date, with original windows/caps. Separate windows/releases are never summed.",

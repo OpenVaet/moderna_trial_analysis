@@ -1,4 +1,4 @@
-# Moderna P301: site-numbering audit and V41-V44 | version 1.1.0 | 2026-11-06
+# Moderna P301: site-numbering audit and V43-V46 | version 1.1.0 | 2026-11-06
 # Standalone, base R only. Run the whole script in RStudio from your project root.
 # Prerequisite: P301_subject_screening_index.csv from analyse_moderna_demographics.R.
 # Optional overrides before running:
@@ -108,12 +108,12 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
   weekly$leading_positions<-vapply(seq_len(nrow(weekly)),function(i)sum(as.character(g$week_start)==weekly$week_start[i]&g$evidence==weekly$evidence[i]&!int,na.rm=TRUE),integer(1))
   weekly$one_neighbor_positions<-vapply(seq_len(nrow(weekly)),function(i)sum(as.character(g$week_start)==weekly$week_start[i]&g$evidence==weekly$evidence[i]&g$date_basis=="ONE_DATED_NEIGHBOR",na.rm=TRUE),integer(1))
   weekly_later<-aggregate(rep(1L,nrow(g)),list(week_start=g$later_neighbor_date-(as.integer(format(g$later_neighbor_date,"%u"))-1L),evidence=g$evidence),sum);names(weekly_later)[3]<-"positions"
-  ni_csv(g,file.path(out,"V42_numbering_gaps.csv"));ni_csv(r,file.path(out,"V44_gap_runs.csv"));ni_csv(weekly,file.path(out,"V42_weekly.csv"));ni_csv(weekly_later,file.path(out,"V42_later_neighbor_sensitivity.csv"))
+  ni_csv(g,file.path(out,"V44_numbering_gaps.csv"));ni_csv(r,file.path(out,"V46_gap_runs.csv"));ni_csv(weekly,file.path(out,"V44_weekly.csv"));ni_csv(weekly_later,file.path(out,"V44_later_neighbor_sensitivity.csv"))
   dist<-do.call(rbind,lapply(c("All missing positions","Internal gaps only"),function(scope){
     d<-if(scope=="Internal gaps only")r[r$kind=="INTERNAL",]else r
     x<-aggregate(rep(1L,nrow(d)),list(run_length=d$length,evidence=d$evidence),sum);names(x)[3]<-"runs";x$positions<-x$run_length*x$runs;x$scope<-scope;x
   }))
-  ni_csv(dist,file.path(out,"V44_run_distribution.csv"))
+  ni_csv(dist,file.path(out,"V46_run_distribution.csv"))
   sites<-do.call(rbind,lapply(unique(z$SITEID),function(s){
     d<-g[g$SITEID==s,];rs<-r[r$SITEID==s,];zz<-z[z$SITEID==s,]
     data.frame(SITEID=s,observed=nrow(zz),first_observed=min(zz$subject_number),last_observed=max(zz$subject_number),
@@ -121,19 +121,19 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
       EUA_not_randomized=sum(d$EUA_RANDFL=="N"),EUA_randomized=sum(d$EUA_RANDFL=="Y"),DM_only=sum(d$EUA_RANDFL=="absent"&d$BLA_DM),
       untraced=sum(d$evidence=="Untraced"),largest_run=if(nrow(rs))max(rs$length)else 0L,stringsAsFactors=FALSE)
   }))
-  ni_csv(sites,file.path(out,"V42_sites.csv"))
+  ni_csv(sites,file.path(out,"V44_sites.csv"))
   summary<-data.frame(metric=c("observed_ids","observed_sites","randomized_in_index","missing_positions","internal_positions","leading_positions","gap_sites","EUA_not_randomized","EUA_randomized","DM_only","untraced_positions","untraced_sites","two_dated_neighbors","one_dated_neighbor","no_dated_neighbor","reversed_neighbor_dates","same_neighbor_date","internal_runs","all_runs"),
-    value=c(nrow(z),length(unique(z$SITEID)),sum(z$population=="Randomized (V03)"),nrow(g),sum(int),sum(!int),length(unique(g$SITEID)),sum(g$EUA_RANDFL=="N"),sum(g$EUA_RANDFL=="Y"),sum(g$EUA_RANDFL=="absent"&g$BLA_DM),sum(g$evidence=="Untraced"),length(unique(g$SITEID[g$evidence=="Untraced"])),sum(g$date_basis=="EARLIER_OF_TWO_NEIGHBORS"),sum(g$date_basis=="ONE_DATED_NEIGHBOR"),sum(g$date_basis=="NO_DATED_NEIGHBOR"),sum(g$reversed_neighbor_dates),sum(g$bracket_days==0,na.rm=TRUE),sum(r$kind=="INTERNAL"),nrow(r)))
-  ni_csv(summary,file.path(out,"V42_summary.csv"))
+    value=c(nrow(z),length(unique(z$SITEID)),sum(z$population=="Randomized (V05)"),nrow(g),sum(int),sum(!int),length(unique(g$SITEID)),sum(g$EUA_RANDFL=="N"),sum(g$EUA_RANDFL=="Y"),sum(g$EUA_RANDFL=="absent"&g$BLA_DM),sum(g$evidence=="Untraced"),length(unique(g$SITEID[g$evidence=="Untraced"])),sum(g$date_basis=="EARLIER_OF_TWO_NEIGHBORS"),sum(g$date_basis=="ONE_DATED_NEIGHBOR"),sum(g$date_basis=="NO_DATED_NEIGHBOR"),sum(g$reversed_neighbor_dates),sum(g$bracket_days==0,na.rm=TRUE),sum(r$kind=="INTERNAL"),nrow(r)))
+  ni_csv(summary,file.path(out,"V44_summary.csv"))
   prov<-data.frame(role=c("Current screening index","Fixed reference EUA ADSL","Fixed reference BLA DM"),
     file=c(normalizePath(input,winslash="/"),"FDA-CBER-2022-1614-6328950-6329713_27073_S5_M5_mrna-1273-p301_A_adsl.jmp","FDA-CBER-2022-1614-3825109-3825910_125752_S3_M5_mrna-1273-p301_S_dm.xpt"),
     md5=c(unname(tools::md5sum(input)),"4a6830e7875e6a853a3123ca46a28e0a","e22e3bfcc741c460652658eb5e761f1b"),
     use=c("ADSL plus screening-SV union; complete original screening dates only","Full embedded membership and RANDFL, 30,571 IDs","Full embedded membership, 32,102 IDs"),stringsAsFactors=FALSE)
-  ni_csv(prov,file.path(out,"V42_input_provenance.csv"))
+  ni_csv(prov,file.path(out,"V44_input_provenance.csv"))
   source_manifest<-file.path(dirname(input),"P301_subject_index_sources.csv")
-  if(file.exists(source_manifest))file.copy(source_manifest,file.path(out,"V42_index_source_files.csv"),overwrite=TRUE)
+  if(file.exists(source_manifest))file.copy(source_manifest,file.path(out,"V44_index_source_files.csv"),overwrite=TRUE)
   mf<-list()
-  # V41 is calculated from the same reconstructed gaps used by V42-V44.
+  # V43 is calculated from the same reconstructed gaps used by V44-V46.
   eua_n<-sum(g$EUA_RANDFL!="absent");eua_nonrandom<-sum(g$EUA_RANDFL=="N");eua_dm<-sum(g$EUA_RANDFL!="absent"&g$BLA_DM)
   dm_ids<-g$candidate_id[g$EUA_RANDFL=="absent"&g$BLA_DM]
   # Additional DM fields were read directly for these two documented records.
@@ -148,7 +148,7 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
   trace<-data.frame(category=c("Found in EUA ADSL","Found only in BLA DM","Found in neither comparison roster"),
     positions=c(eua_n,length(dm_ids),sum(untraced)),
     record_evidence=c(eua_note,dm_note,paste0(sum(untraced&g$kind=="INTERNAL")," internal positions and ",sum(untraced&g$kind=="LEADING_ASSUMPTION")," assumed leading positions; allocation and disposition remain unresolved.")),stringsAsFactors=FALSE)
-  ni_csv(trace,file.path(out,"V41_traceability_table.csv"))
+  ni_csv(trace,file.path(out,"V43_traceability_table.csv"))
   draw38<-function(){
     grid::grid.newpage()
     text_at<-function(txt,x,y,size=11.7,bold=FALSE,col="#192D3A",just=c("left","top"))
@@ -161,7 +161,7 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
         if(nzchar(line)&&!fits(candidate)){lines<-c(lines,line);line<-word}else line<-candidate}
       paste(c(lines,line),collapse="\n")
     }
-    text_at("V41  Traceability of missing identifier positions",.35,.28,17,TRUE)
+    text_at("V43  Traceability of missing identifier positions",.35,.28,17,TRUE)
     text_at(paste0(nrow(g)," positions outside the reconstructed screening index"),.35,.72,11.5,col="#526773")
     left<-c(.35,2.48,3.23);width<-c(2.13,.75,4.92);top<-1.15;hh<-.58;rh<-c(1.0,1.03,1.03)
     rect<-function(y,h,fill){grid::grid.rect(x=grid::unit(.35,"in"),y=grid::unit(5.15-y,"in"),width=grid::unit(7.8,"in"),height=grid::unit(h,"in"),just=c("left","top"),gp=grid::gpar(fill=fill,col=NA))}
@@ -179,19 +179,19 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
     }
     text_at("Counts describe missing index positions, not a count of missing randomized participants.",.35,4.99,9.4,col="#526773")
   }
-  mf[[1]]<-ni_draw(out,"V41","identifier_traceability_table",5.15,draw38,dpi)
+  mf[[1]]<-ni_draw(out,"V43","identifier_traceability_table",5.15,draw38,dpi)
   draw39<-function(){
     ni_theme();par(mar=c(7,4.5,8,1.2));m<-matrix(weekly$positions,nrow=length(weeks),ncol=length(lev));m<-t(m)
     totals<-colSums(m);ylim<-max(5,max(totals)*1.18);x<-barplot(m,col=ni_colors[lev],border="white",space=.25,ylim=c(0,ylim),axes=FALSE,names.arg=rep("",length(weeks)),ylab="Identifier positions")
     axis(2);abline(h=0,col="#82909A");axis(1,at=x,labels=format(weeks,"%d %b"),cex.axis=.83,tick=FALSE,gap.axis=-1)
     text(x,totals+.025*ylim,totals,cex=.9,font=2,col="#243B4C")
     for(j in seq_len(ncol(m))){lo<-0;for(i in seq_len(nrow(m))){if(m[i,j]>=3)text(x[j],lo+m[i,j]/2,m[i,j],cex=.83,col="white",font=2);lo<-lo+m[i,j]}}
-    ni_header("V42","Timing of missing identifier positions",paste0(nrow(g)," positions | Earlier bordering screening date | Monday-start weeks, 2020"))
+    ni_header("V44","Timing of missing identifier positions",paste0(nrow(g)," positions | Earlier bordering screening date | Monday-start weeks, 2020"))
     legend("top",inset=c(0,-.15),legend=paste0(lev," (",as.integer(counts),")"),fill=ni_colors[lev],horiz=TRUE,bty="n",cex=.84,xpd=NA)
     mtext("Week beginning",side=1,line=2.1,cex=.9)
     mtext(ni_wrap(paste0(sum(g$date_basis=="EARLIER_OF_TWO_NEIGHBORS")," positions have two dated neighbours; ",sum(g$date_basis=="ONE_DATED_NEIGHBOR")," use one available date, including ",sum(!int)," assumed leading positions.\nTiming is inferred from nearby IDs; these are not documented recruitment dates."),105),side=1,line=4.5,adj=0,cex=.82)
   }
-  mf[[2]]<-ni_draw(out,"V42","missing_identifier_timeline",5.9,draw39,dpi)
+  mf[[2]]<-ni_draw(out,"V44","missing_identifier_timeline",5.9,draw39,dpi)
   # Pick the site with the longest internal run untraced in both references.
   pool<-r[r$kind=="INTERNAL"&r$evidence=="Untraced",];if(!nrow(pool))pool<-r
   chosen<-pool[order(-pool$length,pool$SITEID,pool$first),][1,];site<-chosen$SITEID;ss<-sites[sites$SITEID==site,];zz<-z[z$SITEID==site,];gg<-g[g$SITEID==site,]
@@ -199,10 +199,10 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
   low<-min(zz$subject_number);high<-max(zz$subject_number)
   if(high-low+1L>120L){low<-max(2001L,chosen$first-10L);high<-min(max(zz$subject_number),chosen$last+10L)}
   slots<-seq.int(low,high);jj<-match(paste0(site,slots),gg$candidate_id);state<-ifelse(is.na(jj),"Observed",gg$evidence[jj]);slot<-data.frame(SITEID=site,subject_number=slots,subject_id=paste0(site,slots),evidence=state,stringsAsFactors=FALSE)
-  slot$screening_date<-as.character(zz$date[match(slot$subject_id,zz$SUBJID)]);ni_csv(slot,file.path(out,"V43_site_example.csv"))
+  slot$screening_date<-as.character(zz$date[match(slot$subject_id,zz$SUBJID)]);ni_csv(slot,file.path(out,"V45_site_example.csv"))
   draw40<-function(){
     grid::grid.newpage();tx<-function(t,x,y,size=12,bold=FALSE,col="#192D3A",just="left")grid::grid.text(t,x=x,y=y,just=just,gp=grid::gpar(fontfamily="sans",fontsize=size,fontface=if(bold)"bold"else"plain",col=col))
-    tx(paste0("V43  ",site,": a block of ",chosen$length," untraced identifiers"),.04,.96,18,TRUE)
+    tx(paste0("V45  ",site,": a block of ",chosen$length," untraced identifiers"),.04,.96,18,TRUE)
     tx(paste0(ss$observed," observed IDs | ",ss$EUA_not_randomized," EUA-confirmed nonrandomized | ",ss$untraced," untraced"),.04,.91,11.5)
     ncol<-10L;nrows<-ceiling(length(slots)/ncol);rh<-min(.052,.57/nrows);top<-.83;cw<-.088
     colors<-c("Observed"="#E6ECEF",ni_colors)
@@ -217,47 +217,47 @@ analyse_subject_numbering <- function(root=getOption("phmpt.root",getwd()),index
     edge<-gg[gg$run_id==chosen$run_id,][1,]
     fmt<-function(d)if(is.na(d))"date unavailable"else format(d,"%d %b %Y")
     tx(paste0(edge$previous_subject_id," screened ",fmt(edge$previous_screening_date),"  |  ",edge$next_subject_id," screened ",fmt(edge$next_screening_date)),.04,.13,10.5)
-    tx(paste0("Missing block: ",site,chosen$first,"-",site,chosen$last,". V42 proxy date: ",fmt(edge$inferred_date),"."),.04,.085,10.5,TRUE)
+    tx(paste0("Missing block: ",site,chosen$first,"-",site,chosen$last,". V44 proxy date: ",fmt(edge$inferred_date),"."),.04,.085,10.5,TRUE)
     tx("Numbering order is not necessarily screening-date order.",.04,.04,10,col="#526773")
   }
-  mf[[3]]<-ni_draw(out,"V43","site_identifier_example",7.0,draw40,dpi)
+  mf[[3]]<-ni_draw(out,"V45","site_identifier_example",7.0,draw40,dpi)
   draw41<-function(){
     ni_theme();par(mar=c(5.4,6.6,8,1.4));d<-dist[dist$scope=="All missing positions",];lens<-sort(unique(d$run_length));ls<-names(ni_colors)[names(ni_colors)%in%d$evidence]
     m<-matrix(0L,nrow=length(ls),ncol=length(lens),dimnames=list(ls,lens));for(i in seq_len(nrow(d)))m[d$evidence[i],as.character(d$run_length[i])]<-d$runs[i]
     totals<-colSums(m);lim<-max(totals)*1.16;x<-barplot(m,horiz=TRUE,col=ni_colors[ls],border="white",space=.7,xlim=c(0,lim),axes=FALSE,names.arg=paste(lens,"missing"),cex.names=.95)
     axis(1);text(totals+lim*.02,x,paste0(totals," run",ifelse(totals==1,"","s")),adj=0,cex=.95,font=2)
     for(j in seq_len(ncol(m))){lo<-0;for(i in seq_len(nrow(m))){if(m[i,j]>=8)text(lo+m[i,j]/2,x[j],m[i,j],cex=.95,font=2,col="white");lo<-lo+m[i,j]}}
-    ni_header("V44","Distribution of consecutive numbering gaps",paste0(nrow(r)," runs contain ",nrow(g)," missing positions | One run = one uninterrupted block"))
+    ni_header("V46","Distribution of consecutive numbering gaps",paste0(nrow(r)," runs contain ",nrow(g)," missing positions | One run = one uninterrupted block"))
     legend("top",inset=c(0,-.15),legend=ls,fill=ni_colors[ls],horiz=TRUE,bty="n",cex=.84,xpd=NA)
     mtext("Number of runs",side=1,line=2.2,cex=.95)
     lead<-r[r$kind=="LEADING_ASSUMPTION",];di<-table(r$length[r$kind=="INTERNAL"])
     phrase<-paste(paste0(as.integer(di)," run",ifelse(di==1,"","s")," of ",names(di)),collapse=", ")
     mtext(paste0("Includes ",nrow(lead)," assumed leading run",if(nrow(lead)!=1)"s"else"",if(nrow(lead)==1)paste0(" at ",lead$SITEID," (",lead$first,"-",lead$last,")")else"", ".\nInternal-only distribution: ",phrase,"."),side=1,line=4.2,adj=0,cex=.82)
   }
-  mf[[4]]<-ni_draw(out,"V44","consecutive_gap_distribution",5.7,draw41,dpi)
-  manifest<-do.call(rbind,mf);ni_csv(manifest,file.path(out,"V41_V44_manifest.csv"))
-  notes<-c("Moderna P301 numbering audit, V41-V44",paste("Input:",input),
-    "V41: evidence classification table. Counts are derived from the current reconstructed gaps. DM-only blank field details are verified for US3912225 and US3982056; new IDs require source review.",
+  mf[[4]]<-ni_draw(out,"V46","consecutive_gap_distribution",5.7,draw41,dpi)
+  manifest<-do.call(rbind,mf);ni_csv(manifest,file.path(out,"V43_V46_manifest.csv"))
+  notes<-c("Moderna P301 numbering audit, V43-V46",paste("Input:",input),
+    "V43: evidence classification table. Counts are derived from the current reconstructed gaps. DM-only blank field details are verified for US3912225 and US3982056; new IDs require source review.",
     "Start at 2001 within each site; stop at that site's last observed ID. No trailing gaps are inferred.",
     "The observed index is the union of BLA ADSL and screening-related SV IDs. Reference status is looked up in complete fixed EUA ADSL and BLA DM rosters.",
-    "V42: every gap gets the earlier complete Screening date of its two immediately bordering observed IDs. If only one exists it is used and flagged; no wider search or linear interpolation is performed. Missing dates remain missing. Leading positions have only an upper neighbour.",
+    "V44: every gap gets the earlier complete Screening date of its two immediately bordering observed IDs. If only one exists it is used and flagged; no wider search or linear interpolation is performed. Missing dates remain missing. Leading positions have only an upper neighbour.",
     "The proxy date describes numerical neighbourhood, not proven recruitment, consent, or randomization. Both original dates, interval widths, reversals and later-neighbour sensitivity counts are exported.",
-    "V43: the site with the longest wholly untraced internal run is selected deterministically. All slots are shown for sites up to 120 slots; otherwise a window includes the run and ten surrounding slots where available.",
-    "V44: count maximal uninterrupted runs, then show their lengths. All-position and internal-only distributions are both exported. Run counts and position counts are distinct.",
+    "V45: the site with the longest wholly untraced internal run is selected deterministically. All slots are shown for sites up to 120 slots; otherwise a window includes the run and ten surrounding slots where available.",
+    "V46: count maximal uninterrupted runs, then show their lengths. All-position and internal-only distributions are both exported. Run counts and position counts are distinct.",
     "Orange is found in EUA ADSL; purple only in BLA DM; red absent from both reference rosters. 'Untraced' never implies absence from every PHMPT file, that a person existed, or that a randomized participant disappeared.",
     "Figures contain no source URLs or footnote markers. Source metadata are in the CSV and accompanying HTML insert.")
-  writeLines(notes,file.path(out,"V41_V44_methods.txt"),useBytes=TRUE)
-  obsolete<-c("V41_missing_identifier_timeline.png","V41_missing_identifier_timeline.pdf",
-    "V42_site_identifier_example.png","V42_site_identifier_example.pdf","V43_consecutive_gap_distribution.png","V43_consecutive_gap_distribution.pdf",
-    "V41_V43_manifest.csv","V41_V43_methods.txt","V41_numbering_gaps.csv","V41_weekly.csv","V41_later_neighbor_sensitivity.csv",
-    "V41_sites.csv","V41_summary.csv","V41_input_provenance.csv","V41_index_source_files.csv","V42_site_example.csv","V43_gap_runs.csv","V43_run_distribution.csv")
+  writeLines(notes,file.path(out,"V43_V46_methods.txt"),useBytes=TRUE)
+  obsolete<-c("V43_missing_identifier_timeline.png","V43_missing_identifier_timeline.pdf",
+    "V44_site_identifier_example.png","V44_site_identifier_example.pdf","V45_consecutive_gap_distribution.png","V45_consecutive_gap_distribution.pdf",
+    "V43_V45_manifest.csv","V43_V45_methods.txt","V43_numbering_gaps.csv","V43_weekly.csv","V43_later_neighbor_sensitivity.csv",
+    "V43_sites.csv","V43_summary.csv","V43_input_provenance.csv","V43_index_source_files.csv","V44_site_example.csv","V45_gap_runs.csv","V45_run_distribution.csv")
   obsolete<-file.path(out,obsolete);obsolete<-obsolete[file.exists(obsolete)]
   if(length(obsolete)){
-    archive<-file.path(out,paste0("previous_numbering_V41_V43_",format(Sys.time(),"%Y%m%d_%H%M%S")))
+    archive<-file.path(out,paste0("previous_numbering_V43_V45_",format(Sys.time(),"%Y%m%d_%H%M%S")))
     dir.create(archive,recursive=TRUE,showWarnings=FALSE)
     if(!all(file.rename(obsolete,file.path(archive,basename(obsolete)))))warning("Some obsolete numbering outputs could not be archived; close them and rerun.")
   }
-  message("Wrote V41-V44 PNG and PDF, data CSVs and manifest in ",out)
+  message("Wrote V43-V46 PNG and PDF, data CSVs and manifest in ",out)
   message(nrow(g)," positions: ",paste(paste(names(counts),as.integer(counts),sep="="),collapse="; "))
   invisible(list(gaps=g,runs=r,sites=sites,summary=summary,manifest=manifest))
 }

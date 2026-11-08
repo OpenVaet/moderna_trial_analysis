@@ -1,11 +1,11 @@
-# Moderna P301, report v0.22. Select all and run from the project root in RStudio.
+# Moderna P301, renumbered V08, V09 and V19. Select all and run from the project root in RStudio.
 # Default: the named aggregate inputs distributed with this edition. For another run:
 # options(phmpt.deviation_tables_dir=".../recomputed", phmpt.trigger_table_dir=".../protocol_trigger_audit")
 render_audit_tables <- function(root=getOption("phmpt.root",getwd()),
   deviations=getOption("phmpt.deviation_tables_dir",file.path(root,"table_inputs_v022","deviations")),
   trigger=getOption("phmpt.trigger_table_dir",file.path(root,"table_inputs_v022","protocol")),
   out=getOption("phmpt.audit_asset_dir",file.path(root,"audit_assets"))) {
-  selected<-getOption("phmpt.audit_table_ids",c("V06","V07","V17"));stopifnot(length(selected)>0,all(selected%in%c("V06","V07","V17")))
+  selected<-getOption("phmpt.audit_table_ids",c("V08","V09","V19"));stopifnot(length(selected)>0,all(selected%in%c("V08","V09","V19")))
   root<-normalizePath(root,mustWork=TRUE)
   if(!grepl("^(/|[A-Za-z]:|\\\\)",out))out<-file.path(root,out)
   dir.create(out,recursive=TRUE,showWarnings=FALSE)
@@ -39,7 +39,7 @@ render_audit_tables <- function(root=getOption("phmpt.root",getwd()),
   printtab<-function(id,slug,title,sub,head,body,widths,footer,data) {
     if(!id%in%selected)return(NULL)
     # Grid coordinates in inches; word wrapping measured in the active device font.
-    dpi<-getOption("phmpt.audit_dpi",300L);w<-8.5;ht<-switch(id,V06=4.75,V07=5.55,V17=5.15)
+    dpi<-getOption("phmpt.audit_dpi",300L);w<-8.5;ht<-switch(id,V08=4.75,V09=5.55,V19=5.15)
     f<-paste0(id,"_",slug,".png"); grDevices::png(file.path(out,f),width=w,height=ht,units="in",res=dpi,bg="white")
     on.exit(grDevices::dev.off())
     grid::grid.newpage(); left<-.28; usable<-w-2*left
@@ -60,20 +60,20 @@ render_audit_tables <- function(root=getOption("phmpt.root",getwd()),
       for(j in seq_along(l))for(k in seq_along(l[[j]]))txt(x[j]+.08,y0+.10+(k-1)*.205,l[[j]][k],size,head||bold)
       y0<<-y0+hh }
     row(head,TRUE)
-    for(i in seq_len(nrow(body)))row(as.character(unlist(body[i,],use.names=FALSE)),shade=i%%2==0,bold=id=="V07"&&i==nrow(body))
+    for(i in seq_len(nrow(body)))row(as.character(unlist(body[i,],use.names=FALSE)),shade=i%%2==0,bold=id=="V09"&&i==nrow(body))
     lines<-wrap(footer,usable-.12,10);stopifnot(y0+.23+length(lines)*.18<ht)
     for(i in seq_along(lines))txt(left+.04,y0+.20+(i-1)*.18,lines[i],10,FALSE,"#395766")
     csv(data,paste0(id,"_table_data.csv"))
     data.frame(visual=id,file=f,status="AVAILABLE",page=1,pages=1,stringsAsFactors=FALSE)
   }
-  m6<-printtab("V06","deviations_after_confirmed_illness","Deviations after confirmed COVID-19","Production | Individual blinded follow-up | Participants with a qualifying initial illness-visit PCR",
-    c("Recorded deviation","V05 total: vaccine / placebo","mRNA-1273: affected / eligible","Placebo: affected / eligible"),
+  m6<-printtab("V08","deviations_after_confirmed_illness","Deviations after confirmed COVID-19","Production | Individual blinded follow-up | Participants with a qualifying initial illness-visit PCR",
+    c("Recorded deviation","V07 total: vaccine / placebo","mRNA-1273: affected / eligible","Placebo: affected / eligible"),
     data.frame(v6$deviation,paste(v6$global_vaccine,v6$global_placebo,sep=" / "),frac(v6$vaccine_y,v6$vaccine_n),frac(v6$placebo_y,v6$placebo_n)),
-    c(.33,.18,.245,.245),"The V05 counts use all randomized participants. The last two columns require observation through day 28 for visits and saliva collection, or through day 14 for monitoring; day 0 is the index PCR collection date.",v6)
-  m7<-printtab("V07","late_reporting_event_context","Events recorded near late safety notifications","Production | Participants with I12.01 | AE onset within 28 days before or after a deviation",
+    c(.33,.18,.245,.245),"The V07 counts use all randomized participants. The last two columns require observation through day 28 for visits and saliva collection, or through day 14 for monitoring; day 0 is the index PCR collection date.",v6)
+  m7<-printtab("V09","late_reporting_event_context","Events recorded near late safety notifications","Production | Participants with I12.01 | AE onset within 28 days before or after a deviation",
     c("Highest-priority event found","mRNA-1273","Placebo"),v7,c(.66,.17,.17),
     "Each participant appears once, in the first applicable category. Hospitalization must be recorded on the COVID event itself. Proximity in time does not identify which event triggered the notice.",v7)
-  m17<-printtab("V17","investigation_and_swabbing","Investigation and swabbing by day 3","Production | Blinded illness episodes | Three further calendar days of observation required",
+  m17<-printtab("V19","investigation_and_swabbing","Investigation and swabbing by day 3","Production | Blinded illness episodes | Three further calendar days of observation required",
     c("Decision and eligible episodes","mRNA-1273","Placebo"),data.frame(rows,frac(y[,1],n[,1]),frac(y[,2],n[,2])),c(.49,.255,.255),
     "Day 0 is the relevant protocol trigger. A same-day checklist and swab do not establish their order. Day 3 is a calendar-day measure, not 72 verified hours from first contact.",v17)
   for(m in Filter(Negate(is.null),list(m6,m7,m17))){m$md5<-unname(tools::md5sum(file.path(out,m$file)));csv(m,paste0(m$visual,"_audit_table_manifest.csv"))}

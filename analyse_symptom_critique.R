@@ -7,6 +7,8 @@
 #         phmpt.c1_lab="path/to/pcr_testing_by_lab_...zip",
 #         phmpt.c1_adsl="path/to/BLA_ADSL_selected.csv", phmpt.root=getwd())
 # Output: analysis/symptom_critique_c1. No packages required.
+# Also exports headline_pcr_coverage.csv: two participant-level comparisons.
+# Arm and vaccine-minus-placebo intervals use the SAME 4,000 resampled site vectors.
 # Descriptive, not a re-fit of the efficacy model. A positive is a linked diagnostic
 # result in the specified window, not necessarily an adjudicated primary case.
 # No linked positive includes untested participants/episodes. An absent test is
@@ -122,8 +124,11 @@ analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
       as.vector(crossprod(num,weights))/as.vector(crossprod(den,weights))
     })
     ci<-unname(quantile(100*(bo[[1]]-bo[[2]]),c(.025,.975),na.rm=TRUE))
+    ci_arm<-lapply(bo,function(v)unname(quantile(100*v,c(.025,.975),na.rm=TRUE)))
     data.frame(scope=label,vaccine_tested=y[1],vaccine_total=n[1],vaccine_pct=unname(pc[1]),
-      placebo_tested=y[2],placebo_total=n[2],placebo_pct=unname(pc[2]),gap_pp=unname(pc[1]-pc[2]),low95=ci[1],high95=ci[2],row.names=NULL)
+      placebo_tested=y[2],placebo_total=n[2],placebo_pct=unname(pc[2]),gap_pp=unname(pc[1]-pc[2]),low95=ci[1],high95=ci[2],
+      vaccine_low95=ci_arm[[1]][1],vaccine_high95=ci_arm[[1]][2],
+      placebo_low95=ci_arm[[2]][1],placebo_high95=ci_arm[[2]][2],row.names=NULL)
   }
   panel<-function(label,x) do.call(rbind,list(sumrow(label,x),sumrow(paste(label,"| linked positive"),x[x$pos,]),
     sumrow(paste(label,"| no linked positive"),x[!x$pos,])))
@@ -136,6 +141,15 @@ analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
   write.csv(results,file.path(out,"coverage.csv"),row.names=FALSE)
   write.csv(form,file.path(out,"COVID_form_participants_by_result.csv"),row.names=FALSE)
   write.csv(u,file.path(out,"PP_timing_AE_only_untested_people.csv"),row.names=FALSE)
+  selected<-match(c("Participants: blinded | no linked positive","Participants: PP, dose 2 + 14 days | no linked positive"),results$scope)
+  stopifnot(!anyNA(selected))
+  headline<-results[selected,];headline$interval_method<-"Paired site-cluster percentile bootstrap; both arms retained in each site"
+  headline$bootstrap_draws<-ncol(weights);headline$n_sites_in_resampling_frame<-length(sites);headline$seed<-30114L
+  for(i in seq_len(nrow(headline))){
+    x<-if(i==1L) s[!s$pos,] else sp[!sp$pos,]
+    headline$sites_with_eligible_participants[i]<-length(unique(substr(x$subject,1,5)))
+  }
+  write.csv(headline,file.path(out,"headline_pcr_coverage.csv"),row.names=FALSE)
   print(results,row.names=FALSE,digits=4);print(form,row.names=FALSE);print(u,row.names=FALSE)
   message("Outputs: ",normalizePath(out))
   invisible(list(coverage=results,form=form,untested=u))

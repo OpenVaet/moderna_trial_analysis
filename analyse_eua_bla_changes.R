@@ -513,7 +513,7 @@ ws_read_jmp <- function(path, fields, optional=character()) {
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V10-V39), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V12-V41), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -747,7 +747,7 @@ sc_audit_auxiliary <- function(root,out,ra,rb) {
   ax_csv(do.call(rbind,log),file.path(out,"audit_auxiliary_inputs.csv"))
 }
 sc_export_snapshot_assets <- function(root,out) {
-  a<-ax_begin(root,out,"V32_V36_snapshots");r<-ax_read(out,"subject_roster_comparison.csv")
+  a<-ax_begin(root,out,"V34_V38_snapshots");r<-ax_read(out,"subject_roster_comparison.csv")
   dm<-ax_read(out,"audit_BLA_DM_subjects.csv",FALSE);old<-ax_read(out,"audit_EUA_ADSL_fields.csv",FALSE);new<-ax_read(out,"audit_BLA_ADSL_fields.csv",FALSE)
   dmcheck<-file.exists(file.path(out,"audit_BLA_DM_subjects.csv"));dmcount<-function(ids)if(dmcheck)as.character(sum(ids%in%dm$subject)) else "Not checked: DM unavailable"
   y<-function(x)!is.na(x)&toupper(x)=="Y";removed<-r$eua_present&!r$bla_present;added<-!r$eua_present&r$bla_present
@@ -755,10 +755,10 @@ sc_export_snapshot_assets <- function(root,out) {
     EUA=c(ax_num(sum(r$eua_present)),ax_num(sum(y(r$eua_randomized))),ax_num(sum(r$eua_present&r$bla_present)),ax_num(sum(removed)),"Not applicable",ax_num(sum(removed)),"Not applicable"),
     BLA=c(ax_num(sum(r$bla_present)),ax_num(sum(y(r$bla_randomized))),ax_num(sum(r$eua_present&r$bla_present)),ax_num(sum(added)),ax_num(sum(y(r$eua_randomized)&!r$bla_present)),dmcount(r$subject[removed]),if(dmcheck)ax_num(sum(!r$subject[removed]%in%dm$subject)) else "Not checked: DM unavailable"),check.names=FALSE)
   roster_ok<-nrow(r)>0&&any(r$eua_present)&&any(r$bla_present)
-  if(roster_ok)ax_table(a,"V32","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation",d,
+  if(roster_ok)ax_table(a,"V34","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation",d,
     "P301 | Selected EUA and production submission snapshots",
     "ADSL membership, randomized flags and DM membership are different checks. An ID missing from ADSL is not necessarily absent from the submission. DM is checked directly only when a compatible DM input is readable.")
-  else ax_unavailable(a,"V32","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation","Both readable ADSL rosters are required; unavailable releases are not zero participants.")
+  else ax_unavailable(a,"V34","subject_roster_reconciliation","EUA and BLA subject-roster reconciliation","Both readable ADSL rosters are required; unavailable releases are not zero participants.")
   z<-r[roster_ok&((r$eua_present&r$bla_present&y(r$eua_randomized)!=y(r$bla_randomized))|(!r$eua_present&r$bla_present&y(r$bla_randomized))),]
   if(nrow(z)) {
     value<-function(data,ids,col){if(!col%in%names(data))return(rep("Unavailable",length(ids)));v<-as.character(data[[col]][match(ids,data$subject)]);v[is.na(v)]<-"Unavailable";v[v==""]<-"Blank";v}
@@ -770,11 +770,11 @@ sc_export_snapshot_assets <- function(root,out) {
       `BLA dose and population fields`=paste0("Dose 1: ",value(new,z$subject,"TR01SDT"),"\nDose 2: ",value(new,z$subject,"DOSE2DT"),
         "\nFAS / safety: ",value(new,z$subject,"FASFL")," / ",value(new,z$subject,"SAFFL"),"\nmITT / PP: ",value(new,z$subject,"MITTFL")," / ",value(new,z$subject,"PPROTFL")),
       `Recorded reasons / separate context`=paste0("FAS: ",value(new,z$subject,"FASEREAS"),"\nSafety: ",value(new,z$subject,"SAFEREAS"),"\n",context),check.names=FALSE)
-    ax_table(a,"V33","randomization_flag_changes","Changes in randomized-population flags",d,
+    ax_table(a,"V35","randomization_flag_changes","Changes in randomized-population flags",d,
       "Changed RANDFL and newly included randomized IDs | Dose dates and analysis flags from BLA ADSL",
       "Blank means the field was present but empty; unavailable means it could not be read. Reviewer-guide context is a separate annotation, not a dataset-derived reason. Dose dates alone do not resolve analysis-population eligibility.",widths=c(.19,.14,.32,.35),highlight=which(z$subject=="US3952070"))
-    ax_data(a,"V33",data.frame(subject=z$subject,context=context,context_source="ADRG reviewer-guide discussion of duplicate/invalid randomization; see report references"),"guide_context")
-  }else ax_unavailable(a,"V33","randomization_flag_changes","Randomized-population flags","No changed shared-subject flags, or required roster inputs unavailable.")
+    ax_data(a,"V35",data.frame(subject=z$subject,context=context,context_source="ADRG reviewer-guide discussion of duplicate/invalid randomization; see report references"),"guide_context")
+  }else ax_unavailable(a,"V35","randomization_flag_changes","Randomized-population flags","No changed shared-subject flags, or required roster inputs unavailable.")
   f<-ax_read(out,"AE/field_changes.csv",FALSE);u<-ax_read(out,"AE/unmatched_eua_records.csv",FALSE)
   if(file.exists(file.path(out,"AE/field_changes.csv"))&&file.exists(file.path(out,"AE/unmatched_eua_records.csv"))) {
     f<-f[f$field=="AESER",];f<-f[(f$eua_value=="Y"&f$bla_value=="N")|(f$eua_value=="N"&f$bla_value=="Y"),]
@@ -785,18 +785,18 @@ sc_export_snapshot_assets <- function(root,out) {
     d<-rbind(d,data.frame(Change=c("Pre-EUA serious records with no linked counterpart","Subset with no possible review candidate"),
       `mRNA-1273`=c(cnt(us,"mRNA-1273",".sid",".arm"),cnt(us[us$.candidate_count==0,],"mRNA-1273",".sid",".arm")),
       Placebo=c(cnt(us,"Placebo",".sid",".arm"),cnt(us[us$.candidate_count==0,],"Placebo",".sid",".arm")),check.names=FALSE))
-    ax_table(a,"V34","ae_seriousness_changes","AE seriousness changes and unmatched records",d,
+    ax_table(a,"V36","ae_seriousness_changes","AE seriousness changes and unmatched records",d,
       "Record linkage across selected snapshots | AESER indicates seriousness, not severity",
       "Linked seriousness changes include undated records; unmatched rows are restricted to onset on/before the EUA cutoff. Record counts and unique participant counts are shown separately. Possible counterparts require review and are not treated as confirmed matches.")
-    ax_data(a,"V34",f,"linked_seriousness_changes")
+    ax_data(a,"V36",f,"linked_seriousness_changes")
     counts<-ax_read(out,"AE/subject_record_counts.csv",FALSE)
     v<-us[us$.candidate_count==0&us$.sid%in%counts$subject[counts$bla_records==0],]
     d<-if(!nrow(v))data.frame(`Participant / arm`=character(),`EUA serious event / onset`=character(),`BLA records`=character(),check.names=FALSE) else data.frame(`Participant / arm`=paste(v$.sid,v$.arm,sep="\n"),`EUA serious event / onset`=paste(v$AETERM,v$AESTDTC,sep="\n"),
       `BLA records`=paste0("AE: 0\nADSL: ",if(any(r$bla_present))ifelse(v$.sid%in%r$subject[r$bla_present],"present","absent") else rep("not checked",nrow(v)),"\nDM: ",if(dmcheck)ifelse(v$.sid%in%dm$subject,"present","absent") else "not checked"),check.names=FALSE)
-    ax_table(a,"V35","unmatched_serious_events","Serious-event participants with no BLA AE rows",d,
+    ax_table(a,"V37","unmatched_serious_events","Serious-event participants with no BLA AE rows",d,
       "Pre-EUA serious event | No linked counterpart or possible review candidate",
       "Zero AE rows refers to the selected production AE snapshot. ADSL and DM membership are independently checked. This identifies records requiring reconciliation; it does not establish deletion from the original clinical database.",widths=c(.25,.49,.26))
-  }else {ax_unavailable(a,"V34","ae_seriousness_changes","AE seriousness changes","AE comparison unavailable.");ax_unavailable(a,"V35","unmatched_serious_events","Unmatched serious events","AE comparison unavailable.")}
+  }else {ax_unavailable(a,"V36","ae_seriousness_changes","AE seriousness changes","AE comparison unavailable.");ax_unavailable(a,"V37","unmatched_serious_events","Unmatched serious events","AE comparison unavailable.")}
   f<-ax_read(out,"ADSYMP/field_changes.csv",FALSE)
   if(file.exists(file.path(out,"ADSYMP/field_changes.csv"))) {
     f<-f[f$field=="AVALC",];fv<-sc_class(f$eua_value);bv<-sc_class(f$bla_value)
@@ -806,10 +806,10 @@ sc_export_snapshot_assets <- function(root,out) {
       z<-f[which(sel),];rows[[length(rows)+1L]]<-data.frame(`Linked-record scope / transition`=paste(if(same)"Same date" else "All linked dates",direction,sep="\n"),
         `mRNA-1273`=ax_num(sum(z$arm=="mRNA-1273")),Placebo=ax_num(sum(z$arm=="Placebo")),Total=ax_num(nrow(z)),check.names=FALSE)
     }
-    ax_table(a,"V36","symptom_response_reversals","Changes in recorded symptom responses",do.call(rbind,rows),
+    ax_table(a,"V38","symptom_response_reversals","Changes in recorded symptom responses",do.call(rbind,rows),
       "ADSYMP AVALC | Counts of linked records, not unique participants",
       "Same-date rows are a subset of all linked dates. Reference and provisional clinical links retain their original classification in the CSV crosswalk. Revised dates and response fields require source-level reconciliation.",widths=c(.43,.19,.19,.19))
-  }else ax_unavailable(a,"V36","symptom_response_reversals","Symptom response changes","ADSYMP comparison unavailable.")
+  }else ax_unavailable(a,"V38","symptom_response_reversals","Symptom response changes","ADSYMP comparison unavailable.")
   ax_finish(a)
 }
 

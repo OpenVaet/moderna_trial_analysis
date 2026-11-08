@@ -1,19 +1,19 @@
-# Moderna COVE audit V01–V44 | standalone launcher | report v0.22
+# Moderna COVE audit V01–V46 | standalone launcher | two introductory graphics
 # Extract the script bundle into your project root, open the project in RStudio,
 # select this entire file and Run, or: Rscript run_audit_visualizations.R
 # Include four unnumbered supplemental charts/maps: options(phmpt.figures_include_supplementary=TRUE).
 # Preview the sequence only: options(phmpt.figures_plan_only=TRUE); source(this file).
 # Each generator runs in a fresh R process. Individual generators also remain standalone.
-# V01–V03 accepts analyse_moderna_demographics.R or its earlier name analyse_demographics.R.
+# V03–V05 accepts analyse_moderna_demographics.R or its earlier name analyse_demographics.R.
 figure_plan <- function(include_supplementary=FALSE) {
-  numbered<-data.frame(script=paste0(c("analyse_moderna_demographics","analyse_dose_timeline","analyse_deviations","analyse_audit_tables",
+  numbered<-data.frame(script=paste0(c("analyse_intro_figures","analyse_moderna_demographics","analyse_dose_timeline","analyse_deviations","analyse_audit_tables",
     "analyse_ae_covid_symptoms","analyse_weekly_symptoms_ae","analyse_background_covid",
     "analyse_site_symptom_recording","analyse_pcr_testing_by_lab","analyse_audit_tables","analyse_symptom_testing_heatmaps",
     "analyse_site_testing_imbalance","analyse_anti_n_seroconversion","analyse_day57_anti_n_sensitivity",
     "analyse_eua_bla_changes","analyse_efficacy_cases","analyse_death_reporting","analyse_subject_numbering"),".R"),
-    ids=c("V01–V03","V04","V05, V08, V09","V06–V07","V10","V11–V12","background prerequisite","V13","V14–V16","V17",
-    "V18–V27: episode data and descriptive plots","V18–V27: final models and plots","V28","V29–V31",
-    "V32–V36","V37–V39","V40","V41–V44"),stringsAsFactors=FALSE)
+    ids=c("V01–V02","V03–V05","V06","V07, V10, V11","V08–V09","V12","V13–V14","background prerequisite","V15","V16–V18","V19",
+    "V20–V29: episode data and descriptive plots","V20–V29: final models and plots","V30","V31–V33",
+    "V34–V38","V39–V41","V42","V43–V46"),stringsAsFactors=FALSE)
   if(!include_supplementary)return(numbered)
   rbind(numbered,data.frame(script=c("analyse_anti_n_testing.R","analyse_us_weekly_covid_tests.R",
     "analyse_background_covid_map_sites_only.R","analyse_background_covid_map.R"),
@@ -32,17 +32,17 @@ figure_resolve_plan <- function(plan,scripts_dir) {
   }
   plan
 }
-# Older V01–V03 releases hard-code audit_assets and prod_data. For the legacy
+# Older V03–V05 releases hard-code audit_assets and prod_data. For the legacy
 # filename, make a run-local copy with only those settings adapted. Leave its
 # analysis code and the user's original file alone. Refuse older scripts that
 # cannot accept the staged output directory.
 figure_legacy_demographics <- function(path,root) {
   s<-readLines(path,warn=FALSE,encoding="UTF-8")
   k<-grep("^\\s*PHMPT_AUDIT_ASSET_DIR\\s*<-",s,perl=TRUE)
-  if(length(k)!=1L||
+  if(length(k)!=1L||!any(grepl("V03_V05_demographics_manifest.csv",s,fixed=TRUE))||
      !any(grepl("^\\s*bla1_export_audit_assets\\s*<-\\s*function",s,perl=TRUE))||
      !any(grepl("audit_asset_dir\\s*=\\s*PHMPT_AUDIT_ASSET_DIR\\b",s,perl=TRUE)))
-    stop("Found ",path,", but it does not expose the V01–V03 audit output settings. Place the supplied analyse_moderna_demographics.R in the generator directory and rerun.",call.=FALSE)
+    stop("Found ",path,", but it does not expose the V03–V05 audit output settings. Place the supplied analyse_moderna_demographics.R in the generator directory and rerun.",call.=FALSE)
   s[k]<-'PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir","audit_assets")'
   folder<-if(dir.exists(file.path(root,"prod_data_moderna")))"prod_data_moderna" else "prod_data"
   # Only the two literal release-folder arguments used in the older generator.
@@ -61,11 +61,21 @@ figure_manifest <- function(dir) {
   }))
 }
 # Old IDs are used solely to recognize previous generated assets when publishing.
+# Same suffix, older figure ID. Recognize both the immediately preceding
+# 44-figure edition and the earlier 41-figure edition. New figures have no predecessor.
 figure_previous_name <- function(n) {
-  # Reverse this edition's layout solely to identify artifacts this run replaces.
-  m<-gregexpr("V[0-9]{2}(?![0-9])",n,perl=TRUE);vals<-regmatches(n,m)
-  regmatches(n,m)<-lapply(vals,function(v){i<-as.integer(substring(v,2));sprintf("V%02d",ifelse(i>=18,i-3L,ifelse(i>=8 & i<=16,i-2L,i)))})
-  n
+  convert<-function(x,older){
+    m<-gregexpr("V[0-9]{2}(?![0-9])",x,perl=TRUE); tags<-regmatches(x,m)[[1L]]
+    if(!length(tags))return(character())
+    i<-as.integer(substring(tags,2))-2L
+    if(any(i<1L))return(character())
+    if(older){
+      if(any(i %in% c(6L,7L,17L)))return(character())
+      i<-ifelse(i>=18L,i-3L,ifelse(i>=8L,i-2L,i))
+    }
+    regmatches(x,m)<-list(sprintf("V%02d",i));x
+  }
+  unique(unlist(lapply(n,function(x)c(convert(x,FALSE),convert(x,TRUE))),use.names=FALSE))
 }
 figure_publish <- function(stage,dest,run) {
   backup<-file.path(run,"previous_audit_assets")
@@ -99,7 +109,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   for(p in paths)invisible(parse(p,encoding="UTF-8"))
   legacy<-match("analyse_demographics.R",plan$script)
   if(!is.na(legacy)){
-    message("V01–V03: using ",paths[legacy]," (legacy filename).")
+    message("V03–V05: using ",paths[legacy]," (legacy filename).")
     adapted<-figure_legacy_demographics(paths[legacy],root)
     invisible(parse(text=adapted,encoding="UTF-8"))
   }
@@ -129,6 +139,10 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     phmpt.weekly_output=weekly,phmpt.weekly_dir=weekly,phmpt.heatmap_output=heat,
     phmpt.audit_data_dir=heat,phmpt.audit_output_dir=site,phmpt.report_only=FALSE,
     phmpt.background_file=bg,
+    phmpt.intro_input_dir=getOption("phmpt.intro_input_dir",file.path(scripts_dir,"table_inputs_intro")),
+    phmpt.intro_coverage_file=getOption("phmpt.intro_coverage_file"),
+    phmpt.intro_lab_file=getOption("phmpt.intro_lab_file"),
+    phmpt.intro_trigger_file=getOption("phmpt.intro_trigger_file"),
     phmpt.deviation_tables_dir=getOption("phmpt.deviation_tables_dir",file.path(scripts_dir,"table_inputs_v022","deviations")),
     phmpt.trigger_table_dir=getOption("phmpt.trigger_table_dir",file.path(scripts_dir,"table_inputs_v022","protocol")),
     phmpt.v17_loess_span=getOption("phmpt.v17_loess_span",0.40),
@@ -154,7 +168,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     state$status[i]<-"RUNNING";state$started[i]<-format(Sys.time(),"%FT%T%z");state$log[i]<-logfile;save_state()
     config<-file.path(logs,sprintf("%02d_config.rds",i));driver<-file.path(logs,sprintf("%02d_run.R",i))
     this_opts<-opts
-    if(s=="analyse_audit_tables.R")this_opts$phmpt.audit_table_ids<-if(plan$ids[i]=="V17")"V17" else c("V06","V07")
+    if(s=="analyse_audit_tables.R")this_opts$phmpt.audit_table_ids<-if(plan$ids[i]=="V19")"V19" else c("V08","V09")
     saveRDS(list(root=root,script=exec_paths[i],opts=this_opts,libs=.libPaths()),config)
     writeLines(c(paste0("cfg<-readRDS(",encodeString(config,quote='"'),")"),
       ".libPaths(cfg$libs); setwd(cfg$root); options(cfg$opts)",
@@ -169,7 +183,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     }
     state$status[i]<-"DONE";save_state()
   }
-  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:44)
+  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:46)
   if(!nrow(mf)||!setequal(expected,unique(mf$visual))||anyDuplicated(mf$file))
     stop("Final figure inventory incomplete or duplicated: ",paste(setdiff(expected,mf$visual),collapse=", "),". Inspect ",run)
   files<-file.path(stage,mf$file)
@@ -180,7 +194,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   if(any(flagged)&&!allow_flagged)stop("Flagged output(s): ",paste(unique(mf$visual[flagged]),collapse=", "),
     ". See ",file.path(run,"figure_inventory.csv"),". Previous audit_assets remains active. Set options(phmpt.figures_allow_flagged=TRUE) only to publish explicitly flagged figures.")
   dest<-file.path(root,"audit_assets");figure_publish(stage,dest,run)
-  message("Published V01–V44 in ",dest,". Status, checksums and logs: ",run)
+  message("Published V01–V46 in ",dest,". Status, checksums and logs: ",run)
   invisible(list(directory=dest,run=run,inventory=mf))
 }
 if(isTRUE(getOption("phmpt.launcher_autorun",TRUE)))run_audit_visualizations()

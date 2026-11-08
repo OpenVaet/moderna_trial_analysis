@@ -541,7 +541,7 @@ analyse_efficacy_cases <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_DIR){
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V10-V39), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V12-V41), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -725,16 +725,16 @@ ax_finish <- function(a,notes=character()) {
 }
 
 ec_export_audit_assets <- function(root,out,results) {
-  a<-ax_begin(root,out,"V37_V39_efficacy")
+  a<-ax_begin(root,out,"V39_V41_efficacy")
   values<-lapply(c("EUA","BLA"),function(rel){z<-results[[rel]];if(is.null(z))return(rep("Unavailable",3));th<-z$thresholds;th<-th[th$basis=="case_event_date",];
     datecol<-intersect(c("threshold_date","date","crossing_date"),names(th));if(!length(datecol))stop("Threshold date field not recognized.");as.character(th[[datecol[1]]][match(c(53,106,151),th$threshold)])})
   d<-data.frame(`Scheduled case threshold`=c(53,106,151),EUA=values[[1]],BLA=values[[2]],check.names=FALSE)
   flags<-vapply(results,function(z)isTRUE(z$valid),logical(1));valid<-length(flags)>0&&all(flags)
-  ax_table(a,"V37","efficacy_threshold_dates","Retrospective case-threshold crossing dates",d,
+  ax_table(a,"V39","efficacy_threshold_dates","Retrospective case-threshold crossing dates",d,
     if(valid)"Reconstructed primary efficacy cases | Published case counts reconciled" else "Reconstructed primary efficacy cases | Missing or provisional release results",
     "Dates use case-event onset dates. Crossing a count retrospectively does not identify when cases were adjudicated, data became analysis-ready or the DSMB could review them. EUA and BLA reconstructions are kept separate.")
   z<-results$EUA
-  if(is.null(z))ax_unavailable(a,"V38","weekly_efficacy_cases","Weekly EUA primary efficacy cases","EUA reconstruction unavailable in this run.") else {
+  if(is.null(z))ax_unavailable(a,"V40","weekly_efficacy_cases","Weekly EUA primary efficacy cases","EUA reconstruction unavailable in this run.") else {
     w<-z$weekly;w$week_start<-as.Date(w$week_start);weeks<-sort(unique(w$week_start));arms<-c("mRNA-1273","Placebo")
     vals<-sapply(arms,function(ar){q<-w[w$arm==ar,];q$cases[match(weeks,q$week_start)]});cols<-c("#1E667D","#A65B22")
     th<-z$thresholds[z$thresholds$basis=="case_event_date",];dc<-intersect(c("threshold_date","date","crossing_date"),names(th))[1]
@@ -752,18 +752,18 @@ ec_export_audit_assets <- function(root,out,results) {
       for(i in seq_len(nrow(markers))){c<-if(markers$code[i]=="E")"#A93232" else if(grepl("^P",markers$code[i]))"#79558B" else "#707D84";abline(v=as.numeric(markers$date[i]),col=c,lty=2,lwd=1)
         text(as.numeric(markers$date[i]),top*(.98-.065*((i-1)%%3)),markers$code[i],col=c,cex=.85,font=2)}
       legend("topleft",arms,fill=cols,border=NA,bty="n",cex=.9)
-      grid::pushViewport(grid::viewport());ax_text("V38 Weekly EUA primary efficacy cases",.35,.25,17,TRUE,col="#17384B")
+      grid::pushViewport(grid::viewport());ax_text("V40 Weekly EUA primary efficacy cases",.35,.25,17,TRUE,col="#17384B")
       ax_text(paste0("By case-event date | ",if(isTRUE(z$valid))"Published counts reconciled" else "PROVISIONAL: count/rule mismatch", " | EUA efficacy cutoff: ",PHMPT_CUTOFFS[['EUA']]),.35,.72,11.2)
       yy<-5.52;for(i in seq_len(nrow(markers))){ax_text(paste0(markers$code[i],"  ",format(markers$date[i],"%d %b %Y")),.35,yy,10.8,TRUE);ax_text(markers$meaning[i],2.4,yy,10.8);yy<-yy+.27}
       ax_text(ax_wrap("Weeks begin Monday; the final observation week is partial. Election and announcement markers are calendar context. Retrospective event-date thresholds do not measure data readiness or demonstrate a delayed announcement. PCR linkage is audited separately from primary case selection.",7.8,10.6),.35,height-.85,10.6,col="#52616C");grid::popViewport()}
-    ax_png(a,"V38","weekly_efficacy_cases",draw,height,status=if(isTRUE(z$valid))"AVAILABLE" else "PROVISIONAL");ax_data(a,"V38",w);ax_data(a,"V38",markers,"calendar_markers")
+    ax_png(a,"V40","weekly_efficacy_cases",draw,height,status=if(isTRUE(z$valid))"AVAILABLE" else "PROVISIONAL");ax_data(a,"V40",w);ax_data(a,"V40",markers,"calendar_markers")
   }
   m<-ec_milestones();m<-rbind(m,data.frame(date=as.Date("2020-11-25"),label="EUA safety-data cutoff",source_id="FDA_EUA"));m<-m[order(m$date),]
-  ax_table(a,"V39","efficacy_announcement_chronology","Documented efficacy-analysis chronology",
+  ax_table(a,"V41","efficacy_announcement_chronology","Documented efficacy-analysis chronology",
     data.frame(Date=format(m$date,"%d %b %Y"),Milestone=m$label,check.names=FALSE),
     "Documented milestones | Distinct efficacy and safety cutoffs",
     "Announcements report the results available for the specified analysis. Case onset, adjudication, data readiness, DSMB review and public announcement are distinct dates; they are not interchangeable.",widths=c(.22,.78))
-  ax_data(a,"V39",m,"documented_milestones_with_source_ids");ax_finish(a)
+  ax_data(a,"V41",m,"documented_milestones_with_source_ids");ax_finish(a)
 }
 
 if(isTRUE(getOption('phmpt.autorun',TRUE)))analyse_efficacy_cases()
