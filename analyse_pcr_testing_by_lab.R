@@ -1729,7 +1729,7 @@ analyse_pcr_testing_by_lab <- function(root=PHMPT_ROOT,output_dir=PHMPT_OUTPUT_D
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V10-V38), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -1913,21 +1913,21 @@ ax_finish <- function(a,notes=character()) {
 }
 
 pt_export_audit_assets <- function(root,out,primary,localcentral,sites,people,routes) {
-  a<-ax_begin(root,out,"V12_V14_pcr")
+  a<-ax_begin(root,out,"V14_V16_pcr")
   p<-pt_r_comparison(primary,routes)
   d<-data.frame(`Window / symptom denominator`=paste(p$Window,p$Population,sep="\n"),`mRNA-1273`=p[['mRNA-1273']],Placebo=p$Placebo,
     `Difference / p`=paste0(p[['Difference (pp)']]," pp\np ",p$p),check.names=FALSE)
-  ax_table(a,"V12","participant_pcr_coverage","Participant-level diagnostic PCR coverage",d,
+  ax_table(a,"V14","participant_pcr_coverage","Participant-level diagnostic PCR coverage",d,
     "Strict blinded follow-up | Each symptomatic participant counted once",
     "Diagnostic PCR within the configured symptom-linking interval, capped by individual follow-up. The combined denominator is the union of COVID forms and matched AEs. Differences are vaccine minus placebo. Original EUA and production-through-EUA are different snapshots.",widths=c(.37,.22,.22,.19))
   l<-localcentral[localcentral$release=="Prod",];p<-pt_r_comparison(l,routes)
   if(nrow(p)) {
   d<-data.frame(`Window / reporting stream`=paste(p$Window,p$Endpoint,sep="\n"),`mRNA-1273`=p[['mRNA-1273']],Placebo=p$Placebo,
     `Difference / p`=paste0(p[['Difference (pp)']]," pp\np ",p$p),check.names=FALSE)
-  ax_table(a,"V13","local_central_pcr_streams","Local and central PCR reporting streams",d,
+  ax_table(a,"V15","local_central_pcr_streams","Local and central PCR reporting streams",d,
     "Production data | Strict blinded follow-up | COVID forms plus matched AEs",
     "Local and central are reporting-stream classifications. Both means the participant appears in both streams, possibly on different dates; it does not establish two independent assays. Unidentifiable routes are not shown as zero testing.",widths=c(.37,.22,.22,.19))
-  } else ax_unavailable(a,"V13","local_central_pcr_streams","Local and central PCR reporting streams","No production comparisons in this run.")
+  } else ax_unavailable(a,"V15","local_central_pcr_streams","Local and central PCR reporting streams","No production comparisons in this run.")
   s<-pt_r_primary(sites);s<-s[s$site%in%c("US372","US377")&s$release=="Prod"&s$period=="BLA_SNAPSHOT"&s$endpoint=="Any PCR",]
   s<-s[order(s$site,s$stratum),];p<-pt_r_comparison(s,routes,site=TRUE,adjusted=TRUE)
   d<-if(!nrow(p))data.frame(`Site / denominator`=character(),`mRNA-1273`=character(),Placebo=character(),`Difference / raw p`=character(),`Adjusted p`=character(),check.names=FALSE) else data.frame(`Site / denominator`=paste(p$Site,p$Population,sep="\n"),`mRNA-1273`=p[['mRNA-1273']],Placebo=p$Placebo,
@@ -1944,12 +1944,12 @@ pt_export_audit_assets <- function(root,out,primary,localcentral,sites,people,ro
   })
   if(length(rows)) {
     q<-do.call(rbind,rows);q$BH<-p.adjust(ifelse(is.finite(q$p),q$p,1),"BH");q$Holm<-p.adjust(ifelse(is.finite(q$p),q$p,1),"holm")
-    ax_data(a,"V14",q,"ae_only_all_site_tests")
+    ax_data(a,"V16",q,"ae_only_all_site_tests")
     q<-q[q$site%in%c("US372","US377"),]
     d<-rbind(d,data.frame(`Site / denominator`=paste(q$site,"AE only",sep="\n"),`mRNA-1273`=ax_rate(q$kv,q$nv),Placebo=ax_rate(q$kp,q$np),
       `Difference / raw p`=paste0(sprintf("%+.1f pp",q$difference),"\n",ax_p(q$p)),`Adjusted p`=paste0("BH ",ax_p(q$BH),"\nHolm ",ax_p(q$Holm)),check.names=FALSE))
   }
-  ax_table(a,"V14","participant_site_findings","Participant-level site testing findings",d,
+  ax_table(a,"V16","participant_site_findings","Participant-level site testing findings",d,
     "US372 and US377 | Production, blinded BLA | Any qualifying diagnostic PCR",
     "Combined and COVID-form p values retain the original site-testing families. AE-only rows are a separate descriptive Fisher screen, with BH/Holm across all sites in the combined cohort before selecting these examples. Each participant counts once per denominator.",widths=c(.28,.18,.18,.17,.19))
   ax_finish(a)

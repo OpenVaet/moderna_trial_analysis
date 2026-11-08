@@ -415,7 +415,7 @@ analyse_ae_covid_symptoms <- function(root="",releases=c("EUA","Prod"),ae_files=
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V10-V38), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -599,13 +599,13 @@ ax_finish <- function(a,notes=character()) {
 }
 
 am_export_audit_assets <- function(root,out,tab,mapping) {
-  a<-ax_begin(root,out,"V08_mapping")
+  a<-ax_begin(root,out,"V10_mapping")
   rows<-do.call(rbind,lapply(seq_len(nrow(tab)),function(i)data.frame(
     `Symptom / match class`=paste(tab$symptom[i],c("Direct preferred terms (AEDECOD)","Other direct terms (AELLT)","Related terms: review only"),sep="\n"),
     `Observed adverse-event terms`=c(tab$direct_pt[i],tab$direct_llt[i],tab$related_review[i]),check.names=FALSE)))
   versions<-if("dictionary_version"%in%names(mapping))unique(mapping$dictionary_version) else am_version
-  ax_table(a,"V08","ae_symptom_mapping","AE terms matched to COVID-compatible symptoms",rows,
-    paste0("Moderna P301 | Dictionary version ",paste(versions,collapse=", ")," | Observed terms only"),
+  ax_table(a,"V10","ae_symptom_mapping","AE terms matched to COVID-compatible symptoms",rows,
+    "Moderna P301 | Observed coded terms",
     "Direct means compatible wording. Specified alternative causes and localized pain are review only. The dictionary alone cannot establish fever >=38 C, duration, infection or a protocol swab indication.",widths=c(.29,.71))
   ax_finish(a)
 }

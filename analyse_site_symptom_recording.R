@@ -407,7 +407,7 @@ PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 PHMPT_AUDIT_SITE <- getOption("phmpt.audit_site", "US375")
 
-# ---- Standalone audit-asset renderer (V08-V35), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V10-V38), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -591,8 +591,8 @@ ax_finish <- function(a,notes=character()) {
 }
 
 sr_export_audit_assets <- function(root,out,site=PHMPT_AUDIT_SITE) {
-  a<-ax_begin(root,out,"V11_site_recording");cells<-ax_read(out,"site_arm_weekly_recording.csv")
-  z<-cells[cells$SITEID==site,];if(!nrow(z)){ax_unavailable(a,"V11","site_symptom_recording","Site symptom-recording example",paste("No rows for",site));return(ax_finish(a))}
+  a<-ax_begin(root,out,"V13_site_recording");cells<-ax_read(out,"site_arm_weekly_recording.csv")
+  z<-cells[cells$SITEID==site,];if(!nrow(z)){ax_unavailable(a,"V13","site_symptom_recording","Site symptom-recording example",paste("No rows for",site));return(ax_finish(a))}
   z$week_start<-as.Date(z$week_start);weeks<-sort(unique(z$week_start));blocks<-split(weeks,ceiling(seq_along(weeks)/18))
   region<-unique(na.omit(z$region_name));colors<-c("mRNA-1273"="#1E667D","Placebo"="#A65B22")
   height<-1.45+4.65*length(blocks)+.65
@@ -616,13 +616,13 @@ sr_export_audit_assets <- function(root,out,site=PHMPT_AUDIT_SITE) {
       mtext(paste0(min(ww)," to ",max(ww)," | Part ",k," of ",length(blocks)),3,line=.3,adj=0,cex=.85)
     }
     grid::pushViewport(grid::viewport())
-    ax_text(paste("V11",site,"Symptom recording and local positivity"),.35,.23,17,TRUE,col="#17384B")
+    ax_text(paste("V13",site,"Symptom recording and local positivity"),.35,.23,17,TRUE,col="#17384B")
     ax_text(ax_wrap(paste(paste(region,collapse="; "),paste(unique(z$window),collapse="; "),sep=" | "),7.8,11.5),.35,.67,11.5)
     ax_text("mRNA-1273 AE share",.35,1.05,11,TRUE,col=colors[1]);ax_text("Placebo AE share",3.0,1.05,11,TRUE,col=colors[2]);ax_text("- - County positivity",5.55,1.05,11,col="#313940")
     ax_text(ax_wrap("AE share = (AE only + both sources) / all symptom-group weeks. V n / P n give each week's vaccine / placebo denominator. Open circles mark small denominators. Missing shares or background remain gaps; no interpolation. Local positivity is contextual, not a trial infection rate.",7.8,10.6),.35,height-.57,10.6,col="#52616C")
     grid::popViewport()
   }
-  ax_png(a,"V11","site_symptom_recording",draw,height);ax_data(a,"V11",z);ax_finish(a)
+  ax_png(a,"V13","site_symptom_recording",draw,height);ax_data(a,"V13",z);ax_finish(a)
 }
 
 if(isTRUE(getOption("phmpt.autorun",TRUE)))analyse_site_symptom_recording()
