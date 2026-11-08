@@ -1,25 +1,19 @@
-﻿"Site / denominator","mRNA-1273","Placebo","Difference / raw p","Adjusted p"
-"US372
-COVID forms","10/10 (100.0%)","40/40 (100.0%)","+0.0 pp
-1.000","BH 1.000
-Holm 1.000"
-"US372
-COVID forms + matched AEs","11/36 (30.6%)","40/49 (81.6%)","-51.1 pp
-< 0.00001","BH < 0.001
-Holm < 0.01"
-"US377
-COVID forms","13/13 (100.0%)","35/35 (100.0%)","+0.0 pp
-1.000","BH 1.000
-Holm 1.000"
-"US377
-COVID forms + matched AEs","13/30 (43.3%)","36/44 (81.8%)","-38.5 pp
-< 0.001","BH 0.036
-Holm 0.288"
-"US372
-AE only","1/26 (3.8%)","0/9 (0.0%)","+3.8 pp
-1.0000","BH 1.0000
-Holm 1.0000"
-"US377
-AE only","0/17 (0.0%)","1/9 (11.1%)","-11.1 pp
-0.3462","BH 1.0000
-Holm 1.0000"
+﻿"Window / symptom denominator","mRNA-1273","Placebo","Difference / p"
+"Original EUA snapshot
+COVID forms","915/991 (92.3%)","1,239/1,318 (94.0%)","-1.7 pp
+p 0.111"
+"Original EUA snapshot
+COVID forms + matched AEs","944/2,161 (43.7%)","1,259/2,272 (55.4%)","-11.7 pp
+p < 0.000001"
+"Production through EUA date
+COVID forms","1,062/1,142 (93.0%)","1,467/1,560 (94.0%)","-1.0 pp
+p 0.274"
+"Production through EUA date
+COVID forms + matched AEs","1,073/2,957 (36.3%)","1,491/3,114 (47.9%)","-11.6 pp
+p < 0.000001"
+"Production through BLA cutoff
+COVID forms","1,624/1,689 (96.2%)","2,415/2,493 (96.9%)","-0.7 pp
+p 0.209"
+"Production through BLA cutoff
+COVID forms + matched AEs","1,634/3,475 (47.0%)","2,441/3,964 (61.6%)","-14.6 pp
+p < 0.000001"

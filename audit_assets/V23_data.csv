@@ -1,5 +1,6 @@
-﻿"episode_id","subject","start","last_symptom","early_postdose","onset_groups","positivity","first_later_diagnostic_pcr","days_to_later_pcr","later_result","within_same_episode_span","not_done_in_horizon","first_not_done_day"
-"E0002603","US3252024","2020-10-19","2020-10-19",FALSE,"CHILLS; DIARRHEA; FATIGUE; HEADACHE; MYALGIA; NAUSEA_VOMITING",10.27905,"2020-11-09",21,"NEGATIVE",FALSE,FALSE,
-"E0002659","US3252324","2020-11-19","2020-12-07",FALSE,"COUGH; DIARRHEA; NASAL; SORE_THROAT",13.67286,"2020-12-04",15,"NEGATIVE",TRUE,FALSE,
-"E0002620","US3252097","2020-12-16","2020-12-16",FALSE,"COUGH; FATIGUE; HEADACHE; NASAL; SORE_THROAT",15.97135,"",,"",FALSE,TRUE,0
-"E0002695","US3252521","2020-12-30","2021-01-07",FALSE,"FATIGUE; SORE_THROAT",17.39858,"2021-01-07",8,"NEGATIVE",TRUE,FALSE,
+﻿"Site / county","mRNA-1273","Placebo","Fisher p","Bonferroni p"
+"US372 - Greenville County, South Carolina","4/22 (18.2%)","22/34 (64.7%)","< 0.001","0.089"
+"US313 - Maricopa County, Arizona","0/4 (0.0%)","10/13 (76.9%)","0.0147","1.000"
+"US325 - Hidalgo County, Texas","11/48 (22.9%)","24/52 (46.2%)","0.0208","1.000"
+"US368 - Los Angeles County, California","4/14 (28.6%)","12/17 (70.6%)","0.0320","1.000"
+"US359 - Sedgwick County, Kansas","13/30 (43.3%)","22/31 (71.0%)","0.0395","1.000"

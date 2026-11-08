@@ -1,4 +1,16 @@
-﻿"Scheduled case threshold","EUA","BLA"
-53,"2020-10-26","2020-10-26"
-106,"2020-11-05","2020-11-04"
-151,"2020-11-12","2020-11-11"
+﻿"Participant / arm","EUA serious event / onset","BLA records"
+"US3172069
+Placebo","PROSTATE CANCER
+2020-09-04","AE: 0
+ADSL: present
+DM: present"
+"US3172205
+Placebo","DIVERTICULITIS
+2020-10-14","AE: 0
+ADSL: present
+DM: present"
+"US3432392
+mRNA-1273","BENIGN PROSTATIC HYPERPLASIA (BPH)   S/P TRANSURETHRAL RESECTION OF THE PROSTATE (TURP)
+2020-10-19","AE: 0
+ADSL: present
+DM: present"

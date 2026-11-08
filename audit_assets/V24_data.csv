@@ -1,7 +1,2 @@
-﻿"Arm","Onset source","Share of episodes","Tested within source"
-"mRNA-1273","AE","32 (97.0%)","1/32 (3.1%)"
-"mRNA-1273","COVID_FORM","0 (0.0%)","0/0 (not estimable)"
-"mRNA-1273","AE; COVID_FORM","1 (3.0%)","1/1 (100.0%)"
-"Placebo","AE","16 (66.7%)","0/16 (0.0%)"
-"Placebo","COVID_FORM","7 (29.2%)","6/7 (85.7%)"
-"Placebo","AE; COVID_FORM","1 (4.2%)","1/1 (100.0%)"
+﻿"SITEID","v_y","v_n","v_pct","p_y","p_n","p_pct","fisher_p","fisher_q_BH","fisher_p_bonferroni"
+"US372",4,22,18.1818181818182,22,34,64.7058823529412,0.000903629750404969,0.0894593452900919,0.0894593452900919

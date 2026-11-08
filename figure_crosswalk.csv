@@ -1,0 +1,47 @@
+v028_figure,new_figure,subject
+Previously unnumbered diagram,V01,"Only a swabbed, PCR-positive illness can become a case"
+Previously unnumbered C2 table,V02,The testing gap narrowed in the per-protocol window
+V01,V03,Weekly recruitment by phase
+V02,V04,Randomization and analysis populations
+V03,V05,Phase 3 recruitment by site
+V04,V06,Dose 1 and dose 2 administrations
+V05,V07,Globally imbalanced protocol deviations
+V06,V08,Deviations after confirmed COVID-19
+V07,V09,Events recorded near late safety notifications
+V08,V10,Site-level deviation screen
+V09,V11,Weekly staff-related deviations
+V10,V12,AE terms matched to symptom groups (all continuation pages)
+V11,V13,Weekly symptom recording: mRNA-1273
+V12,V14,Weekly symptom recording: placebo
+V13,V15,US375 symptom recording and local positivity
+V14,V16,Participant-level diagnostic PCR coverage
+V15,V17,Local and central PCR reporting streams
+V16,V18,Participant-level site testing
+V17,V19,Investigation and swabbing by day 3
+V18,V20,Documented testing after symptomatic episodes
+V19,V21,Adjusted comparisons during high positivity
+V20,V22,Two-panel funnel: relative testing during high positivity
+V21,V23,Nominal site testing imbalances
+V22,V24,US372: documented testing
+V23,V25,US325: PCR timing
+V24,V26,US352: symptom recording source
+V25,V27,US372: post-dose timing
+V26,V28,Sites with opposing changes across positivity periods
+V27,V29,US302: low and high positivity
+V28,V30,Anti-N detection after PCR-confirmed illness
+V29,V31,Day 57 anti-N results and PCR history
+V30,V32,Day 57 response after positive PCR
+V31,V33,Illustrative anti-N detection scenario
+V32,V34,EUA and BLA subject rosters
+V33,V35,Randomized-population flags
+V34,V36,AE seriousness and unmatched records
+V35,V37,Serious-event participants without BLA AE rows
+V36,V38,Changes in recorded symptom responses
+V37,V39,Retrospective case thresholds
+V38,V40,Weekly EUA efficacy cases
+V39,V41,Chronology of efficacy analysis
+V40,V42,Deaths by reporting scope
+V41,V43,Traceability of missing identifiers
+V42,V44,Timing of missing identifier positions
+V43,V45,US370: block of 34 untraced identifiers
+V44,V46,Consecutive identifier gaps

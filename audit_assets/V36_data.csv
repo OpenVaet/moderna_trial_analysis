@@ -1,9 +1,5 @@
-﻿"Linked-record scope / transition","mRNA-1273","Placebo","Total"
-"All linked dates
-YES -> NO","139","236","375"
-"All linked dates
-NO -> YES","356","340","696"
-"Same date
-YES -> NO","86","152","238"
-"Same date
-NO -> YES","228","249","477"
+﻿"Change","mRNA-1273","Placebo"
+"Serious -> non-serious (all linked EUA records)","3 records / 3 participants","13 records / 10 participants"
+"Non-serious -> serious (all linked EUA records)","6 records / 5 participants","9 records / 9 participants"
+"Pre-EUA serious records with no linked counterpart","11 records / 9 participants","12 records / 12 participants"
+"Subset with no possible review candidate","2 records / 2 participants","2 records / 2 participants"
