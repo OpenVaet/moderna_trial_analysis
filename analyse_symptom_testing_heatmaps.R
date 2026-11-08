@@ -637,6 +637,44 @@ ws_pick <- function(root,release,domain,explicit,out,encoding,origin,min_randomi
   chosen<-valid[[1]];log$status[log$status=="VALID"]<-"NOT_SELECTED";log$status[chosen$index]<-"SELECTED"
   ws_csv(log,logfile);list(x=chosen$x,manifest=log[chosen$index,,drop=FALSE])
 }
+# M3 classifies documented wording, not clinical etiology. Apply before assignment of arm.
+m3_version <- "1.1.0-M3"
+m3_reason <- function(term,group) {
+ s<-toupper(trimws(gsub("[[:space:]]+"," ",gsub("[-_/]+"," ",gsub("['\u2019]","",as.character(term),perl=TRUE)),perl=TRUE)));s[is.na(s)]<-""
+ hit<-function(p)grepl(p,s,perl=TRUE);v<-rep("",length(s))
+ put<-function(ok,reason){v[which(ok & !nzchar(v))]<<-reason}
+ put(hit("\\b(POST ?(PROCEDUR\\w*|OPERAT\\w*|TRAUM\\w*)|PROCEDURAL|DRUG INDUCED)\\b"),"Treatment, procedure or trauma specified")
+ put(group=="COUGH"&hit("\\b(ALLERGIC|SMOKERS?|CHRONIC)\\b"),"Allergy, smoking or chronic cough specified")
+ put(group%in%c("SORE_THROAT","NASAL")&hit("\\b(STREPTOCOCCAL|CHRONIC)\\b"),"Alternative diagnosis or chronic complaint specified")
+ put(group=="DIARRHEA"&hit("\\b(BACTERIAL|VIRAL|INFECTIOUS|TRAVELL?ERS?)\\b"),"Named enteric illness or travel syndrome; etiology not confirmed here")
+ put(group=="HEADACHE"&!hit("\\bEXCL(?:UDING)? MIGRAINE\\b")&hit("\\b(TENSION|MIGRAINE|CLUSTER|EXERTIONAL|COITAL|SINUS|PRIMARY|NEW DAILY PERSISTENT)\\b"),"Specified headache syndrome or precipitant; incident compatible headache needs review")
+ put(group=="MYALGIA"&hit("\\b(LOCALI[ZS]ED|EXTREMIT(Y|IES)|INJECTION SITE|INJECTION ARM)\\b"),"Localized muscle pain; generalized myalgia not established")
+ v
+}
+m3_dictionary <- function(x,groups=x$symptom_group) {
+ why<-m3_reason(x$normalized_term,groups)
+ inc<-toupper(as.character(x$include_default));if(anyNA(inc)||any(!inc%in%c("TRUE","FALSE")))stop("Invalid mapping inclusion flag")
+ if(any(inc=="TRUE" & toupper(x$match_class)!="DIRECT"))stop("Invalid mapping: review-only term marked for inclusion")
+ if(!"rationale"%in%names(x)) x$rationale<-rep("",nrow(x))
+ old<-if("m3_group_veto"%in%names(x)) toupper(as.character(x$m3_group_veto))%in%"TRUE" else rep(FALSE,nrow(x))
+ move<-inc=="TRUE"&nzchar(why)
+ # Marker survives normalization of an already corrected CSV (and earlier v1.1 exports).
+ x$m3_group_veto<-old|move|(nzchar(why)&!is.na(x$rationale)&as.character(x$rationale)==why)
+ x$include_default<-inc=="TRUE";x$include_default[x$m3_group_veto]<-FALSE
+ x$match_class[x$m3_group_veto]<-"RELATED_REVIEW";x$rationale[move]<-why[move]
+ x$dictionary_version<-rep(m3_version,nrow(x));x
+}
+m3_gate <- function(h,ids,verbatim,dict,groups=dict$symptom_group,other_fields=list()) {
+ nk<-function(x)toupper(trimws(gsub("[[:space:]\\p{Z}]+"," ",as.character(x),perl=TRUE)))
+ key<-function(x,y)paste(x,y,sep="\r")
+ deny<-key(nk(dict$normalized_term[dict$m3_group_veto]),groups[dict$m3_group_veto])
+ g<-key(ids,h$symptom_group)
+ hit<-key(nk(h$normalized_term),h$symptom_group)%in%deny | key(nk(verbatim),h$symptom_group)%in%deny
+ for(field in other_fields)hit<-hit|key(nk(field),h$symptom_group)%in%deny
+ h$m3_group_review<-g%in%g[hit];h$include_default[h$m3_group_review]<-FALSE
+ h$match_class[h$m3_group_review]<-"RELATED_REVIEW";h
+}
+
 ws_mapping <- function(root,path,out) {
   if(!nzchar(path)) {
     p<-file.path(root,c("assets/ae_covid_symptom_mapping.csv","ae_covid_symptom_mapping.csv"))
@@ -646,7 +684,7 @@ ws_mapping <- function(root,path,out) {
     if(!file.exists(path))stop("Mapping asset not found: ",path)
     x<-read.csv(path,colClasses="character",check.names=FALSE,fileEncoding="UTF-8-BOM",na.strings=c("","NA"))
     source<-normalizePath(path,winslash="/");hash<-unname(tools::md5sum(path))
-  } else {x<-ws_embedded_mapping();source<-"Embedded field-specific mapping v1.0.0";hash<-"";message(source)}
+  } else {x<-ws_embedded_mapping();source<-"Embedded field-specific mapping, upgraded to M3";hash<-"";message(source)}
   need<-c("match_field","normalized_term","symptom_code","symptom_group","match_class","include_default")
   if(!all(need %in% names(x)))stop("Mapping lacks required fields: ",paste(setdiff(need,names(x)),collapse=", "))
   x[]<-lapply(x,ws_text);x$normalized_term<-ws_norm(x$normalized_term)
@@ -656,6 +694,7 @@ ws_mapping <- function(root,path,out) {
   if(any(!nzchar(x$normalized_term)))stop("Mapping has an empty normalized_term.")
   if(any(!x$include_default %in% c("TRUE","FALSE")))stop("Mapping include_default must be TRUE/FALSE.")
   x$include_default<-x$include_default=="TRUE"
+  x<-m3_dictionary(x) # upgrades legacy external and embedded dictionaries identically
   if(any(!x$match_field %in% c("AETERM","AELLT","AEDECOD")))stop("Unknown mapping match_field.")
   if(any(!x$symptom_code %in% names(ws_param_map)))stop("Unknown mapping symptom_code.")
   if(any(x$symptom_group!=unname(ws_param_map[x$symptom_code])))stop("Mapping symptom groups differ from the agreed 12-group classification.")
@@ -670,7 +709,7 @@ ws_mapping <- function(root,path,out) {
   ws_csv(x,file.path(out,"ae_covid_symptom_mapping_input.csv"))
   # Duration/qualification metadata are retained and checked for agreement even
   # though this burden analysis does not impose protocol-trigger eligibility.
-  decisions<-intersect(c("symptom_group","match_class","include_default",
+  decisions<-intersect(c("symptom_group","match_class","include_default","m3_group_veto",
                         "min_duration_hours","qualification_check"),names(x))
   conflicts<-vapply(groups,function(ix) {
     z<-x[ix,decisions,drop=FALSE]
@@ -743,6 +782,7 @@ ws_events <- function(ae,sy,mapping,origin,out,ae_timing) {
     h<-do.call(rbind,evidence);h<-h[order(h$row_id,h$symptom_code,h$priority),,drop=FALSE]
     h$selected_evidence<-!duplicated(paste(h$row_id,h$symptom_code,sep="|"))
     h$USUBJID<-ae$USUBJID[h$row_id];h$AESEQ<-ae$AESEQ[h$row_id]
+    h<-m3_gate(h,h$row_id,ae$AETERM[h$row_id],mapping,other_fields=list(ae$AELLT[h$row_id],ae$AEDECOD[h$row_id]));h$dictionary_version<-m3_version
     ws_csv(h,file.path(out,"ae_matching_evidence.csv"))
     # Apply evidence priority BEFORE filtering include_default: a specific
     # review-only term must not be overridden by a generic direct preferred term.
@@ -772,7 +812,7 @@ ws_events <- function(ae,sy,mapping,origin,out,ae_timing) {
     symptom_code=code[j],symptom_group=unname(ws_param_map[code[j]]),lo=date[j],hi=date[j],
     date_quality=ifelse(is.finite(date[j]),ifelse(conflict[j],"POSITIVE_WITH_NEGATIVE_SAME_DAY","POSITIVE_ASSESSMENT_DAY"),"UNKNOWN_ASSESSMENT_DATE"),
     term=sy$PARAM[j],stringsAsFactors=FALSE)
-  ev<-unique(rbind(ev,se));ev$event_id<-seq_len(nrow(ev));ev
+  ev<-unique(rbind(ev,se));ev$event_id<-seq_len(nrow(ev));ev$dictionary_version<-rep(m3_version,nrow(ev));ev
 }
 ws_text <- function(x) {
   if(inherits(x,"Date")) x<-format(x,"%Y-%m-%d")
@@ -899,335 +939,342 @@ ws_read_jmp <- function(path, fields, optional=character()) {
 
 
 ws_embedded_mapping <- function() read.csv(text=paste(c(
-  "dictionary_version,match_field,normalized_term,symptom_code,symptom_label,symptom_group,match_class,include_default",
-  "1.0.0,AEDECOD,POST PROCEDURAL FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,FEBRILE REACTION,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,FEVER CHILLS,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,FEVER OF UNKNOWN ORIGIN,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,INTERMITTENT FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,POST PROCEDURAL FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,POSTOPERATIVE FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AELLT,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AETERM,FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AETERM,FEVER OF UNKNOWN ORIGIN,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AETERM,INTERMITTENT FEVER,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AETERM,PYREXIA,FEVER,Fever,FEVER,DIRECT,TRUE",
-  "1.0.0,AEDECOD,BODY TEMPERATURE INCREASED,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,BODY TEMPERATURE INCREASED,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,FEVERISH,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,HIGH TEMPERATURE,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,LOW GRADE FEVER,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,SLIGHT TEMPERATURE,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,FEVERISH,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,LOW GRADE FEVER,FEVER,Fever,FEVER,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AELLT,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AELLT,FEVER CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AELLT,RIGORS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AETERM,CHILL,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AETERM,CHILLS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AETERM,RIGORS,CHILLS,Chills,CHILLS,DIRECT,TRUE",
-  "1.0.0,AEDECOD,ALLERGIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AEDECOD,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,ALLERGIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,CHRONIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,COUGH AGGRAVATED,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,COUGH INCREASED,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,COUGH NONPRODUCTIVE,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,COUGHING,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,DRUG-INDUCED COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,DRY COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,NOCTURNAL COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,PERSISTENT COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AELLT,SMOKER'S COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AETERM,CHRONIC COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AETERM,COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AETERM,COUGHING,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AETERM,DRY COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AETERM,PRODUCTIVE COUGH,COUGH,Cough,COUGH,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DYSPNOEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DYSPNOEA EXERTIONAL,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DYSPNEA EXACERBATED,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DYSPNEA EXERTIONAL,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,EXERTIONAL DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,INCREASED SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,SHORT OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,EXERTIONAL DYSPNEA,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,INCREASED SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,SHORT OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,SHORTNESS OF BREATH,SHBREATH,Shortness of breath,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,BREATHING DIFFICULT,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DIFFICULTY BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AELLT,LABORED BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,DIFFICULT BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AETERM,DIFFICULTY BREATHING,DIBREATH,Difficulty breathing,DYSPNEA,DIRECT,TRUE",
-  "1.0.0,AEDECOD,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,RESPIRATORY DISTRESS,DIBREATH,Difficulty breathing,DYSPNEA,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AELLT,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AELLT,FATIGUE AGGRAVATED,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AELLT,FATIGUE EXTREME,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AELLT,TIREDNESS,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AETERM,FATIGUE,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AETERM,TIREDNESS,FATIGUE,Fatigue,FATIGUE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,ASTHENIA,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,ASTHENIA,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,WEAKNESS GENERALIZED,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,GENERALIZED WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,MALAISE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,MENTAL FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,MUSCLE FATIGUE,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,WEAKNESS,FATIGUE,Fatigue,FATIGUE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,GENERALISED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,GENERALIZED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,LOCALISED MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,LOCALIZED MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MUSCLE ACHE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MUSCLE SORENESS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MUSCULAR PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MUSCULAR PAINS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MYALGIA AGGRAVATED,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MYALGIA OF LOWER EXTREMITIES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,MYALGIA UPPER EXTREMITIES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,PAIN MUSCLE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,POLYMYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,TENDERNESS MUSCLE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,GENERALIZED MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MUSCLE ACHE,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MUSCLE ACHES,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MUSCLE PAIN,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MUSCLE SORENESS,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,MYALGIA,MYALGIA,Muscle aches (myalgia),MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,GENERAL BODY PAIN,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AELLT,GENERALIZED ACHING,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,(WHOLE BODY) BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,ALL OVER BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,BODY ACHE,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,GENERAL BODY ACHES,BODYACHE,Body aches,MYALGIA,DIRECT,TRUE",
-  "1.0.0,AETERM,GENERALIZED PAIN,BODYACHE,Body aches,MYALGIA,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,GENERALIZED PAIN,BODYACHE,Body aches,MYALGIA,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,CLUSTER HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,EXERTIONAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,NEW DAILY PERSISTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,POST-TRAUMATIC HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PRIMARY COUGH HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PRIMARY HEADACHE ASSOCIATED WITH SEXUAL ACTIVITY,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PROCEDURAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,CLUSTER HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,COITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,DRUG-INDUCED HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,EXERTIONAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,FOREHEAD HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,FREQUENT HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,FRONTAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEAD PAIN,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE (EXCL MIGRAINE) AGGRAVATED,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE AGGRAVATED,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE DULL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE POST-TRAUMATIC,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE POSTOPERATIVE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE RECURRENT,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE SINUS,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE TEMPORAL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE TENSION,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,HEADACHE UNILATERAL,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,INTERMITTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,MIGRAINE HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,NEW DAILY PERSISTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,OCCIPITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,PAIN HEAD,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,POST PROCEDURAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,POST-TRAUMATIC HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,PRIMARY COUGH HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,TEMPORAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AELLT,TENSION HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,CLUSTER HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,FRONTAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,HEAD PAIN,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,INTERMITTENT HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,MIGRAINE HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,OCCIPITAL HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,SINUS HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,TENSION HEADACHE,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AETERM,TENSION HEADACHES,HEADACHE,Headache,HEADACHE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MIGRAINE WITH AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,MIGRAINE WITHOUT AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,VESTIBULAR MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,COMPLICATED MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MIGRAINE AGGRAVATED,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MIGRAINE AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MIGRAINE WITH AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,MIGRAINE WITHOUT AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,OPHTHALMIC MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,VESTIBULAR MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,COMPLICATED MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,MIGRAINE,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,MIGRAINE AURA,HEADACHE,Headache,HEADACHE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AELLT,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AELLT,LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,ANOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,NEW LOSS OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,PAROSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,ALTERED SMELL SENSATION,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,DIMINISHED SENSE OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,PHANTOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,SMELL ALTERATION,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,SMELL CHANGE,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,DIMINISHED SENSE OF SMELL,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,HYPOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,PHANTOSMIA,NLSMELL,New loss of smell,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AELLT,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AELLT,LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,AGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AETERM,NEW LOSS OF TASTE,NLTASTE,New loss of taste,SMELL_TASTE,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,TASTE DISORDER,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,IMPAIRED TASTE,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE ALTERATION,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE ALTERED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE BITTER,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE CHANGED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE DIMINISHED,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE METALLIC,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TASTE SALTY,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,DYSGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,HYPOGEUSIA,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,TASTE ALTERATION,NLTASTE,New loss of taste,SMELL_TASTE,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,OROPHARYNGEAL PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,CHRONIC SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,OROPHARYNGEAL PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,PAIN THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,STREPTOCOCCAL SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,THROAT PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AELLT,THROAT SORE,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AETERM,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AETERM,SORE THROAT,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AETERM,THROAT PAIN,STHROAT,Sore throat,SORE_THROAT,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,OROPHARYNGEAL DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,PHARYNGEAL PARAESTHESIA,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,ITCHY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,OROPHARYNGEAL DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,PHARYNX IRRITATED SENSATION OF,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,THROAT DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,TINGLING THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,DRY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,ITCHY THROAT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,THROAT DISCOMFORT,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,THROAT IRRITATION,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,THROAT TIGHTNESS,STHROAT,Sore throat,SORE_THROAT,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,CHRONIC NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,CONGESTION NASAL,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NASAL SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NASAL STUFFINESS,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NOSE CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,CONGESTION NASAL,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,NASAL CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,NOSE CONGESTION,NASALCON,Nasal congestion,NASAL,DIRECT,TRUE",
-  "1.0.0,AEDECOD,RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,UPPER RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AELLT,UPPER RESPIRATORY TRACT CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AETERM,SINUS CONGESTION,NASALCON,Nasal congestion,NASAL,RELATED_REVIEW,FALSE",
-  "1.0.0,AEDECOD,RHINORRHOEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NASAL DISCHARGE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,NASAL MUCUS INCREASED,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,RHINORRHEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AELLT,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,RHINORRHEA,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AETERM,RUNNY NOSE,RUNNOSE,Runny nose (rhinorrhea),NASAL,DIRECT,TRUE",
-  "1.0.0,AEDECOD,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,NAUSEA AGGRAVATED,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,POST PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,POSTOPERATIVE NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,PROCEDURAL NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,NAUSEA/VOMITING,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,POSTOPERATIVE NAUSEA,NAUSEA,Nausea,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AEDECOD,PROCEDURAL VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AEDECOD,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,EMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,HYPEREMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,PROCEDURAL VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,VOMITED,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AELLT,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,EMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,HYPEREMESIS,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,NAUSEA/VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,VOMITED,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AETERM,VOMITING,VOMIT,Vomiting,NAUSEA_VOMITING,DIRECT,TRUE",
-  "1.0.0,AEDECOD,BACTERIAL DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AEDECOD,DIARRHOEA INFECTIOUS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AEDECOD,VIRAL DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,ACUTE DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,BACTERIAL DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DIARRHEA AGGRAVATED,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,DIARRHOEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,LOOSE BOWEL,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,LOOSE BOWELS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,LOOSE STOOLS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,STOOLS WATERY,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,TRAVELLER'S DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,VIRAL DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AELLT,WATERY DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AETERM,ACUTE DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AETERM,DIARRHEA,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE",
-  "1.0.0,AETERM,LOOSE STOOLS,DIARRHEA,Diarrhea,DIARRHEA,DIRECT,TRUE"
+  "\"dictionary_version\",\"match_field\",\"ae_term\",\"normalized_term\",\"symptom_code\",\"symptom_label\",\"symptom_group\",\"match_class\",\"include_default\",\"min_duration_hours\",\"qualification_check\",\"rationale\",\"m3_group_veto\"",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Post procedural fever\",\"POST PROCEDURAL FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Pyrexia\",\"PYREXIA\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Febrile reaction\",\"FEBRILE REACTION\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fever\",\"FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fever chills\",\"FEVER CHILLS\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fever of unknown origin\",\"FEVER OF UNKNOWN ORIGIN\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Intermittent fever\",\"INTERMITTENT FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Post procedural fever\",\"POST PROCEDURAL FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Postoperative fever\",\"POSTOPERATIVE FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Pyrexia\",\"PYREXIA\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"FEVER\",\"FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"FEVER OF UNKNOWN ORIGIN\",\"FEVER OF UNKNOWN ORIGIN\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"INTERMITTENT FEVER\",\"INTERMITTENT FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"PYREXIA\",\"PYREXIA\",\"FEVER\",\"Fever\",\"FEVER\",\"DIRECT\",TRUE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Body temperature increased\",\"BODY TEMPERATURE INCREASED\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Body temperature increased\",\"BODY TEMPERATURE INCREASED\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Feverish\",\"FEVERISH\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"High temperature\",\"HIGH TEMPERATURE\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Low grade fever\",\"LOW GRADE FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Slight temperature\",\"SLIGHT TEMPERATURE\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"FEVERISH\",\"FEVERISH\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HIGH TEMPERATURE\",\"HIGH TEMPERATURE\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOW GRADE FEVER\",\"LOW GRADE FEVER\",\"FEVER\",\"Fever\",\"FEVER\",\"RELATED_REVIEW\",FALSE,0,\"Verify measured temperature >=38 C; AE label alone is insufficient.\",\"Raised temperature or feverishness may be below 38 C; verify measured temperature.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Chills\",\"CHILLS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Chills\",\"CHILLS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fever chills\",\"FEVER CHILLS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Rigors\",\"RIGORS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"CHILL\",\"CHILL\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"CHILLS\",\"CHILLS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RIGORS\",\"RIGORS\",\"CHILLS\",\"Chills\",\"CHILLS\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Allergic cough\",\"ALLERGIC COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Allergy, smoking or chronic cough specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Cough\",\"COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Productive cough\",\"PRODUCTIVE COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Allergic cough\",\"ALLERGIC COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Allergy, smoking or chronic cough specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Chronic cough\",\"CHRONIC COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Allergy, smoking or chronic cough specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Cough\",\"COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Cough aggravated\",\"COUGH AGGRAVATED\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Cough increased\",\"COUGH INCREASED\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Cough nonproductive\",\"COUGH NONPRODUCTIVE\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Coughing\",\"COUGHING\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Drug-induced cough\",\"DRUG-INDUCED COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dry cough\",\"DRY COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nocturnal cough\",\"NOCTURNAL COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Persistent cough\",\"PERSISTENT COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Productive cough\",\"PRODUCTIVE COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Smoker's cough\",\"SMOKER'S COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Allergy, smoking or chronic cough specified\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"CHRONIC COUGH\",\"CHRONIC COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Allergy, smoking or chronic cough specified\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"COUGH\",\"COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"COUGHING\",\"COUGHING\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DRY COUGH\",\"DRY COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"PRODUCTIVE COUGH\",\"PRODUCTIVE COUGH\",\"COUGH\",\"Cough\",\"COUGH\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Dyspnoea\",\"DYSPNOEA\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Dyspnoea exertional\",\"DYSPNOEA EXERTIONAL\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dyspnea\",\"DYSPNEA\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dyspnea exacerbated\",\"DYSPNEA EXACERBATED\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dyspnea exertional\",\"DYSPNEA EXERTIONAL\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Exertional dyspnea\",\"EXERTIONAL DYSPNEA\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Increased shortness of breath\",\"INCREASED SHORTNESS OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Short of breath\",\"SHORT OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Shortness of breath\",\"SHORTNESS OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DYSPNEA\",\"DYSPNEA\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"EXERTIONAL DYSPNEA\",\"EXERTIONAL DYSPNEA\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"INCREASED SHORTNESS OF BREATH\",\"INCREASED SHORTNESS OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SHORT OF BREATH\",\"SHORT OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SHORTNESS OF BREATH\",\"SHORTNESS OF BREATH\",\"SHBREATH\",\"Shortness of breath\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Breathing difficult\",\"BREATHING DIFFICULT\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Difficulty breathing\",\"DIFFICULTY BREATHING\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Labored breathing\",\"LABORED BREATHING\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DIFFICULT BREATHING\",\"DIFFICULT BREATHING\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DIFFICULTY BREATHING\",\"DIFFICULTY BREATHING\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"DIRECT\",TRUE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Respiratory distress\",\"RESPIRATORY DISTRESS\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Respiratory finding requiring review; do not infer the checklist symptom automatically.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Respiratory distress\",\"RESPIRATORY DISTRESS\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Respiratory finding requiring review; do not infer the checklist symptom automatically.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RESPIRATORY DISTRESS\",\"RESPIRATORY DISTRESS\",\"DIBREATH\",\"Difficulty breathing\",\"DYSPNEA\",\"RELATED_REVIEW\",FALSE,0,\"Any-duration symptom; review onset and post-vaccination context.\",\"Respiratory finding requiring review; do not infer the checklist symptom automatically.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Fatigue\",\"FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fatigue\",\"FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fatigue aggravated\",\"FATIGUE AGGRAVATED\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Fatigue extreme\",\"FATIGUE EXTREME\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Tiredness\",\"TIREDNESS\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"FATIGUE\",\"FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"TIREDNESS\",\"TIREDNESS\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Asthenia\",\"ASTHENIA\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Malaise\",\"MALAISE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Mental fatigue\",\"MENTAL FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Muscle fatigue\",\"MUSCLE FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Asthenia\",\"ASTHENIA\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Malaise\",\"MALAISE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Mental fatigue\",\"MENTAL FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscle fatigue\",\"MUSCLE FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Weakness\",\"WEAKNESS\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Weakness generalized\",\"WEAKNESS GENERALIZED\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"GENERALIZED WEAKNESS\",\"GENERALIZED WEAKNESS\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MALAISE\",\"MALAISE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MENTAL FATIGUE\",\"MENTAL FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE FATIGUE\",\"MUSCLE FATIGUE\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"WEAKNESS\",\"WEAKNESS\",\"FATIGUE\",\"Fatigue\",\"FATIGUE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Weakness, malaise or localized/mental fatigue is broader than the checklist symptom.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Myalgia\",\"MYALGIA\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Generalised muscle aches\",\"GENERALISED MUSCLE ACHES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Generalized muscle aches\",\"GENERALIZED MUSCLE ACHES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Localised muscle pain\",\"LOCALISED MUSCLE PAIN\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Localized muscle pain; generalized myalgia not established\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Localized muscle pain\",\"LOCALIZED MUSCLE PAIN\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Localized muscle pain; generalized myalgia not established\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscle ache\",\"MUSCLE ACHE\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscle pain\",\"MUSCLE PAIN\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscle soreness\",\"MUSCLE SORENESS\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscular pain\",\"MUSCULAR PAIN\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Muscular pains\",\"MUSCULAR PAINS\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Myalgia\",\"MYALGIA\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Myalgia aggravated\",\"MYALGIA AGGRAVATED\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Myalgia of lower extremities\",\"MYALGIA OF LOWER EXTREMITIES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Localized muscle pain; generalized myalgia not established\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Myalgia upper extremities\",\"MYALGIA UPPER EXTREMITIES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Localized muscle pain; generalized myalgia not established\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Pain muscle\",\"PAIN MUSCLE\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Polymyalgia\",\"POLYMYALGIA\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Tenderness muscle\",\"TENDERNESS MUSCLE\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"GENERALIZED MUSCLE ACHES\",\"GENERALIZED MUSCLE ACHES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE  ACHES\",\"MUSCLE ACHES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE ACHE\",\"MUSCLE ACHE\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE ACHES\",\"MUSCLE ACHES\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE PAIN\",\"MUSCLE PAIN\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MUSCLE SORENESS\",\"MUSCLE SORENESS\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MYALGIA\",\"MYALGIA\",\"MYALGIA\",\"Muscle aches (myalgia)\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"General body pain\",\"GENERAL BODY PAIN\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Generalized aching\",\"GENERALIZED ACHING\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"(WHOLE BODY) BODY ACHES\",\"(WHOLE BODY) BODY ACHES\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"ALL OVER BODY ACHES\",\"ALL OVER BODY ACHES\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"BODY ACHE\",\"BODY ACHE\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"BODY ACHES\",\"BODY ACHES\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"GENERAL BODY ACHES\",\"GENERAL BODY ACHES\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"GENERALIZED  PAIN\",\"GENERALIZED PAIN\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"General pain is not necessarily the protocol's body-ache symptom; inspect verbatim description.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"GENERALIZED PAIN\",\"GENERALIZED PAIN\",\"BODYACHE\",\"Body aches\",\"MYALGIA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"General pain is not necessarily the protocol's body-ache symptom; inspect verbatim description.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Cluster headache\",\"CLUSTER HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Exertional headache\",\"EXERTIONAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Headache\",\"HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"New daily persistent headache\",\"NEW DAILY PERSISTENT HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Post-traumatic headache\",\"POST-TRAUMATIC HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Primary cough headache\",\"PRIMARY COUGH HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Primary headache associated with sexual activity\",\"PRIMARY HEADACHE ASSOCIATED WITH SEXUAL ACTIVITY\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Procedural headache\",\"PROCEDURAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Sinus headache\",\"SINUS HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Tension headache\",\"TENSION HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Cluster headaches\",\"CLUSTER HEADACHES\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Coital headache\",\"COITAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Drug-induced headache\",\"DRUG-INDUCED HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Exertional headache\",\"EXERTIONAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Forehead headache\",\"FOREHEAD HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Frequent headaches\",\"FREQUENT HEADACHES\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Frontal headache\",\"FRONTAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Head pain\",\"HEAD PAIN\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache\",\"HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache (excl migraine) aggravated\",\"HEADACHE (EXCL MIGRAINE) AGGRAVATED\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache aggravated\",\"HEADACHE AGGRAVATED\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache dull\",\"HEADACHE DULL\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache post-traumatic\",\"HEADACHE POST-TRAUMATIC\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache postoperative\",\"HEADACHE POSTOPERATIVE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache recurrent\",\"HEADACHE RECURRENT\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache sinus\",\"HEADACHE SINUS\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache temporal\",\"HEADACHE TEMPORAL\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache tension\",\"HEADACHE TENSION\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Headache unilateral\",\"HEADACHE UNILATERAL\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Intermittent headache\",\"INTERMITTENT HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine headache\",\"MIGRAINE HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"New daily persistent headache\",\"NEW DAILY PERSISTENT HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Occipital headache\",\"OCCIPITAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Pain head\",\"PAIN HEAD\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Post-traumatic headache\",\"POST-TRAUMATIC HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Post procedural headache\",\"POST PROCEDURAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Primary cough headache\",\"PRIMARY COUGH HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Sinus headache\",\"SINUS HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Temporal headache\",\"TEMPORAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Tension headache\",\"TENSION HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Tension headaches\",\"TENSION HEADACHES\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"CLUSTER HEADACHES\",\"CLUSTER HEADACHES\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"FRONTAL HEADACHE\",\"FRONTAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HEAD PAIN\",\"HEAD PAIN\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HEADACHE\",\"HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"INTERMITTENT HEADACHE\",\"INTERMITTENT HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MIGRAINE HEADACHE\",\"MIGRAINE HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"OCCIPITAL HEADACHE\",\"OCCIPITAL HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SINUS HEADACHE\",\"SINUS HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"TENSION HEADACHE\",\"TENSION HEADACHE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"TENSION HEADACHES\",\"TENSION HEADACHES\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Specified headache syndrome or precipitant; incident compatible headache needs review\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Migraine\",\"MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Migraine with aura\",\"MIGRAINE WITH AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Migraine without aura\",\"MIGRAINE WITHOUT AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Vestibular migraine\",\"VESTIBULAR MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Complicated migraine\",\"COMPLICATED MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine\",\"MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine aggravated\",\"MIGRAINE AGGRAVATED\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine aura\",\"MIGRAINE AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine with aura\",\"MIGRAINE WITH AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Migraine without aura\",\"MIGRAINE WITHOUT AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Ophthalmic migraine\",\"OPHTHALMIC MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Vestibular migraine\",\"VESTIBULAR MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"COMPLICATED MIGRAINE\",\"COMPLICATED MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MIGRAINE\",\"MIGRAINE\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"MIGRAINE AURA\",\"MIGRAINE AURA\",\"HEADACHE\",\"Headache\",\"HEADACHE\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"A migraine diagnosis, particularly aura, does not establish headache on a particular day.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Anosmia\",\"ANOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Anosmia\",\"ANOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Loss of smell\",\"LOSS OF SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"ANOSMIA\",\"ANOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOSS OF SMELL\",\"LOSS OF SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOSS OF TASTE AND SMELL\",\"LOSS OF TASTE AND SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NEW LOSS OF SMELL\",\"NEW LOSS OF SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Hyposmia\",\"HYPOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Parosmia\",\"PAROSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Altered smell sensation\",\"ALTERED SMELL SENSATION\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Diminished sense of smell\",\"DIMINISHED SENSE OF SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Hyposmia\",\"HYPOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Phantosmia\",\"PHANTOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Smell alteration\",\"SMELL ALTERATION\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Smell change\",\"SMELL CHANGE\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DIMINISHED SENSE OF SMELL\",\"DIMINISHED SENSE OF SMELL\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HYPOSMIA\",\"HYPOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"PHANTOSMIA\",\"PHANTOSMIA\",\"NLSMELL\",\"New loss of smell\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or distorted smell is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Ageusia\",\"AGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Ageusia\",\"AGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Loss of taste\",\"LOSS OF TASTE\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"AGEUSIA\",\"AGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOSS OF TASTE\",\"LOSS OF TASTE\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOSS OF TASTE AND SMELL\",\"LOSS OF TASTE AND SMELL\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NEW LOSS OF TASTE\",\"NEW LOSS OF TASTE\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"DIRECT\",TRUE,48,\"Verify new onset and duration >=48 h.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Dysgeusia\",\"DYSGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Hypogeusia\",\"HYPOGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Taste disorder\",\"TASTE DISORDER\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dysgeusia\",\"DYSGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Hypogeusia\",\"HYPOGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Impaired taste\",\"IMPAIRED TASTE\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste alteration\",\"TASTE ALTERATION\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste altered\",\"TASTE ALTERED\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste bitter\",\"TASTE BITTER\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste changed\",\"TASTE CHANGED\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste diminished\",\"TASTE DIMINISHED\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste metallic\",\"TASTE METALLIC\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Taste salty\",\"TASTE SALTY\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DYSGEUSIA\",\"DYSGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HYPOGEUSIA\",\"HYPOGEUSIA\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"TASTE ALTERATION\",\"TASTE ALTERATION\",\"NLTASTE\",\"New loss of taste\",\"SMELL_TASTE\",\"RELATED_REVIEW\",FALSE,48,\"Verify new onset and duration >=48 h.\",\"Reduced or altered taste is not synonymous with new loss; review onset and symptom detail.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Oropharyngeal pain\",\"OROPHARYNGEAL PAIN\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Chronic sore throat\",\"CHRONIC SORE THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Alternative diagnosis or chronic complaint specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Oropharyngeal pain\",\"OROPHARYNGEAL PAIN\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Pain throat\",\"PAIN THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Sore throat\",\"SORE THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Streptococcal sore throat\",\"STREPTOCOCCAL SORE THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Alternative diagnosis or chronic complaint specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Throat pain\",\"THROAT PAIN\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Throat sore\",\"THROAT SORE\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SORE  THROAT\",\"SORE THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SORE THROAT\",\"SORE THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"THROAT PAIN\",\"THROAT PAIN\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Dry throat\",\"DRY THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Oropharyngeal discomfort\",\"OROPHARYNGEAL DISCOMFORT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Pharyngeal paraesthesia\",\"PHARYNGEAL PARAESTHESIA\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Throat irritation\",\"THROAT IRRITATION\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Throat tightness\",\"THROAT TIGHTNESS\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Dry throat\",\"DRY THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Itchy throat\",\"ITCHY THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Oropharyngeal discomfort\",\"OROPHARYNGEAL DISCOMFORT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Pharynx irritated sensation of\",\"PHARYNX IRRITATED SENSATION OF\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Throat discomfort\",\"THROAT DISCOMFORT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Throat irritation\",\"THROAT IRRITATION\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Throat tightness\",\"THROAT TIGHTNESS\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Tingling throat\",\"TINGLING THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DRY THROAT\",\"DRY THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"ITCHY THROAT\",\"ITCHY THROAT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"THROAT DISCOMFORT\",\"THROAT DISCOMFORT\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"THROAT IRRITATION\",\"THROAT IRRITATION\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"THROAT TIGHTNESS\",\"THROAT TIGHTNESS\",\"STHROAT\",\"Sore throat\",\"SORE_THROAT\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Irritation, dryness, discomfort or tightness does not necessarily mean sore throat.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Nasal congestion\",\"NASAL CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Chronic nasal congestion\",\"CHRONIC NASAL CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Alternative diagnosis or chronic complaint specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Congestion nasal\",\"CONGESTION NASAL\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nasal congestion\",\"NASAL CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nasal sinus congestion\",\"NASAL SINUS CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nasal stuffiness\",\"NASAL STUFFINESS\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nose congestion\",\"NOSE CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"CONGESTION NASAL\",\"CONGESTION NASAL\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NASAL  CONGESTION\",\"NASAL CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NASAL CONGESTION\",\"NASAL CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NOSE CONGESTION\",\"NOSE CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Respiratory tract congestion\",\"RESPIRATORY TRACT CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Sinus congestion\",\"SINUS CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Upper respiratory tract congestion\",\"UPPER RESPIRATORY TRACT CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Respiratory tract congestion\",\"RESPIRATORY TRACT CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Sinus congestion\",\"SINUS CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Upper respiratory tract congestion\",\"UPPER RESPIRATORY TRACT CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RESPIRATORY TRACT CONGESTION\",\"RESPIRATORY TRACT CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"SINUS CONGESTION\",\"SINUS CONGESTION\",\"NASALCON\",\"Nasal congestion\",\"NASAL\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Congestion site or equivalence to the nasal checklist item needs review.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Rhinorrhoea\",\"RHINORRHOEA\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nasal discharge\",\"NASAL DISCHARGE\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nasal mucus increased\",\"NASAL MUCUS INCREASED\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Rhinorrhea\",\"RHINORRHEA\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Rhinorrhoea\",\"RHINORRHOEA\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Runny nose\",\"RUNNY NOSE\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NASAL DISCHARGE\",\"NASAL DISCHARGE\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RHINORRHEA\",\"RHINORRHEA\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RUNNY  NOSE\",\"RUNNY NOSE\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"RUNNY NOSE\",\"RUNNY NOSE\",\"RUNNOSE\",\"Runny nose (rhinorrhea)\",\"NASAL\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Nausea\",\"NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Procedural nausea\",\"PROCEDURAL NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nausea\",\"NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Nausea aggravated\",\"NAUSEA AGGRAVATED\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Post procedural nausea\",\"POST PROCEDURAL NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Postoperative nausea\",\"POSTOPERATIVE NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Procedural nausea\",\"PROCEDURAL NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AETERM\",\"NAUSEA\",\"NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NAUSEA/VOMITING\",\"NAUSEA/VOMITING\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"POSTOPERATIVE NAUSEA\",\"POSTOPERATIVE NAUSEA\",\"NAUSEA\",\"Nausea\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Procedural vomiting\",\"PROCEDURAL VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Vomiting\",\"VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Emesis\",\"EMESIS\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Hyperemesis\",\"HYPEREMESIS\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Procedural vomiting\",\"PROCEDURAL VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Treatment, procedure or trauma specified\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Vomited\",\"VOMITED\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Vomiting\",\"VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"EMESIS\",\"EMESIS\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"HYPEREMESIS\",\"HYPEREMESIS\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"NAUSEA/VOMITING\",\"NAUSEA/VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"VOMITED\",\"VOMITED\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"VOMITING\",\"VOMITING\",\"VOMIT\",\"Vomiting\",\"NAUSEA_VOMITING\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Bacterial diarrhoea\",\"BACTERIAL DIARRHOEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Diarrhoea\",\"DIARRHOEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Diarrhoea infectious\",\"DIARRHOEA INFECTIOUS\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AEDECOD\",\"Viral diarrhoea\",\"VIRAL DIARRHOEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Acute diarrhea\",\"ACUTE DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Bacterial diarrhea\",\"BACTERIAL DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Diarrhea\",\"DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Diarrhea aggravated\",\"DIARRHEA AGGRAVATED\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Diarrhoea\",\"DIARRHOEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Loose bowel\",\"LOOSE BOWEL\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Loose bowels\",\"LOOSE BOWELS\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Loose stools\",\"LOOSE STOOLS\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Stools watery\",\"STOOLS WATERY\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AELLT\",\"Traveller's diarrhea\",\"TRAVELLER'S DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Viral diarrhea\",\"VIRAL DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"RELATED_REVIEW\",FALSE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Named enteric illness or travel syndrome; etiology not confirmed here\",TRUE",
+  "\"1.1.0-M3\",\"AELLT\",\"Watery diarrhea\",\"WATERY DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"ACUTE DIARRHEA\",\"ACUTE DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"DIARRHEA\",\"DIARRHEA\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOOSE BOWELS\",\"LOOSE BOWELS\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE",
+  "\"1.1.0-M3\",\"AETERM\",\"LOOSE STOOLS\",\"LOOSE STOOLS\",\"DIARRHEA\",\"Diarrhea\",\"DIARRHEA\",\"DIRECT\",TRUE,48,\"Verify duration >=48 h and post-vaccination context.\",\"Explicit symptom or lexical synonym; cause is not inferred.\",FALSE"
 ),collapse="\n"),colClasses="character",check.names=FALSE)
 
 
@@ -1571,6 +1618,9 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   cs<-sel$SITEID[sel$anomaly=='pcr'];within<-cases[!is.na(cases$within_same_episode_span)&cases$within_same_episode_span & is.finite(cases$days_to_later_pcr),]
   days<-sort(unique(within$days_to_later_pcr));nd<-sum(cases$not_done_in_horizon,na.rm=TRUE)
   cp<-paste0('At ',region(cs),', ',nrow(cases),' vaccine-arm episodes beginning on COVID symptom forms during higher-positivity periods did not meet the visit-plus-PCR endpoint within ',horizon,' days.')
+  compare_ep<-rd(file.path(figdir,"selected_site_episodes.csv")); compare_ep<-compare_ep[compare_ep$SITEID==cs & compare_ep$high==1 & compare_ep$onset_source=="COVID_FORM",]
+  covered<-function(a){u<-compare_ep[compare_ep$arm==a,];rate(sum(u$tested),nrow(u))}
+  cp<-paste0(cp," Under the same selection the endpoint was met in ",covered("mRNA-1273")," vaccine episodes and ",covered("Placebo")," placebo episodes.")
   if(nrow(within))cp<-paste0(cp,' For ',nrow(within),' of these episodes, a later diagnostic PCR was documented within the reconstructed symptom interval, at ',paste(days,collapse=' and '),' days after the first recorded symptom; the recorded results were ',paste(tolower(unique(within$later_result)),collapse=' and '),'.')
   if(nd)cp<-paste0(cp,' A NOT DONE record was present within the endpoint window for ',nd,' episode',if(nd==1)'' else 's','.')
   addp(paste0(cp,' These observations distinguish delayed testing, testing recorded outside the reconstructed illness, and absence of a qualifying result. They do not establish that an untested episode was COVID-19, or that a later negative result excludes infection at the initial presentation.'))
@@ -1601,7 +1651,7 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   body<-c(body,refs);plain<-c(plain,'References to add',paste0(notes$number,'. ',notes$url))
   phmpt_export_audit_assets(audit_root,output_dir,data_dir,audit_tables)
   vp<-file.path(output_dir,"audit_assets","V17_site_recruitment_testing_ratio.png")
-  body[body=="__V17_SITE_PLOT__"]<-paste0('<figure><img src="data:image/png;base64,',b64(vp),'" alt="Site recruitment and vaccine-to-placebo testing rate ratio"><figcaption>V17. Randomized participants at each site and the testing rate ratio for first eligible symptomatic episodes during higher-positivity weeks. The dashed line marks equal testing coverage.</figcaption></figure>')
+  body[body=="__V17_SITE_PLOT__"]<-paste0('<figure><img src="data:image/png;base64,',b64(vp),'" alt="Site recruitment and vaccine-to-placebo testing rate ratio"><figcaption>',v17_caption(),'</figcaption></figure>')
   article<-paste(body,collapse='\n')
   css<-'body{margin:28px auto;padding:0 24px;max-width:980px;color:#171717;font:19px/1.6 Georgia,serif}h1,h2,h3{font-family:Arial,sans-serif;line-height:1.2}h1{font-size:28px}h2{font-size:27px;margin:36px 0 20px}h3{font-size:20px}.numbered{padding-left:2.6em;position:relative}.number{position:absolute;left:0}table{border-collapse:collapse;width:100%;font:14px/1.4 Arial,sans-serif;margin:24px 0 8px}caption{text-align:left;font-weight:bold;margin-bottom:10px}th,td{padding:9px 7px;border-bottom:1px solid #ccc;text-align:left;vertical-align:top}th{background:#eee}tbody tr:nth-child(even){background:#fafafa}.table-note,figcaption{font:14px/1.45 Arial,sans-serif;color:#444}.references{font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}figure{margin:26px 0}img{max-width:100%;height:auto}.editor{font:15px/1.45 Arial,sans-serif;background:#f2f5f7;padding:18px;border:1px solid #d5dce1;margin-bottom:30px}.editor p{margin:8px 0}button{font:inherit;padding:8px 12px;margin:5px 8px 5px 0;cursor:pointer}a{color:#155fa0}.status{font-size:14px}sup{font-size:12px}@media print{.editor{display:none}body{margin:0;padding:0;font-size:12pt;max-width:none}table{font-size:9pt}h2{font-size:18pt}h2,h3{break-after:avoid}tr,figure{break-inside:avoid}a{color:inherit}}'
   status<-if(!is.null(ma)&&cut==10)'Adjusted comparisons are included and their input hashes match this export.' else 'This insert contains descriptive and site-level comparisons. Run analyse_site_testing_imbalance.R to add the adjusted models; no earlier-run estimates have been substituted.'
@@ -1813,6 +1863,7 @@ analyse_symptom_testing_heatmaps <- function(root="",release="auto",window="BLIN
   message("[7/7] Writing report, audit links and completion marker")
   hm_report(out,cells,bg,summary,methods,write_png,manifest,quality,ctx)
   writeLines(capture.output(sessionInfo()),file.path(out,"sessionInfo.txt"))
+  writeLines(m3_version,file.path(out,"M3_mapping_version.txt"))
   outputs<-list.files(out,recursive=TRUE,full.names=TRUE);outputs<-outputs[basename(outputs)!="STATUS.txt"]
   ws_csv(data.frame(file=substring(outputs,nchar(out)+2),bytes=file.info(outputs)$size,md5=unname(tools::md5sum(outputs))),file.path(out,"output_checksums.csv"))
   complete<-TRUE;writeLines("COMPLETE",file.path(out,"STATUS.txt"))
@@ -2054,37 +2105,302 @@ v17_site_data <- function(data_dir,out) {
   m$testing_rate_ratio[is.nan(m$testing_rate_ratio)]<-NA_real_
   m
 }
-v17_plot <- function(a,data_dir,out,window,cut,horizon) {
-  m<-v17_site_data(data_dir,out);ok<-m$ratio_status=="FINITE";stopifnot(all(ok==is.finite(m$testing_rate_ratio)))
+# Fix each site's arm denominators and its pooled number with a qualifying test.
+# Enumerate attainable tables, using precisely the two-sided test used for V18.
+v17_fisher_ranges <- function(m,alpha=.05,adjustment="nominal") {
+  adjustment<-match.arg(adjustment,c("nominal","bonferroni"))
+  M<-nrow(m)
+  if(!M||anyDuplicated(m$SITEID))stop("V17 requires one row for each roster site.")
+  stopifnot(length(alpha)==1,is.finite(alpha),alpha>0,alpha<1)
+  m$fisher_status<-rep("TESTABLE",M);m$fisher_p<-m$bonferroni_p<-NA_real_
+  m$nominal_low<-m$nominal_high<-m$bonferroni_low<-m$bonferroni_high<-NA_real_
+  tables<-vector("list",M)
+  for(i in seq_len(M)) {
+    nv<-m$v_n[i];np<-m$p_n[i];T<-m$v_y[i]+m$p_y[i]
+    if(!nv||!np){m$fisher_status[i]<-"EMPTY_ARM";next}
+    if(T==0L||T==nv+np){m$fisher_status[i]<-"NO_OUTCOME_VARIATION";next}
+    k<-seq.int(max(0L,T-np),min(nv,T))
+    f<-vapply(k,function(j)stats::fisher.test(matrix(c(j,nv-j,T-j,np-(T-j)),nrow=2L,byrow=TRUE),
+                                                alternative="two.sided")$p.value,numeric(1))
+    rr<-(k/nv)/((T-k)/np)
+    o<-match(m$v_y[i],k);if(is.na(o))stop("V17 observed table outside support.")
+    m$fisher_p[i]<-f[o];m$bonferroni_p[i]<-min(1,M*f[o])
+    for(method in c("nominal","bonferroni")) {
+      accepted<-if(method=="nominal")f>=alpha else pmin(1,M*f)>=alpha
+      ii<-which(accepted)
+      if(!length(ii)||length(ii)!=max(ii)-min(ii)+1L)stop("V17: noncontiguous Fisher acceptance set.")
+      m[[paste0(method,"_low")]][i]<-rr[min(ii)]
+      m[[paste0(method,"_high")]][i]<-rr[max(ii)]
+    }
+    tables[[i]]<-data.frame(SITEID=m$SITEID[i],vaccine_tested=k,placebo_tested=T-k,
+      vaccine_eligible=nv,placebo_eligible=np,testing_rate_ratio=rr,fisher_p=f,
+      bonferroni_p=pmin(1,M*f),in_nominal_range=f>=alpha,
+      in_bonferroni_range=pmin(1,M*f)>=alpha,is_observed=k==m$v_y[i])
+  }
+  m$reference_method<-adjustment;m$alpha<-alpha;m$family_sites<-M
+  m$reference_low<-m[[paste0(adjustment,"_low")]]
+  m$reference_high<-m[[paste0(adjustment,"_high")]]
+  m$display_p<-if(adjustment=="nominal")m$fisher_p else m$bonferroni_p
+  m$outside_reference<-ifelse(is.finite(m$display_p),m$display_p<alpha,NA)
+  # Test decision must match membership for the actual attainable ratio,
+  # including +Inf in a positive/zero cell. NA is never a negative finding.
+  j<-which(m$fisher_status=="TESTABLE");actual<-m$testing_rate_ratio[j]
+  stopifnot(!anyNA(actual),all(m$outside_reference[j]==
+    (actual<m$reference_low[j]|actual>m$reference_high[j])))
+  all_tables<-if(length(j))do.call(rbind,tables[j]) else data.frame(SITEID=character(),vaccine_tested=integer(),placebo_tested=integer(),
+    vaccine_eligible=integer(),placebo_eligible=integer(),testing_rate_ratio=numeric(),fisher_p=numeric(),bonferroni_p=numeric(),
+    in_nominal_range=logical(),in_bonferroni_range=logical(),is_observed=logical())
+  list(data=m,tables=all_tables)
+}
+# Descriptive local-linear fit to the observed (untransformed) ratio. Use the
+# true randomized counts, never the slight x offsets used to draw tied sites.
+v17_loess_fit <- function(m,span=getOption("phmpt.v17_loess_span",0.40)) {
+  if(!is.numeric(span)||length(span)!=1L||!is.finite(span)||span<=0||span>1)
+    stop("phmpt.v17_loess_span must be one number in (0,1]; default 0.40.")
+  use<-is.finite(m$randomized_total)&is.finite(m$testing_rate_ratio)
+  z<-data.frame(enrolled=m$randomized_total[use],ratio=m$testing_rate_ratio[use])
+  empty<-data.frame(enrolled=numeric(),fitted_ratio=numeric())
+  result<-function(curve=empty,status="UNAVAILABLE",reason="")list(curve=curve,
+    info=data.frame(status=status,reason=reason,span=span,degree=1L,finite_sites=nrow(z),
+      excluded_sites=nrow(m)-nrow(z),distinct_enrollments=length(unique(z$enrolled)),
+      x_min=if(nrow(z))min(z$enrolled) else NA_real_,x_max=if(nrow(z))max(z$enrolled) else NA_real_,
+      weight_basis="One observation per site; no enrollment or precision weighting",stringsAsFactors=FALSE))
+  if(length(unique(z$enrolled))<3L||floor(span*nrow(z))<3L)
+    return(result(reason="Too few finite site ratios or distinct recruitment counts for this span."))
+  z<-z[order(z$enrolled,z$ratio),,drop=FALSE]
+  # Include each observed enrollment on the grid and do not extrapolate.
+  gx<-sort(unique(c(z$enrolled,seq(min(z$enrolled),max(z$enrolled),length.out=301))))
+  pred<-tryCatch(withCallingHandlers({
+    fit<-stats::loess(ratio~enrolled,data=z,span=span,degree=1L,family="gaussian",
+      control=stats::loess.control(surface="direct",statistics="none"))
+    as.numeric(stats::predict(fit,newdata=data.frame(enrolled=gx)))
+  },warning=function(w)stop(conditionMessage(w))),error=function(e)e)
+  if(inherits(pred,"error"))return(result(reason=conditionMessage(pred)))
+  if(length(pred)!=length(gx)||any(!is.finite(pred)))return(result(reason="Non-finite fitted values."))
+  result(data.frame(enrolled=gx,fitted_ratio=pred),status="AVAILABLE")
+}
+
+v17_plot_fisher <- function(a,data_dir,out,window,cut,horizon,adjustment="nominal",tables_only=FALSE,m0=NULL) {
+  ran<-v17_fisher_ranges(if(is.null(m0))v17_site_data(data_dir,out) else m0,adjustment=adjustment)
+  m<-ran$data;ok<-m$ratio_status=="FINITE";testable<-m$fisher_status=="TESTABLE"
+  flagged<-!is.na(m$outside_reference)&m$outside_reference
+  stopifnot(all(ok==is.finite(m$testing_rate_ratio)))
   m$analysis_window<-window;m$minimum_county_positivity_pct<-cut;m$pcr_horizon_days<-horizon
+  # Distinct recruitment counts stay at their exact x coordinates. Only sites
+  # with identical enrollment share a horizontal slot (very slight separation).
+  x<-m$randomized_total;ux<-sort(unique(x));n<-length(ux);span<-max(1,max(x))
+  site_x<-as.numeric(x);half<-numeric(length(x))
+  for(j in seq_along(ux)){
+    ii<-which(x==ux[j]);near<-min(c(Inf,if(j>1)ux[j]-ux[j-1],if(j<n)ux[j+1]-ux[j]))
+    w<-min(.0045*span,.48*near);edges<-seq(ux[j]-w,ux[j]+w,length.out=length(ii)+1L)
+    site_x[ii]<-(head(edges,-1)+tail(edges,-1))/2;half[ii]<-.93*w/length(ii)
+  }
+  m$plot_x<-site_x
+  trend<-v17_loess_fit(m);curve<-trend$curve
+  if(trend$info$status!="AVAILABLE")message("V17 LOESS omitted: ",trend$info$reason)
+  ax_data(a,"V17",curve,"loess_curve");ax_data(a,"V17",trend$info,"loess_method")
+  top<-max(pretty(c(0,1,m$testing_rate_ratio[ok],curve$fitted_ratio),n=5));cap<-1.055*top
+  m$above_plot_limit<-ifelse(testable,m$reference_high>cap,NA)
   csv<-m;names(csv)[match(c("v_y","v_n","p_y","p_n"),names(csv))]<-c("vaccine_tested","vaccine_eligible","placebo_tested","placebo_eligible")
-  ax_data(a,"V17",csv)
+  ax_data(a,"V17",csv);ax_data(a,"V17",ran$tables,"attainable_tables")
   files<-c(file.path(data_dir,"subject_followup.csv"),file.path(out,"anomaly_examples","first_high_episode_site_screen.csv"))
   ax_data(a,"V17",data.frame(input=basename(files),md5=unname(tools::md5sum(files))),"inputs")
+  if(tables_only)return(invisible(NULL))
+  mode<-m$reference_method[1];method<-if(mode=="nominal")"Nominal two-sided Fisher test" else paste0("Bonferroni adjustment over ",nrow(m)," sites")
+  fill<-"#D2E7EF";edge<-"#90B6C5";navy<-"#285867";red<-"#A13D25"
+  trend_col<-"#123D78"
   draw<-function(){
     old<-par(no.readonly=TRUE);on.exit(par(old))
-    par(fig=c(0,1,.18,.83),mai=c(.58,.82,.14,.24),family="sans",las=1,bty="n",mgp=c(2.45,.48,0))
-    top<-max(pretty(c(0,1,m$testing_rate_ratio[ok]),n=5))
+    par(fig=c(0,1,.26,.76),mai=c(.49,.82,.08,.24),family="sans",las=1,bty="n",mgp=c(2.45,.48,0))
     nd<--top*.14;tick<-pretty(c(0,top),n=5);tick<-tick[tick>=0&tick<=top]
-    plot(range(c(0,m$randomized_total))*c(1,1.04),c(nd*1.6,top*1.04),type="n",axes=FALSE,xlab="",ylab="",xaxs="i",yaxs="i")
-    u<-par("usr");rect(u[1],nd*1.55,u[2],nd*.45,col="#F1F3F5",border=NA)
-    abline(h=tick,col="#E1E6E9",lwd=.7);abline(h=1,col="#965B2F",lwd=1.5,lty=2)
-    axis(1,tck=-.012,col="#A8B4BA",col.axis="#354854",cex.axis=.81);axis(2,at=tick,labels=format(tick,trim=TRUE),tick=FALSE,cex.axis=.81)
-    axis(2,at=nd,labels="N/A",tick=FALSE,cex.axis=.76,col.axis="#607078")
-    mtext("Randomized participants at the site (both arms)",1,line=2.0,cex=.86)
-    mtext("Testing rate ratio: mRNA-1273 / placebo",2,line=2.4,las=0,cex=.86)
-    points(m$randomized_total[ok],m$testing_rate_ratio[ok],pch=21,bg="#47848E",col="#26525D",cex=1.02,lwd=.65)
-    points(m$randomized_total[!ok],rep(nd,sum(!ok)),pch=5,col="#68767E",cex=.88)
-    # Label the largest reviewed raw gap, if present and estimable.
-    j<-which(m$SITEID=="US372"&ok)
-    if(length(j)){points(m$randomized_total[j],m$testing_rate_ratio[j],pch=21,bg="#D57F36",col="#79451E",cex=1.2)
-      text(m$randomized_total[j],m$testing_rate_ratio[j],"US372",pos=4,offset=.6,cex=.75,col="#77421D")}
+    plot(range(c(0,x))*c(1,1.04),c(nd*1.6,cap*1.035),type="n",axes=FALSE,xlab="",ylab="",xaxs="i",yaxs="i")
+    u<-par("usr");rect(u[1],nd*1.55,u[2],nd*.45,col="#F3F5F6",border=NA)
+    for(i in which(testable)){
+      lo<-m$reference_low[i];hi<-m$reference_high[i]
+      if(lo<=cap){
+        rect(site_x[i]-half[i],lo,site_x[i]+half[i],min(hi,cap),col=fill,border=NA)
+        segments(site_x[i],lo,site_x[i],min(hi,cap),col=edge,lwd=.65)
+        segments(site_x[i]-half[i],lo,site_x[i]+half[i],lo,col=edge,lwd=.65)
+        if(hi<=cap)segments(site_x[i]-half[i],hi,site_x[i]+half[i],hi,col=edge,lwd=.65)
+        else points(site_x[i],cap,pch=24,cex=.45,bg=edge,col=edge)
+      }
+    }
+    abline(h=tick,col=grDevices::adjustcolor("#A8BBC4",alpha.f=.36),lwd=.6)
+    abline(h=1,col="#7B6046",lwd=1.25,lty=2)
+    axis(1,tck=-.012,col="#A8B4BA",col.axis="#354854",cex.axis=.78);axis(2,at=tick,labels=format(tick,trim=TRUE),tick=FALSE,cex.axis=.78)
+    axis(2,at=nd,labels="N/A",tick=FALSE,cex.axis=.72,col.axis="#607078")
+    mtext("Randomized participants at the site (both arms)",1,line=1.96,cex=.86)
+    mtext("Testing rate ratio: mRNA-1273 / placebo",2,line=2.38,las=0,cex=.84)
+    if(nrow(curve)){
+      # The gray N/A strip has no numeric y values; keep the curve out of it.
+      clip(u[1],u[2],0,u[4])
+      lines(curve$enrolled,curve$fitted_ratio,col="white",lwd=3.6)
+      lines(curve$enrolled,curve$fitted_ratio,col=trend_col,lwd=2.15)
+      clip(u[1],u[2],u[3],u[4])
+    }
+    points(site_x[ok&testable&!flagged],m$testing_rate_ratio[ok&testable&!flagged],pch=21,bg="#477F8A",col=navy,cex=.94,lwd=.72)
+    points(site_x[ok&!testable],m$testing_rate_ratio[ok&!testable],pch=21,bg="white",col="#65717A",cex=.94)
+    points(site_x[ok&flagged],m$testing_rate_ratio[ok&flagged],pch=23,bg="#CA6242",col=red,cex=1.15,lwd=1.1)
+    points(site_x[!ok],rep(nd,sum(!ok)),pch=5,col=ifelse(flagged[!ok],red,"#68767E"),cex=.82)
+    # The five nominal signals are labelled when present; no labels for null sites.
+    for(j in which(ok&flagged)){
+      lab<-m$SITEID[j];xj<-site_x[j];yj<-m$testing_rate_ratio[j]
+      right<-xj<.87*max(x);tx<-xj+if(right)span*.013 else -span*.013
+      yl<-if(yj==0)yj+.035*top else yj
+      w<-strwidth(lab,cex=.70);ht<-strheight(lab,cex=.70)
+      rect(if(right)tx-1 else tx-w-1,yl-ht*.6,if(right)tx+w+1 else tx+1,yl+ht*.6,col="white",border=NA)
+      text(tx,yl,lab,adj=c(if(right)0 else 1,.5),cex=.70,col=red)
+    }
     grid::pushViewport(grid::viewport());on.exit(grid::popViewport(),add=TRUE)
-    ax_text("V17  Site recruitment and relative testing coverage",.35,.22,17,TRUE,col="#17384B")
-    ax_text(paste0(window," follow-up | County positivity >= ",cut,"% | ",nrow(m)," sites; ",sum(ok)," finite ratios"),.35,.63,11.3)
-    ax_text(ax_wrap(paste0("One observation per site. Each arm's rate is the fraction of participants whose first eligible symptomatic episode during high positivity had a documented COVID visit and qualifying PCR within ",horizon," days. The dashed line marks equal coverage (1). Diamonds on the N/A strip mark ",sum(!ok)," sites without a finite ratio; no correction is added to zero counts."),7.8,10.5),.35,5.86,10.5,col="#435760")
+    ax_text("V17  Site recruitment and relative testing coverage",.35,.20,17,TRUE,col="#17384B")
+    ax_text(paste0(window," follow-up | County positivity >= ",cut,"% | ",sum(ok)," of ",nrow(m)," ratios finite"),.35,.61,11.1)
+    sw<-function(x,y,colour,label){grid::grid.rect(x=grid::unit(x+.065,"in"),y=grid::unit(1,"npc")-grid::unit(y+.065,"in"),
+      width=grid::unit(.13,"in"),height=grid::unit(.13,"in"),gp=grid::gpar(fill=colour,col=NA));ax_text(label,x+.20,y-.025,10.2)}
+    sw(.35,1.04,fill,"Within-site range: p >= 0.05");sw(4.45,1.04,"#CA6242","Observed outside range: p < 0.05")
+    ax_text(ax_wrap(paste0(method," | ",sum(flagged)," sites flagged"),3.95,10.3),.35,1.40,10.3,col="#435760")
+    if(nrow(curve)){
+      grid::grid.lines(x=grid::unit(c(4.45,4.75),"in"),y=grid::unit(1,"npc")-grid::unit(rep(1.47,2),"in"),
+        gp=grid::gpar(col=trend_col,lwd=2.15))
+      ax_text(sprintf("LOESS: span %.2f; equal site weights",trend$info$span),4.84,1.40,10.2,col=trend_col)
+    }else ax_text("LOESS unavailable; see method CSV",4.45,1.40,10.2,col="#435760")
+    ax_text(ax_wrap(paste0("Each blue strip spans the attainable testing ratios for one site that do not cross the stated test threshold. It holds fixed both arms' eligible counts and the site's total tested. Triangles mark ranges extending above the axis. Tied enrollment counts are separated slightly."),7.8,10.15),.35,5.82,10.15,col="#354854")
+    ax_text(ax_wrap(paste0("Dots use the first eligible symptomatic episode per participant and a visit plus qualifying PCR within ",horizon," days. The dashed line is equal coverage. Hollow dots have no outcome variation; N/A diamonds have no finite ratio. ",
+      sum(!is.na(m$bonferroni_p)&m$bonferroni_p<.05)," sites meet the Bonferroni criterion across ",nrow(m)," sites."),7.8,10.15),.35,6.57,10.15,col="#354854")
   }
-  ax_png(a,"V17","site_recruitment_testing_ratio",draw,6.85,rows=nrow(m))
+  ax_png(a,"V17","site_recruitment_testing_ratio",draw,7.50,rows=nrow(m))
+}
+
+# Null risk in each arm is p0. Pool participants (sum(tested)/sum(denominators)),
+# including sites without a finite RR. The log-scale SE is approximated under
+# this null, not from log(observed RR); a zero count needs no correction.
+v17_funnel <- function(m, population, p0=NULL) {
+  population<-match.arg(population,c("randomized","eligible"))
+  nv<-if(population=="randomized")m$vaccine_randomized else m$v_n
+  np<-if(population=="randomized")m$placebo_randomized else m$p_n
+  yv<-m$v_y;yp<-m$p_y; N<-nv+np
+  if(!nrow(m)||anyNA(c(nv,np,yv,yp))||any(yv>nv|yp>np|yv<0|yp<0))stop("Invalid V17 counts.")
+  pv<-if(sum(nv)>0)sum(yv)/sum(nv) else NA_real_
+  pp<-if(sum(np)>0)sum(yp)/sum(np) else NA_real_
+  source<-if(is.null(p0))"pooled_placebo" else "specified"
+  if(is.null(p0))p0<-pp
+  if(length(p0)!=1L||!is.numeric(p0)||!is.finite(p0)||p0<=0||p0>=1)
+    stop("V17: a benchmark strictly between 0 and 1 is required for ",population,".")
+  use<-nv>0 & np>0;ne<-rep(NA_real_,nrow(m));ne[use]<-4/(1/nv[use]+1/np[use])
+  # Preserve the actual site recruitment on A. On B use balanced-equivalent
+  # volume so a single funnel is exact for the actual (unequal) arm sizes.
+  x<-if(population=="randomized")N else ne
+  RR<-rep(NA_real_,nrow(m));RR[use]<-(yv[use]/nv[use])/(yp[use]/np[use]);RR[is.nan(RR)]<-NA_real_
+  status<-ifelse(!use,"EMPTY_ARM",ifelse(yp==0 & yv==0,"BOTH_ZERO",ifelse(yp==0,"INFINITE","FINITE")))
+  searm<-ifelse(use,sqrt((1-p0)/p0*(1/nv+1/np)),NA_real_)
+  seplot<-ifelse(is.finite(x)&x>0,2*sqrt((1-p0)/p0/x),NA_real_);z<-1.96
+  classify<-function(r,lo,hi)ifelse(is.na(r)|is.na(lo)|is.na(hi),"UNDEFINED",
+    ifelse(r<lo,"BELOW",ifelse(r>hi,"ABOVE","INSIDE")))
+  bounds<-function(se,k)exp(k*z*se)
+  sd<-data.frame(SITEID=m$SITEID,region_name=m$region_name,population=population,
+    vaccine_tested=yv,vaccine_denominator=nv,placebo_tested=yp,placebo_denominator=np,
+    vaccine_randomized=m$vaccine_randomized,placebo_randomized=m$placebo_randomized,
+    vaccine_eligible=m$v_n,placebo_eligible=m$p_n,denominator_total=N,effective_n=ne,
+    plot_volume=x,vaccine_rate=ifelse(nv>0,yv/nv,NA_real_),placebo_rate=ifelse(np>0,yp/np,NA_real_),
+    RR=RR,ratio_status=status,p0=p0,se_log_rr=searm,lower95=bounds(searm,-1),upper95=bounds(searm,1),
+    plot_se_log_rr=seplot,plot_lower95=bounds(seplot,-1),plot_upper95=bounds(seplot,1))
+  sd$position<-classify(RR,sd$lower95,sd$upper95)
+  sd$plot_position<-classify(RR,sd$plot_lower95,sd$plot_upper95)
+  sd$sparse_under_null<-ifelse(use,pmin(nv,np)*min(p0,1-p0)<5,NA)
+  sd$fisher_p<-vapply(seq_along(nv),function(i){
+    if(!use[i]||yv[i]+yp[i]==0||yv[i]+yp[i]==N[i])return(NA_real_)
+    stats::fisher.test(matrix(c(yv[i],nv[i]-yv[i],yp[i],np[i]-yp[i]),2,byrow=TRUE))$p.value
+  },numeric(1))
+  sd$bonferroni_p<-pmin(1,nrow(m)*sd$fisher_p)
+  xx<-x[is.finite(x)&x>0]
+  gx<-if(length(xx))sort(unique(c(xx,seq(min(xx),max(xx),length.out=400)))) else numeric()
+  gs<-2*sqrt((1-p0)/p0/gx)
+  curve<-data.frame(population=rep(population,length(gx)),plot_volume=gx,
+    p0=rep(p0,length(gx)),se_log_rr=gs,lower95=bounds(gs,-1),upper95=bounds(gs,1))
+  fit<-v17_loess_fit(data.frame(randomized_total=x,testing_rate_ratio=RR))
+  fit$curve<-data.frame(population=rep(population,nrow(fit$curve)),plot_volume=fit$curve$enrolled,
+    fitted_ratio=fit$curve$fitted_ratio)
+  info<-data.frame(population=population,benchmark_source=source,p0=p0,coefficient=2*sqrt((1-p0)/p0),
+    pooled_vaccine_tested=sum(yv),pooled_vaccine_denominator=sum(nv),pooled_vaccine_rate=pv,
+    pooled_placebo_tested=sum(yp),pooled_placebo_denominator=sum(np),pooled_placebo_rate=pp,
+    sites=nrow(m),finite=sum(is.finite(RR)),infinite=sum(is.infinite(RR)),undefined=sum(is.na(RR)),
+    below=sum(sd$position=="BELOW"),above=sum(sd$position=="ABOVE"),above_infinite=sum(is.infinite(RR)&sd$position=="ABOVE"),
+    plot_below=sum(sd$plot_position=="BELOW"),plot_above=sum(sd$plot_position=="ABOVE"),
+    plot_vs_actual_arm_disagreements=sum(sd$position!=sd$plot_position),
+    sparse_defined=sum(sd$sparse_under_null & !is.na(RR),na.rm=TRUE),
+    fisher_nominal=sum(sd$fisher_p<.05,na.rm=TRUE),fisher_bonferroni=sum(sd$bonferroni_p<.05,na.rm=TRUE),
+    phi=1,z=z,loess_span=fit$info$span,loess_status=fit$info$status,loess_reason=fit$info$reason,
+    x_definition=if(population=="randomized")"actual total randomized" else "4/(1/n_vaccine + 1/n_placebo)")
+  list(sites=sd,summary=info,curve=curve,loess=fit$curve)
+}
+
+v17_caption <- function(){
+  mode<-getOption("phmpt.v17_adjustment","funnel")
+  if(mode!="funnel")return("V17. Site recruitment and testing coverage conditional on an eligible episode. The site-specific Fisher ranges use the criterion shown; the dark blue curve summarizes the finite site ratios.")
+  paste0("V17. Testing during higher county positivity. Panel A uses all randomized participants; panel B uses only participants with an eligible symptomatic episode. The numerator is identical: a documented COVID visit plus qualifying PCR on the first eligible episode. The shaded areas are approximate, pointwise 95% limits under equal arm rates; each panel identifies its placebo benchmark. The dark blue LOESS lines describe the finite site ratios. The exact conditional site comparisons follow in V18.")
+}
+
+v17_plot <- function(a,data_dir,out,window,cut,horizon) {
+  mode<-match.arg(getOption("phmpt.v17_adjustment","funnel"),c("funnel","nominal","bonferroni"))
+  if(mode!="funnel")return(v17_plot_fisher(a,data_dir,out,window,cut,horizon,adjustment=mode))
+  # Retain legacy conditional Fisher tables and the original enrollment-based
+  # LOESS CSVs so rerunning the launcher preserves existing downstream links.
+  m<-v17_site_data(data_dir,out)
+  v17_plot_fisher(a,data_dir,out,window,cut,horizon,adjustment="nominal",tables_only=TRUE,m0=m)
+  panels<-lapply(c("randomized","eligible"),function(pop) v17_funnel(m,pop,getOption(paste0("phmpt.v17_p0_",pop))))
+  tab<-function(k)do.call(rbind,lapply(panels,'[[',k))
+  s<-tab("summary");s$window<-window;s$minimum_county_positivity_pct<-cut;s$onset_to_pcr_days<-horizon
+  ax_data(a,"V17",tab("sites"),"funnel_sites");ax_data(a,"V17",s,"funnel_summary")
+  ax_data(a,"V17",tab("curve"),"funnel_limits");ax_data(a,"V17",tab("loess"),"funnel_loess")
+  draw<-function(){
+    op<-par(no.readonly=TRUE);on.exit(par(op))
+    # Grid text is placed in inches, measured from the top; both panels use
+    # identical RR ticks and a separate marker for positive/zero comparisons.
+    put_text<-ax_text;text_queue<-list();ax_text<-function(...)text_queue[[length(text_queue)+1L]]<<-list(...)
+    H<-9.70;cap<-max(2.5,ceiling(2*max(c(1,unlist(lapply(panels,function(z)
+      z$sites$RR[is.finite(z$sites$RR)])))))/2)
+    dark<-"#123D78";ink<-"#17384B";rust<-"#9E402A";dot<-"#286577";fill<-"#DCEBF0";edge<-"#7294A0"
+    ax_text("V17  Relative testing during weeks of higher positivity",.40,.23,18,TRUE,col=ink)
+    ax_text(paste0(window," follow-up   |   County positivity ",intToUtf8(0x2265)," ",cut,"%   |   One first eligible episode per participant"),.40,.65,11)
+    ax_text("Shading: pointwise 95% limits       Dashed: equal testing (RR = 1)       Dark blue: LOESS",.40,.99,11,col=dark)
+    for(j in seq_along(panels)){
+      q<-panels[[j]];dd<-q$sites;su<-q$summary;cu<-q$curve;lo<-q$loess
+      y<-if(j==1)1.48 else 4.92
+      ax_text(if(j==1)"A   Among all randomized participants" else "B   Among participants with an eligible symptomatic episode",.40,y,14,TRUE,col=ink)
+      pref<-if(su$benchmark_source=="specified")"Specified benchmark" else "Pooled placebo"
+      label<-sprintf("%s: %.2f%%",pref,100*su$p0)
+      if(su$benchmark_source=="pooled_placebo")label<-paste0(label,sprintf(" (%s/%s)",format(su$pooled_placebo_tested,big.mark=",",trim=TRUE),format(su$pooled_placebo_denominator,big.mark=",",trim=TRUE)))
+      ax_text(sprintf("%s   |   %d below, %d above the funnel   |   %d undefined",label,su$plot_below,su$plot_above,su$undefined),.40,y+.34,10.3)
+      xx<-cu$plot_volume
+      xr<-if(length(xx))c(0,max(1,1.04*max(xx))) else c(0,1)
+      par(fig=c(0,1,(H-(y+2.96))/H,(H-(y+.67))/H),mai=c(.45,.83,.05,.32),
+        new=(j!=1),bty="n",las=1,mgp=c(2.1,.45,0),family="sans")
+      plot(xr,c(-.09,cap*1.14),type="n",xaxs="i",yaxs="i",axes=FALSE,xlab="",ylab="")
+      if(length(xx)){
+        polygon(c(xx,rev(xx)),c(cu$lower95,rev(pmin(cap,cu$upper95))),col=fill,border=NA)
+        lines(xx,cu$lower95,col=edge,lwd=.85)
+        hi<-cu$upper95;hi[hi>cap]<-NA_real_;lines(xx,hi,col=edge,lwd=.85)
+      }
+      tk<-pretty(c(0,cap),n=5);tk<-tk[tk>=0&tk<=cap]
+      abline(h=tk,col=grDevices::adjustcolor("#92A9B2",.23),lwd=.6)
+      abline(h=1,col="#655644",lwd=1.15,lty=2)
+      axis(2,at=tk,tick=FALSE,cex.axis=.76);axis(1,tck=-.024,cex.axis=.78,col="#9CB0B8")
+      mtext("Testing ratio: mRNA-1273 / placebo",2,line=2.25,las=0,cex=.83)
+      mtext(if(j==1)"Participants randomized at site (both arms)" else "Eligible participants at site (effective total for unequal arm sizes)",1,line=1.50,cex=.78)
+      if(nrow(lo)){lines(lo$plot_volume,lo$fitted_ratio,col="white",lwd=3.5);lines(lo$plot_volume,lo$fitted_ratio,col=dark,lwd=2.2)}
+      ok<-is.finite(dd$RR);inside<-dd$plot_position=="INSIDE"
+      points(dd$plot_volume[ok&inside],dd$RR[ok&inside],pch=21,col=dot,bg="#70A0AA",cex=.80,lwd=.75)
+      points(dd$plot_volume[ok&!inside],dd$RR[ok&!inside],pch=23,col=rust,bg="#CC7555",cex=.95,lwd=.85)
+      inf<-is.infinite(dd$RR)
+      points(dd$plot_volume[inf],rep(cap*1.065,sum(inf)),pch=24,col=rust,bg="#CC7555",cex=.95)
+      ax_text(sprintf("Positive / zero (triangles): %d. Undefined ratios are omitted. LOESS span: %.2f%s.",
+        su$infinite,su$loess_span,if(su$loess_status=="AVAILABLE")"" else " (not estimable)"),.41,y+3.20,9.3,col="#4A616D")
+    }
+    ax_text(ax_wrap(paste0("Counted as tested: a documented COVID visit and qualifying PCR within ",horizon,
+      " days of symptom onset, on the first eligible episode in a higher-positivity week. Panel A also reflects which participants had a recorded eligible episode. Panel B compares testing conditional on that episode."),7.72,10.35),.4,8.40,10.35)
+    ax_text(ax_wrap("Diamonds fall outside the approximate 95% limits. These are screening signals, particularly with sparse counts or zero events. Exact Fisher results for the eligible participants are reported in V18.",7.72,10.15),.4,9.00,10.15,col="#4A616D")
+    for(args in text_queue)do.call(put_text,args)
+  }
+  ax_png(a,"V17","site_recruitment_testing_ratio",draw,9.70,rows=nrow(m))
 }
 
 phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
@@ -2139,7 +2455,9 @@ phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
   }else ax_unavailable(a,"V19","site_testing_example","Site testing example","Selected site not available.")
   z<-ax_read(ex,"pcr_episode_review.csv");s<-site("pcr","US325")
   if(nrow(z)) {
-    chart("V20","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("Vaccine-arm high-positivity episodes without the qualifying endpoint within ",horizon," days"),
+    zz<-ax_read(ex,"selected_site_episodes.csv");zz<-zz[zz$SITEID==s & zz$high==1 & zz$onset_source=="COVID_FORM",,drop=FALSE]
+    armcount<-function(ar){u<-zz[zz$arm==ar,,drop=FALSE];paste0(sum(u$tested),"/",nrow(u))}
+    chart("V20","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("High-positivity form-onset episodes meeting the ",horizon,"-day endpoint: vaccine ",armcount("mRNA-1273"),", placebo ",armcount("Placebo"),". Vaccine-arm exceptions shown."),
       paste0("Blue spans: reconstructed symptom interval. Circle: later completed PCR (labelled result). Cross: NOT DONE within ",horizon," days. Shading: audit linkage interval. Missing later tests remain explicitly labelled."),function(){
       nn<-nrow(z);late<-z$days_to_later_pcr;duration<-as.numeric(as.Date(z$last_symptom)-as.Date(z$start));limit<-max(c(22,late,duration),na.rm=TRUE)+2
       par(mai=c(.65,1.65,.3,.45));plot(c(-1,limit),c(.3,nn+.8),type="n",axes=FALSE,xlab="",ylab="")

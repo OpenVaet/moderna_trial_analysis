@@ -40,6 +40,32 @@ sr_date <- function(x, label) {
 sr_week <- function(d) d - (as.integer(format(d,"%u"))-1L)
 sr_p <- function(p) ifelse(is.na(p),"not estimable",ifelse(p<1e-6,"< 0.000001",formatC(p,digits=4,format="f")))
 
+# Do not mix a legacy event export with a strict M3 result.
+m3_valid_export <- function(path) {
+ if(!length(path)||!nzchar(path)||!file.exists(path))return(FALSE)
+ if(dir.exists(path)){f<-file.path(path,"M3_mapping_version.txt");return(file.exists(f)&&identical(trimws(readLines(f,n=1L,warn=FALSE)),"1.1.0-M3"))}
+ if(!grepl("[.]zip$",path,ignore.case=TRUE))return(FALSE)
+ n<-utils::unzip(path,list=TRUE)$Name;n<-n[grepl("^([^/]+/)?M3_mapping_version[.]txt$",n)]
+ if(length(n)!=1L)return(FALSE)
+ con<-unz(path,n);on.exit(close(con));identical(trimws(readLines(con,n=1L,warn=FALSE)),"1.1.0-M3")
+}
+m3_find_export <- function(root, signature) {
+ d<-file.path(root,"analysis");if(!dir.exists(d))return("")
+ f<-list.files(d,"^M3_mapping_version[.]txt$",recursive=TRUE,full.names=TRUE);v<-dirname(f)
+ v<-v[file.exists(file.path(v,signature)) & vapply(v,m3_valid_export,logical(1))]
+ if(identical(signature,"episode_symptom_source_links.csv")&&length(v)){
+  blinded<-function(d){f<-file.path(d,"run_parameters.csv");if(!file.exists(f))return(FALSE)
+    z<-read.csv(f,fileEncoding="UTF-8-BOM");any(z$parameter=="window"&z$value=="BLINDED")}
+  v<-v[vapply(v,blinded,logical(1))]
+ }
+ if(!length(v))return("")
+ normalizePath(v[order(file.info(file.path(v,signature))$mtime,v,decreasing=TRUE)[1L]],winslash="/")
+}
+m3_require_export <- function(x, producer) {
+ if(!m3_valid_export(x))stop("Run ",producer," with the M3 correction first; this input has no verified M3 mapping marker: ",x,call.=FALSE)
+ invisible(x)
+}
+
 sr_discover <- function(root, explicit, required) {
   p <- sr_path(explicit, root)
   if(nzchar(p)) {
@@ -230,7 +256,9 @@ analyse_site_symptom_recording <- function(root=PHMPT_ROOT,weekly_dir=PHMPT_WEEK
   root<-normalizePath(root,mustWork=TRUE);window<-toupper(window)
   if(!window %in% c("BLINDED","EUA","FULL"))stop("Invalid window")
   required<-c("subject_followup_and_doses.csv","window_totals.csv",paste0(window,"_subject_symptom_weeks.csv"))
+  if(!nzchar(weekly_dir))weekly_dir<-m3_find_export(root,"window_totals.csv")
   folder<-sr_discover(root,weekly_dir,required)
+  m3_require_export(folder,"analyse_weekly_symptoms_ae.R")
   out<-sr_path(output_dir,root);if(!nzchar(out))out<-file.path(root,"analysis",paste0("site_symptom_recording_",format(Sys.time(),"%Y%m%d_%H%M%S")))
   dir.create(out,recursive=TRUE,showWarnings=FALSE)
   roster<-sr_read(file.path(folder,"subject_followup_and_doses.csv"))

@@ -19,6 +19,32 @@ PHMPT_REPORT_START <- getOption('phmpt.report_start_paragraph',25L)
 PHMPT_REFERENCE_START <- getOption('phmpt.report_reference_start',32L)
 PHMPT_REPORT_ONLY <- getOption('phmpt.report_only',FALSE) # reuse existing, hash-matched model CSVs
 
+# Do not mix a legacy event export with a strict M3 result.
+m3_valid_export <- function(path) {
+ if(!length(path)||!nzchar(path)||!file.exists(path))return(FALSE)
+ if(dir.exists(path)){f<-file.path(path,"M3_mapping_version.txt");return(file.exists(f)&&identical(trimws(readLines(f,n=1L,warn=FALSE)),"1.1.0-M3"))}
+ if(!grepl("[.]zip$",path,ignore.case=TRUE))return(FALSE)
+ n<-utils::unzip(path,list=TRUE)$Name;n<-n[grepl("^([^/]+/)?M3_mapping_version[.]txt$",n)]
+ if(length(n)!=1L)return(FALSE)
+ con<-unz(path,n);on.exit(close(con));identical(trimws(readLines(con,n=1L,warn=FALSE)),"1.1.0-M3")
+}
+m3_find_export <- function(root, signature) {
+ d<-file.path(root,"analysis");if(!dir.exists(d))return("")
+ f<-list.files(d,"^M3_mapping_version[.]txt$",recursive=TRUE,full.names=TRUE);v<-dirname(f)
+ v<-v[file.exists(file.path(v,signature)) & vapply(v,m3_valid_export,logical(1))]
+ if(identical(signature,"episode_symptom_source_links.csv")&&length(v)){
+  blinded<-function(d){f<-file.path(d,"run_parameters.csv");if(!file.exists(f))return(FALSE)
+    z<-read.csv(f,fileEncoding="UTF-8-BOM");any(z$parameter=="window"&z$value=="BLINDED")}
+  v<-v[vapply(v,blinded,logical(1))]
+ }
+ if(!length(v))return("")
+ normalizePath(v[order(file.info(file.path(v,signature))$mtime,v,decreasing=TRUE)[1L]],winslash="/")
+}
+m3_require_export <- function(x, producer) {
+ if(!m3_valid_export(x))stop("Run ",producer," with the M3 correction first; this input has no verified M3 mapping marker: ",x,call.=FALSE)
+ invisible(x)
+}
+
 phmpt_find_export <- function(data_dir='',root=getwd()) {
   required<-c('episodes.csv','site_background_used.csv','site_region_coverage.csv',
     'subject_followup.csv','site_arm_weekly_testing.csv','pcr_records_reconciled.csv','illness_visits.csv','run_parameters.csv')
@@ -40,7 +66,9 @@ phmpt_find_export <- function(data_dir='',root=getwd()) {
 
 analyse_site_testing_imbalance <- function(data_dir='',output_dir='',report_only=FALSE,
   start_paragraph=25L,reference_start=32L,audit_results_dir='') {
+  if(!nzchar(data_dir))data_dir<-m3_find_export(getOption("phmpt.root",getwd()),"episode_symptom_source_links.csv")
   DATA_DIR<-phmpt_find_export(data_dir)
+  m3_require_export(DATA_DIR,"analyse_symptom_testing_heatmaps.R")
   OUTPUT_DIR<-if(nzchar(output_dir))output_dir else file.path(DATA_DIR,'positivity_audit')
   dir.create(OUTPUT_DIR,recursive=TRUE,showWarnings=FALSE)
   if(!isTRUE(report_only)) {
@@ -551,6 +579,9 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   cs<-sel$SITEID[sel$anomaly=='pcr'];within<-cases[!is.na(cases$within_same_episode_span)&cases$within_same_episode_span & is.finite(cases$days_to_later_pcr),]
   days<-sort(unique(within$days_to_later_pcr));nd<-sum(cases$not_done_in_horizon,na.rm=TRUE)
   cp<-paste0('At ',region(cs),', ',nrow(cases),' vaccine-arm episodes beginning on COVID symptom forms during higher-positivity periods did not meet the visit-plus-PCR endpoint within ',horizon,' days.')
+  compare_ep<-rd(file.path(figdir,"selected_site_episodes.csv")); compare_ep<-compare_ep[compare_ep$SITEID==cs & compare_ep$high==1 & compare_ep$onset_source=="COVID_FORM",]
+  covered<-function(a){u<-compare_ep[compare_ep$arm==a,];rate(sum(u$tested),nrow(u))}
+  cp<-paste0(cp," Under the same selection the endpoint was met in ",covered("mRNA-1273")," vaccine episodes and ",covered("Placebo")," placebo episodes.")
   if(nrow(within))cp<-paste0(cp,' For ',nrow(within),' of these episodes, a later diagnostic PCR was documented within the reconstructed symptom interval, at ',paste(days,collapse=' and '),' days after the first recorded symptom; the recorded results were ',paste(tolower(unique(within$later_result)),collapse=' and '),'.')
   if(nd)cp<-paste0(cp,' A NOT DONE record was present within the endpoint window for ',nd,' episode',if(nd==1)'' else 's','.')
   addp(paste0(cp,' These observations distinguish delayed testing, testing recorded outside the reconstructed illness, and absence of a qualifying result. They do not establish that an untested episode was COVID-19, or that a later negative result excludes infection at the initial presentation.'))
@@ -1177,7 +1208,9 @@ phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
   }else ax_unavailable(a,"V19","site_testing_example","Site testing example","Selected site not available.")
   z<-ax_read(ex,"pcr_episode_review.csv");s<-site("pcr","US325")
   if(nrow(z)) {
-    chart("V20","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("Vaccine-arm high-positivity episodes without the qualifying endpoint within ",horizon," days"),
+    zz<-ax_read(ex,"selected_site_episodes.csv");zz<-zz[zz$SITEID==s & zz$high==1 & zz$onset_source=="COVID_FORM",,drop=FALSE]
+    armcount<-function(ar){u<-zz[zz$arm==ar,,drop=FALSE];paste0(sum(u$tested),"/",nrow(u))}
+    chart("V20","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("High-positivity form-onset episodes meeting the ",horizon,"-day endpoint: vaccine ",armcount("mRNA-1273"),", placebo ",armcount("Placebo"),". Vaccine-arm exceptions shown."),
       paste0("Blue spans: reconstructed symptom interval. Circle: later completed PCR (labelled result). Cross: NOT DONE within ",horizon," days. Shading: audit linkage interval. Missing later tests remain explicitly labelled."),function(){
       nn<-nrow(z);late<-z$days_to_later_pcr;duration<-as.numeric(as.Date(z$last_symptom)-as.Date(z$start));limit<-max(c(22,late,duration),na.rm=TRUE)+2
       par(mai=c(.65,1.65,.3,.45));plot(c(-1,limit),c(.3,nn+.8),type="n",axes=FALSE,xlab="",ylab="")

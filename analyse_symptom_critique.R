@@ -13,6 +13,32 @@
 # never recoded as a negative result. Episodes may repeat within a participant.
 # The timing restriction does NOT replace the adjudicated first-event/censoring rows.
 
+# Do not mix a legacy event export with a strict M3 result.
+m3_valid_export <- function(path) {
+ if(!length(path)||!nzchar(path)||!file.exists(path))return(FALSE)
+ if(dir.exists(path)){f<-file.path(path,"M3_mapping_version.txt");return(file.exists(f)&&identical(trimws(readLines(f,n=1L,warn=FALSE)),"1.1.0-M3"))}
+ if(!grepl("[.]zip$",path,ignore.case=TRUE))return(FALSE)
+ n<-utils::unzip(path,list=TRUE)$Name;n<-n[grepl("^([^/]+/)?M3_mapping_version[.]txt$",n)]
+ if(length(n)!=1L)return(FALSE)
+ con<-unz(path,n);on.exit(close(con));identical(trimws(readLines(con,n=1L,warn=FALSE)),"1.1.0-M3")
+}
+m3_find_export <- function(root, signature) {
+ d<-file.path(root,"analysis");if(!dir.exists(d))return("")
+ f<-list.files(d,"^M3_mapping_version[.]txt$",recursive=TRUE,full.names=TRUE);v<-dirname(f)
+ v<-v[file.exists(file.path(v,signature)) & vapply(v,m3_valid_export,logical(1))]
+ if(identical(signature,"episode_symptom_source_links.csv")&&length(v)){
+  blinded<-function(d){f<-file.path(d,"run_parameters.csv");if(!file.exists(f))return(FALSE)
+    z<-read.csv(f,fileEncoding="UTF-8-BOM");any(z$parameter=="window"&z$value=="BLINDED")}
+  v<-v[vapply(v,blinded,logical(1))]
+ }
+ if(!length(v))return("")
+ normalizePath(v[order(file.info(file.path(v,signature))$mtime,v,decreasing=TRUE)[1L]],winslash="/")
+}
+m3_require_export <- function(x, producer) {
+ if(!m3_valid_export(x))stop("Run ",producer," with the M3 correction first; this input has no verified M3 mapping marker: ",x,call.=FALSE)
+ invisible(x)
+}
+
 analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
    heat=getOption("phmpt.c1_heat",""), lab=getOption("phmpt.c1_lab",""),
    adsl=getOption("phmpt.c1_adsl",""), out=file.path(root,"analysis","symptom_critique_c1")) {
@@ -26,8 +52,11 @@ analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
     if(length(paths)!=1)stop("Set options(",option,"='...') to one exact file or export. Candidates: ",paste(paths,collapse=", "))
     normalizePath(paths)
   }
+  if(!nzchar(heat))heat<-m3_find_export(root,"episode_symptom_source_links.csv")
+  if(!nzchar(lab))lab<-m3_find_export(root,"symptom_summary_global.csv")
   heat<-locate(heat,"^symptom_testing_heatmaps_blinded_","phmpt.c1_heat")
   lab<-locate(lab,"^pcr_testing_by_lab_[0-9]","phmpt.c1_lab")
+  m3_require_export(heat,"analyse_symptom_testing_heatmaps.R");m3_require_export(lab,"analyse_pcr_testing_by_lab.R")
   adsl<-locate(adsl,"^BLA_ADSL_selected[.]csv$","phmpt.c1_adsl")
   getcsv<-function(bundle,suffix) {
     packed<-!dir.exists(bundle)

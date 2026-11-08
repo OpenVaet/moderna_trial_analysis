@@ -21,7 +21,45 @@ PHMPT_RULES_FILE <- ""            # Optional reviewed replacement for exported r
 PHMPT_OPEN_REPORT <- interactive()
 # To load functions only: options(phmpt.autorun=FALSE) before source().
 
-am_version <- "1.0.0"
+# M3 classifies documented wording, not clinical etiology. Apply before assignment of arm.
+m3_version <- "1.1.0-M3"
+m3_reason <- function(term,group) {
+ s<-toupper(trimws(gsub("[[:space:]]+"," ",gsub("[-_/]+"," ",gsub("['\u2019]","",as.character(term),perl=TRUE)),perl=TRUE)));s[is.na(s)]<-""
+ hit<-function(p)grepl(p,s,perl=TRUE);v<-rep("",length(s))
+ put<-function(ok,reason){v[which(ok & !nzchar(v))]<<-reason}
+ put(hit("\\b(POST ?(PROCEDUR\\w*|OPERAT\\w*|TRAUM\\w*)|PROCEDURAL|DRUG INDUCED)\\b"),"Treatment, procedure or trauma specified")
+ put(group=="COUGH"&hit("\\b(ALLERGIC|SMOKERS?|CHRONIC)\\b"),"Allergy, smoking or chronic cough specified")
+ put(group%in%c("SORE_THROAT","NASAL")&hit("\\b(STREPTOCOCCAL|CHRONIC)\\b"),"Alternative diagnosis or chronic complaint specified")
+ put(group=="DIARRHEA"&hit("\\b(BACTERIAL|VIRAL|INFECTIOUS|TRAVELL?ERS?)\\b"),"Named enteric illness or travel syndrome; etiology not confirmed here")
+ put(group=="HEADACHE"&!hit("\\bEXCL(?:UDING)? MIGRAINE\\b")&hit("\\b(TENSION|MIGRAINE|CLUSTER|EXERTIONAL|COITAL|SINUS|PRIMARY|NEW DAILY PERSISTENT)\\b"),"Specified headache syndrome or precipitant; incident compatible headache needs review")
+ put(group=="MYALGIA"&hit("\\b(LOCALI[ZS]ED|EXTREMIT(Y|IES)|INJECTION SITE|INJECTION ARM)\\b"),"Localized muscle pain; generalized myalgia not established")
+ v
+}
+m3_dictionary <- function(x,groups=x$symptom_group) {
+ why<-m3_reason(x$normalized_term,groups)
+ inc<-toupper(as.character(x$include_default));if(anyNA(inc)||any(!inc%in%c("TRUE","FALSE")))stop("Invalid mapping inclusion flag")
+ if(any(inc=="TRUE" & toupper(x$match_class)!="DIRECT"))stop("Invalid mapping: review-only term marked for inclusion")
+ if(!"rationale"%in%names(x)) x$rationale<-rep("",nrow(x))
+ old<-if("m3_group_veto"%in%names(x)) toupper(as.character(x$m3_group_veto))%in%"TRUE" else rep(FALSE,nrow(x))
+ move<-inc=="TRUE"&nzchar(why)
+ # Marker survives normalization of an already corrected CSV (and earlier v1.1 exports).
+ x$m3_group_veto<-old|move|(nzchar(why)&!is.na(x$rationale)&as.character(x$rationale)==why)
+ x$include_default<-inc=="TRUE";x$include_default[x$m3_group_veto]<-FALSE
+ x$match_class[x$m3_group_veto]<-"RELATED_REVIEW";x$rationale[move]<-why[move]
+ x$dictionary_version<-rep(m3_version,nrow(x));x
+}
+m3_gate <- function(h,ids,verbatim,dict,groups=dict$symptom_group,other_fields=list()) {
+ nk<-function(x)toupper(trimws(gsub("[[:space:]\\p{Z}]+"," ",as.character(x),perl=TRUE)))
+ key<-function(x,y)paste(x,y,sep="\r")
+ deny<-key(nk(dict$normalized_term[dict$m3_group_veto]),groups[dict$m3_group_veto])
+ g<-key(ids,h$symptom_group)
+ hit<-key(nk(h$normalized_term),h$symptom_group)%in%deny | key(nk(verbatim),h$symptom_group)%in%deny
+ for(field in other_fields)hit<-hit|key(nk(field),h$symptom_group)%in%deny
+ h$m3_group_review<-g%in%g[hit];h$include_default[h$m3_group_review]<-FALSE
+ h$match_class[h$m3_group_review]<-"RELATED_REVIEW";h
+}
+
+am_version <- m3_version
 am_text <- function(x) {
   x <- as.character(x); x[is.na(x)] <- ""
   bad <- !validUTF8(x)
@@ -97,7 +135,7 @@ am_rules <- function() {
   add("NAUSEA","Nausea|Nausea aggravated|Procedural nausea|Post procedural nausea|Postoperative nausea|Nausea and vomiting|Nausea/vomiting")
   add("VOMIT","Vomiting|Vomited|Emesis|Hyperemesis|Procedural vomiting|Nausea and vomiting|Nausea/vomiting")
   add("DIARRHEA","Diarrhoea|Diarrhea|Acute diarrhea|Diarrhea aggravated|Loose bowel|Loose bowels|Loose stools|Stools watery|Watery diarrhea|Bacterial diarrhoea|Bacterial diarrhea|Viral diarrhoea|Viral diarrhea|Diarrhoea infectious|Traveller's diarrhea")
-  out <- unique(do.call(rbind,z)); rownames(out) <- NULL; out
+  out <- unique(do.call(rbind,z)); rownames(out) <- NULL; sy<-am_symptoms();m3_dictionary(out,sy$symptom_group[match(out$symptom_code,sy$symptom_code)])
 }
 am_validate_rules <- function(x) {
   need <- c("normalized_term","symptom_code","match_class","include_default","rationale")
@@ -251,6 +289,7 @@ analyse_ae_covid_symptoms <- function(root="",releases=c("EUA","Prod"),ae_files=
   dir.create(out,recursive=TRUE,showWarnings=FALSE);dir.create(assetdir,recursive=TRUE,showWarnings=FALSE)
   rules<-if(nzchar(rules_file))am_read(am_path(root,rules_file),encoding) else am_rules()
   names(rules)<-tolower(names(rules));rules<-am_validate_rules(rules)
+  sy0<-am_symptoms();rules<-m3_dictionary(rules,sy0$symptom_group[match(rules$symptom_code,sy0$symptom_code)])
   sy<-am_symptoms(); inventory<-list(); observations<-list(); evidence<-list(); seen<-character(); source_no<-0L
   for(rel in releases) {
     paths<-ae_files[[rel]]
@@ -296,7 +335,7 @@ analyse_ae_covid_symptoms <- function(root="",releases=c("EUA","Prod"),ae_files=
   mapping$qualification_check<-am_qualify(mapping$symptom_code)
   mapping$dictionary_version<-rep(am_version,nrow(mapping))
   mapping<-mapping[order(match(mapping$symptom_code,sy$symptom_code),mapping$match_class,mapping$match_field,mapping$ae_term),]
-  mapping<-mapping[c("dictionary_version","match_field","ae_term","normalized_term","symptom_code","symptom_label","symptom_group","match_class","include_default","min_duration_hours","qualification_check","rationale")]
+  mapping<-mapping[c("m3_group_veto","dictionary_version","match_field","ae_term","normalized_term","symptom_code","symptom_label","symptom_group","match_class","include_default","min_duration_hours","qualification_check","rationale")]
   rownames(mapping)<-NULL
   am_csv(mapping,file.path(out,"ae_covid_symptom_mapping.csv"))
   # Do not silently overwrite an edited asset: keep an immutable copy from each prior run.
@@ -306,10 +345,23 @@ analyse_ae_covid_symptoms <- function(root="",releases=c("EUA","Prod"),ae_files=
     if(!file.copy(target,backup,overwrite=FALSE))stop("Could not back up the existing asset.")
   }
   am_csv(mapping,target);am_csv(rules,file.path(out,"ae_covid_symptom_rules.csv"))
+  # Keep both documented project locations synchronized on a default run. A custom
+  # asset_dir is an isolated export and must not change the canonical project file.
+  if(!nzchar(asset_dir)){
+    mirror<-file.path(root,"ae_covid_symptom_mapping.csv")
+    if(!file.exists(mirror)||unname(tools::md5sum(mirror))!=unname(tools::md5sum(target))){
+      if(file.exists(mirror)){
+        previous<-tempfile("ae_covid_symptom_mapping_root_previous_",tmpdir=assetdir,fileext=".csv")
+        if(!file.copy(mirror,previous,overwrite=FALSE))stop("Could not back up root mapping: ",mirror)
+      }
+      if(!file.copy(target,mirror,overwrite=TRUE)||unname(tools::md5sum(mirror))!=unname(tools::md5sum(target)))stop("Could not synchronize root mapping: ",mirror)
+    }
+  }
   am_csv(obs,file.path(out,"ae_observed_terms_by_source.csv"))
   if(length(evidence)) {
     ev<-do.call(rbind,evidence);ev<-merge(ev,sy,by="symptom_code",sort=FALSE)
     # Keep each matching field for traceability. This is evidence, NOT event counts.
+    ev<-m3_gate(ev,paste(ev$source_id,ev$USUBJID,ev$AESEQ,sep="|"),ev$AETERM,rules,sy0$symptom_group[match(rules$symptom_code,sy0$symptom_code)],list(ev$AELLT,ev$AEDECOD))
     am_csv(ev,file.path(out,"ae_covid_match_evidence.csv"))
     # Specific verbatim/LLT mappings take precedence over a more generic PT mapping
     # for the same symptom parameter. Multiple symptom parameters can share one group.
@@ -340,8 +392,8 @@ analyse_ae_covid_symptoms <- function(root="",releases=c("EUA","Prod"),ae_files=
     "Input: raw P301 AE tables, discovered separately under eua_data and prod_data, or explicit paths. All AE dates and investigator causal attributions are retained. No treatment arm, positivity, efficacy membership, unblinding or post-dose filter is applied. This is a vocabulary inventory, not an incidence or treatment-effect analysis.",
     "Preferred terms (AEDECOD), lower-level terms (AELLT) and verbatim reports (AETERM) are searched by exact equality after case and whitespace normalization. Punctuation is preserved. The printable table shows coded terms; the CSV also contains observed exact verbatim matches. Unmatched terms with suggestive words go to a separate review queue and are never accepted by regex alone.",
     "FEVER: verify measured temperature >=38 C; pyrexia or low-grade fever alone cannot establish this threshold. NLSMELL/NLTASTE: verify new onset. Other qualifying symptoms generally require >=48 h, except chills, cough and breathing symptoms. Calendar dates alone cannot establish 48 elapsed hours. Investigator discretion applied during the first seven days after vaccination, with respiratory symptoms still requiring evaluation.",
-    "Generic diagnoses (COVID-19, influenza, pneumonia, bronchitis, rhinitis) are not expanded into unreported symptoms. Pneumonia, respiratory failure and ICU admission belong in a separate severity/endpoint review. Chronic or causally qualified symptoms are retained for burden analysis; their timing and relevance to an illness visit require separate review.",
-    "For reuse, join the CSV by match_field plus normalized_term. include_default=TRUE selects direct compatibility only, not protocol eligibility. Use source_id + USUBJID + AESEQ + symptom_code to identify record matches; inspect the evidence file when fields differ. AETERM, then AELLT, then AEDECOD determines the selected evidence for the same parameter. Check review-only evidence before widening the dictionary.",
+    "Generic diagnoses (COVID-19, influenza, pneumonia, bronchitis, rhinitis) are not expanded into unreported symptoms. Pneumonia, respiratory failure and ICU admission belong in a separate severity/endpoint review. Specified alternative diagnoses, procedures, drug effects, chronic complaints, headache syndromes and localized myalgia remain available for review. They do not enter the primary map. Upper-arm pain is not proof of an injection-site reaction.",
+    "For reuse, join the CSV by match_field plus normalized_term. include_default=TRUE selects direct compatibility only, not protocol eligibility. Use source_id + USUBJID + AESEQ + symptom_code to identify record matches; inspect the evidence file when fields differ. An M3 review-only qualifier vetoes the same symptom group on the same AE; otherwise the field order is AETERM, AELLT, AEDECOD. Separate forms and other symptom groups remain eligible. Check review-only evidence before widening the dictionary.",
     "The 17 parameters collapse to 12 symptom groups: breathing, muscle/body aches, smell/taste, nasal symptoms and nausea/vomiting each share a group. Count a participant/day/group once after reconciling AE and COVID-form evidence. One dyspnoea record must not count as two distinct systemic/respiratory symptoms. The 12 groups are an analysis convention, not a replacement endpoint definition.",
     "Multiple releases and production submissions may repeat or revise the same events. Equivalent projected tables are skipped within each release; differing snapshots are inventoried separately. Never add their event counts. Choose one reconciled snapshot per analysis window. Missing releases and source paths/hashes are documented in ae_input_manifest.csv.",
     "References: P301 protocol amendment 4 (30 Sep 2020), sections 8.1.1-8.1.3; production ADaM define.xml, ADSYMP parameter definitions; SDTM AE variables. MedDRA hierarchy and Data Retrieval and Presentation: Points to Consider explain why coded diagnoses and explicit symptoms must be distinguished. https://www.meddra.org/how-to-use/basics/hierarchy",
@@ -554,7 +606,7 @@ am_export_audit_assets <- function(root,out,tab,mapping) {
   versions<-if("dictionary_version"%in%names(mapping))unique(mapping$dictionary_version) else am_version
   ax_table(a,"V08","ae_symptom_mapping","AE terms matched to COVID-compatible symptoms",rows,
     paste0("Moderna P301 | Dictionary version ",paste(versions,collapse=", ")," | Observed terms only"),
-    "Direct matches indicate symptom compatibility. Review-only terms are excluded from the default matching. These categories do not establish COVID-19 or protocol visit eligibility.",widths=c(.29,.71))
+    "Direct means compatible wording. Specified alternative causes and localized pain are review only. The dictionary alone cannot establish fever >=38 C, duration, infection or a protocol swab indication.",widths=c(.29,.71))
   ax_finish(a)
 }
 

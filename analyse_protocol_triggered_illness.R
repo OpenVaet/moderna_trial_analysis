@@ -4,12 +4,40 @@
 # trigger.adsl=".../BLA_ADSL_selected.csv", phmpt.root=getwd()). Directories also accepted.
 # Optional verified source overlays and their schemas are described in README.md.
 # No source timestamps are invented. Missing records do not establish a breach.
+# Do not mix a legacy event export with a strict M3 result.
+m3_valid_export <- function(path) {
+ if(!length(path)||!nzchar(path)||!file.exists(path))return(FALSE)
+ if(dir.exists(path)){f<-file.path(path,"M3_mapping_version.txt");return(file.exists(f)&&identical(trimws(readLines(f,n=1L,warn=FALSE)),"1.1.0-M3"))}
+ if(!grepl("[.]zip$",path,ignore.case=TRUE))return(FALSE)
+ n<-utils::unzip(path,list=TRUE)$Name;n<-n[grepl("^([^/]+/)?M3_mapping_version[.]txt$",n)]
+ if(length(n)!=1L)return(FALSE)
+ con<-unz(path,n);on.exit(close(con));identical(trimws(readLines(con,n=1L,warn=FALSE)),"1.1.0-M3")
+}
+m3_find_export <- function(root, signature) {
+ d<-file.path(root,"analysis");if(!dir.exists(d))return("")
+ f<-list.files(d,"^M3_mapping_version[.]txt$",recursive=TRUE,full.names=TRUE);v<-dirname(f)
+ v<-v[file.exists(file.path(v,signature)) & vapply(v,m3_valid_export,logical(1))]
+ if(identical(signature,"episode_symptom_source_links.csv")&&length(v)){
+  blinded<-function(d){f<-file.path(d,"run_parameters.csv");if(!file.exists(f))return(FALSE)
+    z<-read.csv(f,fileEncoding="UTF-8-BOM");any(z$parameter=="window"&z$value=="BLINDED")}
+  v<-v[vapply(v,blinded,logical(1))]
+ }
+ if(!length(v))return("")
+ normalizePath(v[order(file.info(file.path(v,signature))$mtime,v,decreasing=TRUE)[1L]],winslash="/")
+}
+m3_require_export <- function(x, producer) {
+ if(!m3_valid_export(x))stop("Run ",producer," with the M3 correction first; this input has no verified M3 mapping marker: ",x,call.=FALSE)
+ invisible(x)
+}
+
 tr_run <- function(root=getOption("phmpt.root",getwd()),out=file.path(root,"analysis","protocol_trigger_audit")){
  path<-function(x){if(file.exists(x))return(normalizePath(x));if(file.exists(file.path(root,x)))return(normalizePath(file.path(root,x)));stop("Input not found: ",x)}
  pick<-function(opt,stem,inc){u<-getOption(opt,"");if(nzchar(u))return(path(u));if(file.exists(file.path(root,"inputs",inc)))return(path(file.path(root,"inputs",inc)))
   f<-unique(unlist(lapply(c(root,file.path(root,"analysis"),file.path(root,"reference_v1_12")),function(d)if(dir.exists(d))list.files(d,pattern=stem,full.names=TRUE))))
   if(length(f)!=1L)stop("Set options(",opt,"='path') to one input. Candidates: ",paste(f,collapse=", "));path(f)}
- heat<-pick("trigger.heat","^symptom_testing_heatmaps_blinded_","heat")
+ heat<-if(!nzchar(getOption("trigger.heat","")))m3_find_export(root,"episode_symptom_source_links.csv") else ""
+ if(!nzchar(heat))heat<-pick("trigger.heat","^symptom_testing_heatmaps_blinded_","heat")
+ m3_require_export(heat,"analyse_symptom_testing_heatmaps.R")
  burden<-pick("trigger.burden","^prod_symptom_burden_","burden");lab<-pick("trigger.lab","^prod_pcr_lab_metadata_","lab")
  adsl<-pick("trigger.adsl","^BLA_ADSL_selected[.]csv$","BLA_ADSL_selected.csv")
  dir.create(out,showWarnings=FALSE,recursive=TRUE);dir.create(file.path(out,"restricted"),showWarnings=FALSE)
