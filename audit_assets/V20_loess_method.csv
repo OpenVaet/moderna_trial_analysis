@@ -1,0 +1,2 @@
+﻿"status","reason","span","degree","finite_sites","excluded_sites","distinct_enrollments","x_min","x_max","weight_basis"
+"AVAILABLE","",0.4,1,87,12,79,60,912,"One observation per site; no enrollment or precision weighting"

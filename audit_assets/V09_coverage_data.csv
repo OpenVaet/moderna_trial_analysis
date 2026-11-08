@@ -1,0 +1,3 @@
+﻿"release","window","category","label","arm","N","sites","window_start","window_end","records","affected_participants","person_days","records_missing_site","participants_missing_site","missing_blind_endpoint","undated_records","before_start_records","after_window_records"
+"Prod","Prod_ALL_FOLLOWUP","ANY_OF_SEVEN","All seven deviation types combined","mRNA-1273",15209,99,2020-07-27,2021-03-26,1987,1461,3127898,0,0,155,0,166,11
+"Prod","Prod_ALL_FOLLOWUP","ANY_OF_SEVEN","All seven deviation types combined","Placebo",15206,99,2020-07-27,2021-03-26,3001,1927,3009624,0,0,165,0,154,14

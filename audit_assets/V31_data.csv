@@ -1,0 +1,8 @@
+﻿"Calculation","mRNA-1273","Placebo"
+"Observed Day 57 anti-N positive; no positive PCR","24","47"
+"Assumed detection q (transferred PCR-positive fraction)","12/21 (57.1%) = 0.571","61/79 (77.2%) = 0.772"
+"Scenario-implied PCR-undetected infections: K / q","42.0","60.9"
+"Less Day 57 positives: K / q - K","18.0","13.9"
+"Earlier positive serology, Day 57 negative","4","8"
+"Remaining after both current and earlier serology","14.0","5.9"
+"Minimum infections already identified through serology","28","55"

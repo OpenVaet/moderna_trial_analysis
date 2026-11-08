@@ -1,0 +1,19 @@
+﻿"Window / symptom denominator","mRNA-1273","Placebo","Difference / p"
+"Original EUA snapshot
+COVID forms","915/991 (92.3%)","1,239/1,318 (94.0%)","-1.7 pp
+p 0.111"
+"Original EUA snapshot
+COVID forms + matched AEs","944/2,161 (43.7%)","1,259/2,272 (55.4%)","-11.7 pp
+p < 0.000001"
+"Production through EUA date
+COVID forms","1,062/1,142 (93.0%)","1,467/1,560 (94.0%)","-1.0 pp
+p 0.274"
+"Production through EUA date
+COVID forms + matched AEs","1,073/2,957 (36.3%)","1,491/3,114 (47.9%)","-11.6 pp
+p < 0.000001"
+"Production through BLA cutoff
+COVID forms","1,624/1,689 (96.2%)","2,415/2,493 (96.9%)","-0.7 pp
+p 0.209"
+"Production through BLA cutoff
+COVID forms + matched AEs","1,634/3,475 (47.0%)","2,441/3,964 (61.6%)","-14.6 pp
+p < 0.000001"

@@ -1,0 +1,103 @@
+﻿"Symptom / match class","Observed adverse-event terms"
+"Fever [FEVER]
+Direct preferred terms (AEDECOD)","Pyrexia"
+"Fever [FEVER]
+Other direct terms (AELLT)","Febrile reaction; Fever; Fever chills; Fever of unknown origin; Intermittent fever"
+"Fever [FEVER]
+Related terms: review only","Body temperature increased; Feverish; High temperature; Low grade fever; Post procedural fever; Postoperative fever; Slight temperature"
+"Chills [CHILLS]
+Direct preferred terms (AEDECOD)","Chills"
+"Chills [CHILLS]
+Other direct terms (AELLT)","Fever chills; Rigors"
+"Chills [CHILLS]
+Related terms: review only","-"
+"Cough [COUGH]
+Direct preferred terms (AEDECOD)","Cough; Productive cough"
+"Cough [COUGH]
+Other direct terms (AELLT)","Cough aggravated; Cough increased; Cough nonproductive; Coughing; Dry cough; Nocturnal cough; Persistent cough"
+"Cough [COUGH]
+Related terms: review only","Allergic cough; Chronic cough; Drug-induced cough; Smoker's cough"
+"Shortness of breath [SHBREATH]
+Direct preferred terms (AEDECOD)","Dyspnoea; Dyspnoea exertional"
+"Shortness of breath [SHBREATH]
+Other direct terms (AELLT)","Dyspnea; Dyspnea exacerbated; Dyspnea exertional; Exertional dyspnea; Increased shortness of breath; Short of breath; Shortness of breath"
+"Shortness of breath [SHBREATH]
+Related terms: review only","-"
+"Difficulty breathing [DIBREATH]
+Direct preferred terms (AEDECOD)","-"
+"Difficulty breathing [DIBREATH]
+Other direct terms (AELLT)","Breathing difficult; Difficulty breathing; Labored breathing"
+"Difficulty breathing [DIBREATH]
+Related terms: review only","Respiratory distress"
+"Fatigue [FATIGUE]
+Direct preferred terms (AEDECOD)","Fatigue"
+"Fatigue [FATIGUE]
+Other direct terms (AELLT)","Fatigue aggravated; Fatigue extreme; Tiredness"
+"Fatigue [FATIGUE]
+Related terms: review only","Asthenia; Malaise; Mental fatigue; Muscle fatigue; Weakness; Weakness generalized"
+"Muscle aches (myalgia) [MYALGIA]
+Direct preferred terms (AEDECOD)","Myalgia"
+"Muscle aches (myalgia) [MYALGIA]
+Other direct terms (AELLT)","Generalised muscle aches; Generalized muscle aches; Muscle ache; Muscle pain; Muscle soreness; Muscular pain; Muscular pains; Myalgia aggravated; Pain muscle; Polymyalgia; Tenderness muscle"
+"Muscle aches (myalgia) [MYALGIA]
+Related terms: review only","Localised muscle pain; Localized muscle pain; Myalgia of lower extremities; Myalgia upper extremities"
+"Body aches [BODYACHE]
+Direct preferred terms (AEDECOD)","-"
+"Body aches [BODYACHE]
+Other direct terms (AELLT)","General body pain; Generalized aching"
+"Body aches [BODYACHE]
+Related terms: review only","-"
+"Headache [HEADACHE]
+Direct preferred terms (AEDECOD)","Headache"
+"Headache [HEADACHE]
+Other direct terms (AELLT)","Forehead headache; Frequent headaches; Frontal headache; Head pain; Headache (excl migraine) aggravated; Headache aggravated; Headache dull; Headache recurrent; Headache temporal; Headache unilateral; Intermittent headache; Occipital headache; Pain head; Temporal headache"
+"Headache [HEADACHE]
+Related terms: review only","Cluster headache; Cluster headaches; Coital headache; Complicated migraine; Drug-induced headache; Exertional headache; Headache post-traumatic; Headache postoperative; Headache sinus; Headache tension; Migraine; Migraine aggravated; Migraine aura; Migraine headache; Migraine with aura; Migraine without aura; New daily persistent headache; Ophthalmic migraine; Post-traumatic headache; Post procedural headache; Primary cough headache; Primary headache associated with sexual activity; Procedural headache; Sinus headache; Tension headache; Tension headaches; Vestibular migraine"
+"New loss of smell [NLSMELL]
+Direct preferred terms (AEDECOD)","Anosmia"
+"New loss of smell [NLSMELL]
+Other direct terms (AELLT)","Loss of smell"
+"New loss of smell [NLSMELL]
+Related terms: review only","Altered smell sensation; Diminished sense of smell; Hyposmia; Parosmia; Phantosmia; Smell alteration; Smell change"
+"New loss of taste [NLTASTE]
+Direct preferred terms (AEDECOD)","Ageusia"
+"New loss of taste [NLTASTE]
+Other direct terms (AELLT)","Loss of taste"
+"New loss of taste [NLTASTE]
+Related terms: review only","Dysgeusia; Hypogeusia; Impaired taste; Taste alteration; Taste altered; Taste bitter; Taste changed; Taste diminished; Taste disorder; Taste metallic; Taste salty"
+"Sore throat [STHROAT]
+Direct preferred terms (AEDECOD)","Oropharyngeal pain"
+"Sore throat [STHROAT]
+Other direct terms (AELLT)","Pain throat; Sore throat; Throat pain; Throat sore"
+"Sore throat [STHROAT]
+Related terms: review only","Chronic sore throat; Dry throat; Itchy throat; Oropharyngeal discomfort; Pharyngeal paraesthesia; Pharynx irritated sensation of; Streptococcal sore throat; Throat discomfort; Throat irritation; Throat tightness; Tingling throat"
+"Nasal congestion [NASALCON]
+Direct preferred terms (AEDECOD)","Nasal congestion"
+"Nasal congestion [NASALCON]
+Other direct terms (AELLT)","Congestion nasal; Nasal sinus congestion; Nasal stuffiness; Nose congestion"
+"Nasal congestion [NASALCON]
+Related terms: review only","Chronic nasal congestion; Respiratory tract congestion; Sinus congestion; Upper respiratory tract congestion"
+"Runny nose (rhinorrhea) [RUNNOSE]
+Direct preferred terms (AEDECOD)","Rhinorrhoea"
+"Runny nose (rhinorrhea) [RUNNOSE]
+Other direct terms (AELLT)","Nasal discharge; Nasal mucus increased; Rhinorrhea; Runny nose"
+"Runny nose (rhinorrhea) [RUNNOSE]
+Related terms: review only","-"
+"Nausea [NAUSEA]
+Direct preferred terms (AEDECOD)","Nausea"
+"Nausea [NAUSEA]
+Other direct terms (AELLT)","Nausea aggravated"
+"Nausea [NAUSEA]
+Related terms: review only","Post procedural nausea; Postoperative nausea; Procedural nausea"
+"Vomiting [VOMIT]
+Direct preferred terms (AEDECOD)","Vomiting"
+"Vomiting [VOMIT]
+Other direct terms (AELLT)","Emesis; Hyperemesis; Vomited"
+"Vomiting [VOMIT]
+Related terms: review only","Procedural vomiting"
+"Diarrhea [DIARRHEA]
+Direct preferred terms (AEDECOD)","Diarrhoea"
+"Diarrhea [DIARRHEA]
+Other direct terms (AELLT)","Acute diarrhea; Diarrhea; Diarrhea aggravated; Loose bowel; Loose bowels; Loose stools; Stools watery; Watery diarrhea"
+"Diarrhea [DIARRHEA]
+Related terms: review only","Bacterial diarrhea; Bacterial diarrhoea; Diarrhoea infectious; Traveller's diarrhea; Viral diarrhea; Viral diarrhoea"

@@ -1,0 +1,2 @@
+﻿"subset","SITEID","v_high_y","v_high_n","v_low_y","v_low_n","p_high_y","p_high_n","p_low_y","p_low_n","vaccine_change_pp","placebo_change_pp","difference_in_changes_pp","interaction_OR","ci_lower","ci_upper","interaction_p","subjects","status","interaction_q_BH"
+"ALL_EPISODES","US302",9,22,9,13,10,18,7,16,-28.3216783216783,11.8055555555556,-40.1272338772339,0.191452991452991,0.0257215422811225,1.42504082903304,0.104687166456323,60,"ESTIMABLE",1

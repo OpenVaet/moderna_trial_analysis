@@ -1,0 +1,9 @@
+﻿"Linked-record scope / transition","mRNA-1273","Placebo","Total"
+"All linked dates
+YES -> NO","139","236","375"
+"All linked dates
+NO -> YES","356","340","696"
+"Same date
+YES -> NO","86","152","238"
+"Same date
+NO -> YES","228","249","477"

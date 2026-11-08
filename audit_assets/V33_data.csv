@@ -1,0 +1,64 @@
+﻿"Participant / arm","RANDFL EUA -> BLA","BLA dose and population fields","Recorded reasons / separate context"
+"US3132036
+Placebo","Y -> N","Dose 1: 2020-09-02
+Dose 2: 2020-10-14
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+Reviewer-guide context: duplicate / invalid randomization"
+"US3162112
+Placebo","Y -> N","Dose 1: 2020-08-13
+Dose 2: 2020-09-10
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+Reviewer-guide context: duplicate / invalid randomization"
+"US3172220
+Placebo","Y -> N","Dose 1: 2020-08-19
+Dose 2: Blank
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+Reviewer-guide context: duplicate / invalid randomization"
+"US3352166
+Placebo","Y -> N","Dose 1: 2020-08-20
+Dose 2: 2020-09-17
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+Reviewer-guide context: duplicate / invalid randomization"
+"US3522027
+Placebo","Y -> N","Dose 1: Blank
+Dose 2: Blank
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+Reviewer-guide context: duplicate / invalid randomization"
+"US3522544
+mRNA-1273","Y -> N","Dose 1: Blank
+Dose 2: Blank
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+No reviewer-guide classification supplied"
+"US3952070
+mRNA-1273","Y -> N","Dose 1: 2020-09-10
+Dose 2: 2020-10-13
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Blank
+Safety: Blank
+No reviewer-guide classification supplied"
+"US3692054
+mRNA-1273","Absent -> Y","Dose 1: Blank
+Dose 2: Blank
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Did not receive any vaccination, Had major protocol deviations
+Safety: Did not receive any vaccination, Had major protocol deviations
+No reviewer-guide classification supplied"
+"US3272156
+Placebo","Absent -> Y","Dose 1: Blank
+Dose 2: Blank
+FAS / safety: N / N
+mITT / PP: N / N","FAS: Did not receive any vaccination
+Safety: Did not receive any vaccination
+No reviewer-guide classification supplied"

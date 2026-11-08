@@ -1,0 +1,5 @@
+﻿"Comparison","Odds ratio","95% CI","p"
+"Site and calendar week","0.644","0.549 to 0.756","< 0.000001"
+"Plus onset symptoms and post-dose timing","0.723","0.590 to 0.886","< 0.01"
+"Plus onset recording source (sensitivity)","0.902","0.719 to 1.132","0.3689"
+"Outside days 0-6: site, week and symptoms","0.734","0.586 to 0.920","< 0.01"

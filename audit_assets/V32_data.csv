@@ -1,0 +1,8 @@
+﻿"Measure","EUA","BLA"
+"ADSL subject IDs","30,571","30,423"
+"Randomized flag = Y","30,420","30,415"
+"Shared subject IDs","30,421","30,421"
+"IDs present only in this snapshot","150","2"
+"EUA-randomized IDs absent from BLA ADSL","Not applicable","0"
+"EUA-only ADSL IDs still present in BLA DM","150","115"
+"EUA-only ADSL IDs absent from checked BLA DM","Not applicable","35"

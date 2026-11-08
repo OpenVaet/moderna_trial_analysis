@@ -1,0 +1,4 @@
+"decision","vaccine_y","vaccine_n","placebo_y","placebo_n"
+"Checklist documented by day 3 among episodes warranting investigation",1397,2895,2187,3594
+"Swab collected by day 3 among all swab-indicated episodes",872,2838,1372,3546
+"Swab collected on or after the first checklist date and by day 3, among swab-indicated episodes with a checklist by day 3",863,1372,1356,2170
