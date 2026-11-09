@@ -71,8 +71,10 @@ render_intro_figures <- function(root=getOption("phmpt.root",getwd()),
     lab<-lab[lab$release=="Prod"&lab$period=="BLA_SNAPSHOT"&lab$scope=="STRICT_BLINDED"&lab$granularity=="GLOBAL"&lab$endpoint=="Any PCR",]
     ordered<-function(x){if(nrow(x)!=2L||anyDuplicated(x$arm)||!setequal(x$arm,arms))stop("Expected one record per arm");x[match(arms,x$arm),]}
     headline<-read("headline",c("scope","vaccine_total","vaccine_tested","vaccine_pct","placebo_total","placebo_tested","placebo_pct","gap_pp","low95","high95","vaccine_low95","vaccine_high95","placebo_low95","placebo_high95","bootstrap_draws","n_sites_in_resampling_frame","seed","interval_method"))
-    scopes<-c("Participants: blinded | no linked positive","Participants: PP, dose 2 + 14 days | no linked positive")
-    if(nrow(headline)!=2||!setequal(headline$scope,scopes))stop("Expected both unique participant scopes, with linked positives excluded.")
+    scopes<-c("Participants: blinded | no linked positive",
+      "Participants: blinded | no linked positive | excluding post-dose days 0-6",
+      "Participants: PP, dose 2 + 14 days | no linked positive")
+    if(nrow(headline)!=3||!setequal(headline$scope,scopes))stop("V02 requires all three unique participant scopes. Use the supplied headline_pcr_coverage.csv or rerun the updated analyse_symptom_critique.R.")
     headline<-headline[match(scopes,headline$scope),]
     if(any(!is.finite(as.matrix(headline[c("bootstrap_draws","n_sites_in_resampling_frame","seed")]))) ||
        length(unique(headline$bootstrap_draws))!=1L||length(unique(headline$n_sites_in_resampling_frame))!=1L||
@@ -98,28 +100,31 @@ render_intro_figures <- function(root=getOption("phmpt.root",getwd()),
       s<-ordered(lab[lab$stratum==paste0("SYMPTOMS__",pop,"__BY_CUTOFF__DIAGNOSTIC"),])
       rows[[i]]<-row(c("Symptoms on either record","Symptoms on a COVID checklist")[i],s$n_tested,s$n_eligible)
     }
-    for(i in 1:2){r<-headline[i,]; rows[[i+2]]<-row(c("All blinded follow-up; no linked positive PCR","Per-protocol window; no linked positive PCR")[i],
+    for(i in 1:3){r<-headline[i,]; rows[[i+2]]<-row(c("All blinded follow-up; no linked positive PCR",
+        "Same full-window no-positive cohort; symptom dates outside days 0-6 after either dose",
+        "Per-protocol window; no linked positive PCR")[i],
         c(r$vaccine_tested,r$placebo_tested),c(r$vaccine_total,r$placebo_total),r=r)}
-    rows[[5]]<-row("Once a checklist existed: swab by day 3",t$form_then_swab,t$form,"Illness episodes")
+    rows[[6]]<-row("Once a checklist existed: swab by day 3",t$form_then_swab,t$form,"Illness episodes")
     z<-do.call(rbind,rows);csv(z,"V02_table_data.csv")
     csv(data.frame(input=names(files),file=basename(files),md5=unname(tools::md5sum(files))),"V02_inputs.csv")
     fmt<-function(x)formatC(as.integer(x),format="d",big.mark=",");signpc<-function(x)sprintf("%+.1f",x)
-    draw("V02","testing_gap_per_protocol_window",6.10,function(){
-      txt(.25,5.78,"V02  The testing gap narrowed in the per-protocol window",17,TRUE)
-      txt(.25,5.41,"Diagnostic PCR coverage in the blinded licensing data",12,FALSE,muted)
-      rect(.25,4.87,8.0,.36,"#dce8ed")
-      txt(.37,5.05,"Comparison",11,TRUE);txt(4.25,5.05,"mRNA-1273",11,TRUE);txt(6.28,5.05,"Placebo",11,TRUE)
+    draw("V02","testing_gap_per_protocol_window",7.20,function(){
+      txt(.25,6.88,"V02  The testing gap narrowed in the per-protocol window",17,TRUE)
+      txt(.25,6.51,"Diagnostic PCR coverage in the blinded licensing data",12,FALSE,muted)
+      rect(.25,5.97,8.0,.36,"#dce8ed")
+      txt(.37,6.15,"Comparison",11,TRUE);txt(4.25,6.15,"mRNA-1273",11,TRUE);txt(6.28,6.15,"Placebo",11,TRUE)
       labels<-list("Symptoms on either record","Symptoms on a COVID checklist",
         c("All blinded follow-up;","no linked positive PCR"),
+        c("Same cohort; set aside symptoms","on days 0-6 after either dose"),
         c("Per-protocol, baseline-negative;","from 14 days after dose 2;","no linked positive PCR"),
         c("Swab by day 3 among swab-indicated","episodes with a checklist by day 3"))
-      top<-4.87
-      for(i in 1:5){
-        h<-c(.43,.43,.68,.84,.67)[i];mid<-top-h/2
-        if(i%in%c(3,4))rect(.25,top-h,8,h,if(i==3)"#eef6f5" else "#e3f1ee")
+      top<-5.97
+      for(i in seq_len(nrow(z))){
+        h<-c(.43,.43,.68,.68,.84,.67)[i];mid<-top-h/2
+        if(i%in%3:5)rect(.25,top-h,8,h,if(i!=4)"#eef6f5" else "#e3f1ee")
         seg(.25,top-h,8.25,top-h,"#c8d4d7")
         laby<-mid+.104*(length(labels[[i]])-1L)
-        for(j in seq_along(labels[[i]]))txt(.37,laby-.208*(j-1),labels[[i]][j],11,i%in%c(3,4))
+        for(j in seq_along(labels[[i]]))txt(.37,laby-.208*(j-1),labels[[i]][j],11,i%in%3:5)
         for(a in c("vaccine","placebo")){
           x<-if(a=="vaccine")4.25 else 6.28
           v<-function(s)z[[paste0(a,s)]][i];ci<-is.finite(v("_low95"));y<-if(ci)mid+.11 else mid
@@ -128,11 +133,13 @@ render_intro_figures <- function(root=getOption("phmpt.root",getwd()),
         }
         top<-top-h
       }
-      txt(.30,1.56,"Vaccine minus placebo, percentage points (95% CI)",11.6,TRUE)
+      txt(.30,2.00,"Vaccine minus placebo, percentage points (95% CI)",11.6,TRUE)
       dif<-function(i)sprintf("%s (%s to %s)",signpc(z$gap_pp[i]),signpc(z$gap_low95[i]),signpc(z$gap_high95[i]))
-      txt(.30,1.28,paste0("All blinded follow-up: ",dif(3),"     |     Per-protocol window: ",dif(4)),11.4,TRUE,teal)
-      txt(.30,.89,"First four rows count participants once per window. The last counts illness episodes; day 3 is measured",10,FALSE,muted)
-      txt(.30,.68,"from the swab trigger. Rows excluding linked positives retain untested participants.",10,FALSE,muted)
+      txt(.30,1.72,paste0("All blinded follow-up: ",dif(3),"     |     Days 0-6 set aside: ",dif(4)),11.1,TRUE,teal)
+      txt(.30,1.45,paste0("Per-protocol window: ",dif(5)),11.1,TRUE,teal)
+      txt(.30,1.04,"Rows 1-5 count participants; row 6 counts illnesses, from the swab trigger. Untested participants remain",10,FALSE,muted)
+      txt(.30,.83,"eligible. Row 4 removes symptom dates, not people with later symptoms; the no-positive rule applies",10,FALSE,muted)
+      txt(.30,.62,"across the entire blinded period. Row 5 assesses linked positives within the per-protocol window.",10,FALSE,muted)
       txt(.30,.36,paste0("Intervals resample whole sites, keeping both arms together (",fmt(headline$bootstrap_draws[1])," draws; ",headline$n_sites_in_resampling_frame[1]," sites)."),10,FALSE,muted)
     })
   }

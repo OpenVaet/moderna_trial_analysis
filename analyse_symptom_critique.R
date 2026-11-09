@@ -7,7 +7,11 @@
 #         phmpt.c1_lab="path/to/pcr_testing_by_lab_...zip",
 #         phmpt.c1_adsl="path/to/BLA_ADSL_selected.csv", phmpt.root=getwd())
 # Output: analysis/symptom_critique_c1. No packages required.
-# Also exports headline_pcr_coverage.csv: two participant-level comparisons.
+# V02 outputs: analysis/symptom_critique_c1/{coverage,headline_pcr_coverage,V02_table_data}.csv,
+# table_inputs_intro/headline_pcr_coverage.csv (three rows), audit_assets/V02_table_data.csv (six rows).
+# The last row uses protocol episodes from arm_summary.csv or the matching published V19 row.
+# To select another protocol run: options(phmpt.c1_trigger_file=".../arm_summary.csv").
+# Use the accompanying six-row analyse_intro_figures.R to redraw the PNG.
 # Arm and vaccine-minus-placebo intervals use the SAME 4,000 resampled site vectors.
 # Descriptive, not a re-fit of the efficacy model. A positive is a linked diagnostic
 # result in the specified window, not necessarily an adjudicated primary case.
@@ -101,6 +105,11 @@ analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
   anchors$hit<-anchors$anchor_id%in%links$anchor_id
   anchors$pos<-anchors$anchor_id%in%links$anchor_id[tf(tests$positive[j])&!tf(tests$result_conflict[j])]
   anchors$form<-tf(anchors$has_covid_form)
+  stopifnot("early_postdose"%in%names(anchors),!anyDuplicated(unique(anchors[c("subject","arm")])$subject))
+  ai<-match(links$anchor_id,anchors$anchor_id)
+  stopifnot(all(links$subject==anchors$subject[ai]),all(as.Date(links$test_date)>=as.Date(anchors$evidence_date[ai])),
+            all(as.Date(links$test_date)<=as.Date(anchors$link_end[ai])),
+            all(as.Date(links$test_date)<=as.Date(anchors$evidence_date[ai])+7))
   # The upstream BY_CUTOFF participant metric permits truncated 7-day follow-up.
   # Verify there are no diagnostic links beyond the individual's efficacy cutoff
   # in the PP subset; if there are, rebuild links within that boundary.
@@ -138,20 +147,97 @@ analyse_symptom_critique <- function(root=getOption("phmpt.root",getwd()),
   form<-as.data.frame(with(s[s$form,],table(arm,pos)));names(form)[2:3]<-c("linked_positive","participants_with_COVID_forms")
   u<-as.data.frame(with(sp[!sp$form & !sp$hit,],table(arm)));names(u)[2]<-"AE_only_without_linked_diagnostic_test"
   dir.create(out,recursive=TRUE,showWarnings=FALSE)
-  write.csv(results,file.path(out,"coverage.csv"),row.names=FALSE)
   write.csv(form,file.path(out,"COVID_form_participants_by_result.csv"),row.names=FALSE)
   write.csv(u,file.path(out,"PP_timing_AE_only_untested_people.csv"),row.names=FALSE)
   selected<-match(c("Participants: blinded | no linked positive","Participants: PP, dose 2 + 14 days | no linked positive"),results$scope)
   stopifnot(!anyNA(selected))
-  headline<-results[selected,];headline$interval_method<-"Paired site-cluster percentile bootstrap; both arms retained in each site"
+  # Fix membership by absence of ANY linked positive during full blinded follow-up.
+  # Drop early symptom dates, not entire participants; link a test only to a retained date.
+  remaining<-anchors[!(anchors$subject%in%s$subject[s$pos]) & !tf(anchors$early_postdose),]
+  outside<-people(remaining);stopifnot(!any(outside$pos))
+  scoped<-list(s[!s$pos,],outside,sp[!sp$pos,])
+  sensitivity<-sumrow("Participants: blinded | no linked positive | excluding post-dose days 0-6",outside)
+  headline<-rbind(results[selected[1],],sensitivity,results[selected[2],]);headline$interval_method<-"Paired site-cluster percentile bootstrap; both arms retained in each site"
   headline$bootstrap_draws<-ncol(weights);headline$n_sites_in_resampling_frame<-length(sites);headline$seed<-30114L
   for(i in seq_len(nrow(headline))){
-    x<-if(i==1L) s[!s$pos,] else sp[!sp$pos,]
+    x<-scoped[[i]]
     headline$sites_with_eligible_participants[i]<-length(unique(substr(x$subject,1,5)))
   }
-  write.csv(headline,file.path(out,"headline_pcr_coverage.csv"),row.names=FALSE)
-  print(results,row.names=FALSE,digits=4);print(form,row.names=FALSE);print(u,row.names=FALSE)
-  message("Outputs: ",normalizePath(out))
-  invisible(list(coverage=results,form=form,untested=u))
+  # Row 6 counts illness EPISODES conditional on a checklist, not unique participants.
+  # Prefer an explicitly selected protocol export. Also support projects that have
+  # the numeric V19 table but not the full aggregate input directory.
+  absolute<-function(x)if(grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)",x))x else file.path(root,x)
+  intro<-absolute(getOption("phmpt.intro_input_dir","table_inputs_intro"))
+  assets<-absolute(getOption("phmpt.audit_asset_dir","audit_assets"))
+  override<-getOption("phmpt.c1_trigger_file",getOption("phmpt.intro_trigger_file",""))
+  if(!is.null(override) && nzchar(override)){
+    trigger_file<-absolute(override)
+  }else{
+    candidates<-c(file.path(intro,"arm_summary.csv"),file.path(root,"table_inputs_v022","protocol","arm_summary.csv"),
+      file.path(root,"audit_assets","V19_table_data.csv"))
+    found<-candidates[file.exists(candidates)]
+    if(!length(found))stop("To export all six V02 rows supply options(phmpt.c1_trigger_file='.../arm_summary.csv') or the numeric audit_assets/V19_table_data.csv.")
+    trigger_file<-found[1L]
+  }
+  protocol<-read.csv(trigger_file,check.names=FALSE,stringsAsFactors=FALSE,fileEncoding="UTF-8-BOM")
+  arms<-c("mRNA-1273","Placebo")
+  if(all(c("decision","vaccine_y","vaccine_n","placebo_y","placebo_n")%in%names(protocol))){
+    v19<-protocol[protocol$decision=="Swab collected on or after the first checklist date and by day 3, among swab-indicated episodes with a checklist by day 3",,drop=FALSE]
+    if(nrow(v19)!=1L)stop("Expected exactly one V19 checklist-conditional swab row in ",trigger_file)
+    protocol<-data.frame(scope="All",arm=arms,form_then_swab=c(v19$vaccine_y,v19$placebo_y),form=c(v19$vaccine_n,v19$placebo_n))
+  }
+  required<-c("scope","arm","form","form_then_swab")
+  if(!all(required%in%names(protocol)))stop("Not a compatible protocol summary or V19 data table: ",trigger_file)
+  tr<-protocol[protocol$scope=="All",]
+  stopifnot(nrow(tr)==2L,setequal(tr$arm,arms));tr<-tr[match(arms,tr$arm),]
+  lab_global<-getcsv(lab,"symptom_summary_global.csv")
+  need<-c("release","period","scope","stratum","granularity","endpoint","arm","n_eligible","n_tested")
+  stopifnot(all(need%in%names(lab_global)))
+  g<-subset(lab_global,release=="Prod"&period=="BLA_SNAPSHOT"&scope=="STRICT_BLINDED"&granularity=="GLOBAL"&endpoint=="Any PCR")
+  row<-function(label,y,n,unit="Participants",h=NULL){
+    stopifnot(length(y)==2,length(n)==2,all(is.finite(c(y,n))),all(c(y,n)==floor(c(y,n))),all(n>0 & y>=0 & y<=n))
+    rates<-100*y/n; lo<-hi<-rep(NA_real_,2); gap<-gl<-gh<-NA_real_
+    if(!is.null(h)){
+      lo<-c(h$vaccine_low95,h$placebo_low95);hi<-c(h$vaccine_high95,h$placebo_high95)
+      gap<-h$gap_pp;gl<-h$low95;gh<-h$high95
+      stopifnot(all(is.finite(c(lo,hi,gap,gl,gh))),all(lo<=hi & lo>=0 & hi<=100),gl<=gh,
+        max(abs(rates-c(h$vaccine_pct,h$placebo_pct)))<1e-8,abs(gap-(rates[1]-rates[2]))<1e-8)
+    }
+    data.frame(label,unit,vaccine_tested=y[1],vaccine_total=n[1],vaccine_pct=rates[1],vaccine_low95=lo[1],vaccine_high95=hi[1],
+      placebo_tested=y[2],placebo_total=n[2],placebo_pct=rates[2],placebo_low95=lo[2],placebo_high95=hi[2],
+      gap_pp=gap,gap_low95=gl,gap_high95=gh,row.names=NULL)
+  }
+  labels<-c("Symptoms on either record","Symptoms on a COVID checklist","All blinded follow-up; no linked positive PCR",
+    "Same full-window no-positive cohort; symptom dates outside days 0-6 after either dose","Per-protocol window; no linked positive PCR",
+    "Once a checklist existed: swab by day 3")
+  rows<-list()
+  for(i in 1:2){
+    pop<-c("COVID_FORM_PLUS_AE","COVID_FORM_ONLY")[i]
+    z<-g[g$stratum==paste0("SYMPTOMS__",pop,"__BY_CUTOFF__DIAGNOSTIC"),];stopifnot(nrow(z)==2L,setequal(z$arm,arms))
+    z<-z[match(arms,z$arm),]
+    a<-if(i==1L)s else people(anchors[anchors$form,])
+    stopifnot(all(z$n_eligible==vapply(arms,function(ar)sum(a$arm==ar),integer(1))),
+              all(z$n_tested==vapply(arms,function(ar)sum(a$arm==ar & a$hit),integer(1))))
+    rows[[i]]<-row(labels[i],z$n_tested,z$n_eligible)
+  }
+  for(i in seq_len(nrow(headline))){h<-headline[i,];rows[[i+2L]]<-row(labels[i+2L],c(h$vaccine_tested,h$placebo_tested),c(h$vaccine_total,h$placebo_total),h=h)}
+  rows[[6]]<-row(labels[6],tr$form_then_swab,tr$form,"Illness episodes")
+  v02<-do.call(rbind,rows);stopifnot(nrow(v02)==6L,nrow(headline)==3L)
+  # Keep all previous scopes in the same order. Add the first-week sensitivity to the detailed export too.
+  results<-rbind(results,sensitivity)
+  for(d in c(intro,assets))dir.create(d,recursive=TRUE,showWarnings=FALSE)
+  csv<-function(x,file)write.csv(x,file,row.names=FALSE,na="",fileEncoding="UTF-8")
+  csv(results,file.path(out,"coverage.csv"))
+  for(d in unique(c(out,intro)))csv(headline,file.path(d,"headline_pcr_coverage.csv"))
+  for(d in unique(c(out,assets)))csv(v02,file.path(d,"V02_table_data.csv"))
+  csv(lab_global,file.path(intro,"symptom_summary_global.csv"))
+  if(!identical(normalizePath(trigger_file,winslash="/"),normalizePath(file.path(intro,"arm_summary.csv"),winslash="/",mustWork=FALSE)))
+    csv(protocol,file.path(intro,"arm_summary.csv"))
+  csv(data.frame(role=c("heatmap","lab","ADSL","protocol"),input=c(heat,lab,adsl,normalizePath(trigger_file,winslash="/"))),
+      file.path(out,"V02_sources.csv"))
+  print(headline[,c("scope","vaccine_tested","vaccine_total","placebo_tested","placebo_total","gap_pp","low95","high95")],row.names=FALSE,digits=4)
+  message("Headline CSV (3 rows): ",file.path(intro,"headline_pcr_coverage.csv"),
+    "\nV02 figure CSV (6 rows): ",file.path(assets,"V02_table_data.csv"),"\nDetailed results: ",normalizePath(out))
+  invisible(list(coverage=results,headline=headline,v02=v02,form=form,untested=u))
 }
 if(isTRUE(getOption("phmpt.autorun",TRUE)))analyse_symptom_critique()
