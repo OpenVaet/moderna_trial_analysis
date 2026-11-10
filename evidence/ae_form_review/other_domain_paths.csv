@@ -1,0 +1,873 @@
+key,snapshot,domain,reference,reported,source_date,rule
+US3002230:AE-003,S3,CE:REACTOGENICITY,11,Chills,2020-09-30T12:09,positive same symptom and onset day
+US3002230:AE-003,S27,CE:REACTOGENICITY,34,Chills,2020-09-30T12:09,positive same symptom and onset day
+US3012059:AE-002,S27,CE:REACTOGENICITY,39,Headache,2020-08-09T20:33,positive same symptom and onset day
+US3012118:AE-002,S3,CE:REACTOGENICITY,10,Myalgia,2020-08-13T19:00,positive same symptom and onset day
+US3012118:AE-002,S27,CE:REACTOGENICITY,21,Myalgia,2020-08-13T19:00,positive same symptom and onset day
+US3012350:AE-002,S3,FA,ADSYMP:192,Fatigue,2020-10-26,positive COVID symptom assessment on EUA onset day
+US3012350:AE-002,S3,CE:EFFICACY,6,Fatigue,2020-10-20,EUA onset inside positive same-symptom interval (different start)
+US3012350:AE-002,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-20T21:40,EUA onset inside positive same-symptom interval (different start)
+US3012350:AE-002,S27,CE:EFFICACY,6,Fatigue,2020-10-20,EUA onset inside positive same-symptom interval (different start)
+US3012350:AE-002,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-20T21:40,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-003,S3,FA,ADSYMP:35,New Loss of Taste,2020-10-25,positive COVID symptom assessment on EUA onset day
+US3022065:AE-003,S3,CE:EFFICACY,13,New Loss of Taste,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-003,S27,CE:EFFICACY,13,New Loss of Taste,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-013,S3,FA,ADSYMP:32,New Loss of Smell,2020-10-25,positive COVID symptom assessment on EUA onset day
+US3022065:AE-013,S3,CE:EFFICACY,12,New Loss of Smell,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-013,S27,CE:EFFICACY,12,New Loss of Smell,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-009,S3,FA,ADSYMP:8,Cough,2020-10-25,positive COVID symptom assessment on EUA onset day
+US3022065:AE-009,S3,CE:EFFICACY,3,Cough,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-009,S27,CE:EFFICACY,3,Cough,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-010,S3,FA,ADSYMP:41,Shortness of Breath,2020-10-25,positive COVID symptom assessment on EUA onset day
+US3022065:AE-010,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-010,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3022065:AE-011,S3,FA,ADSYMP:16,Fatigue,2020-10-24,positive COVID symptom assessment on EUA onset day
+US3022065:AE-011,S3,CE:EFFICACY,6,Fatigue,2020-10-24,positive same symptom and onset day
+US3022065:AE-011,S27,CE:EFFICACY,6,Fatigue,2020-10-24,positive same symptom and onset day
+US3022065:AE-005,S3,FA,ADSYMP:19,Headache,2020-10-24,positive COVID symptom assessment on EUA onset day
+US3022065:AE-005,S3,CE:EFFICACY,8,Headache,2020-10-24,positive same symptom and onset day
+US3022065:AE-005,S27,CE:EFFICACY,8,Headache,2020-10-24,positive same symptom and onset day
+US3022065:AE-004,S3,FA,ADSYMP:1,Body Aches,2020-10-24,positive COVID symptom assessment on EUA onset day
+US3022065:AE-004,S3,CE:EFFICACY,1,Body Aches,2020-10-24,positive same symptom and onset day
+US3022065:AE-004,S27,CE:EFFICACY,1,Body Aches,2020-10-24,positive same symptom and onset day
+US3022220:AE-002,S3,FA,ADSYMP:142,Fatigue,2020-10-15,positive COVID symptom assessment on EUA onset day
+US3022220:AE-002,S3,CE:EFFICACY,6,Fatigue,2020-10-15,positive same symptom and onset day
+US3022220:AE-002,S27,CE:EFFICACY,6,Fatigue,2020-10-15,positive same symptom and onset day
+US3022220:AE-003,S3,FA,ADSYMP:167,Headache,2020-10-15,positive COVID symptom assessment on EUA onset day
+US3022220:AE-003,S3,CE:EFFICACY,8,Headache,2020-09-16,EUA onset inside positive same-symptom interval (different start)
+US3022220:AE-003,S27,CE:EFFICACY,8,Headache,2020-09-16,EUA onset inside positive same-symptom interval (different start)
+US3022220:AE-004,S3,FA,ADSYMP:217,Nasal Congestion,2020-10-15,positive COVID symptom assessment on EUA onset day
+US3022220:AE-004,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-15,positive same symptom and onset day
+US3022220:AE-004,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-15,positive same symptom and onset day
+US3022220:AE-005,S3,FA,ADSYMP:351,Sore Throat,2020-09-13,positive COVID symptom assessment on EUA onset day
+US3022220:AE-005,S3,CE:EFFICACY,17,Sore Throat,2020-09-13,positive same symptom and onset day
+US3022220:AE-005,S27,CE:EFFICACY,17,Sore Throat,2020-09-13,positive same symptom and onset day
+US3042056:AE-004,S3,CE:REACTOGENICITY,27,Arthralgia,2020-08-07T13:33,positive same symptom and onset day
+US3042056:AE-004,S27,CE:REACTOGENICITY,50,Arthralgia,2020-08-07T13:33,positive same symptom and onset day
+US3042056:AE-010,S3,CE:REACTOGENICITY,30,Chills,2020-09-01T12:38,positive same symptom and onset day
+US3042056:AE-010,S27,CE:REACTOGENICITY,52,Chills,2020-09-01T12:38,positive same symptom and onset day
+US3042056:AE-002,S3,CE:REACTOGENICITY,21,Pain,2020-08-04T12:07,positive same symptom and onset day
+US3042056:AE-002,S27,CE:REACTOGENICITY,43,Pain,2020-08-04T12:07,positive same symptom and onset day
+US3042056:AE-005,S3,CE:REACTOGENICITY,22,Pain,2020-09-01T12:37,positive same symptom and onset day
+US3042056:AE-005,S27,CE:REACTOGENICITY,44,Pain,2020-09-01T12:37,positive same symptom and onset day
+US3042056:AE-006,S3,CE:REACTOGENICITY,22,Pain,2020-09-01T12:37,"positive same diary symptom, dose and end day (start not matched)"
+US3042056:AE-006,S27,CE:REACTOGENICITY,44,Pain,2020-09-01T12:37,"positive same diary symptom, dose and end day (start not matched)"
+US3042056:AE-003,S3,CE:REACTOGENICITY,37,Myalgia,2020-08-03T20:05,positive same symptom and onset day
+US3042056:AE-003,S27,CE:REACTOGENICITY,60,Myalgia,2020-08-03T20:05,positive same symptom and onset day
+US3042056:AE-009,S3,CE:REACTOGENICITY,40,Nausea/Vomiting,2020-09-01T12:38,positive same symptom and onset day
+US3042056:AE-009,S27,CE:REACTOGENICITY,62,Nausea/Vomiting,2020-09-01T12:38,positive same symptom and onset day
+US3042090:AE-003,S3,FA,ADSYMP:94,Headache,2020-08-15,positive COVID symptom assessment on EUA onset day
+US3042090:AE-003,S3,CE:EFFICACY,8,Headache,2020-08-15,positive same symptom and onset day
+US3042090:AE-003,S27,CE:EFFICACY,8,Headache,2020-08-15,positive same symptom and onset day
+US3042090:AE-002,S3,CE:REACTOGENICITY,37,Myalgia,2020-08-11T18:43,positive same symptom and onset day
+US3042090:AE-002,S27,CE:REACTOGENICITY,59,Myalgia,2020-08-11T18:43,positive same symptom and onset day
+US3042090:AE-005,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-04T16:31,EUA onset inside positive same-symptom interval (different start)
+US3042090:AE-005,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-04T16:31,EUA onset inside positive same-symptom interval (different start)
+US3042090:AE-004,S3,FA,ADSYMP:3,Body Aches,2020-08-14,positive COVID symptom assessment on EUA onset day
+US3042090:AE-004,S3,CE:EFFICACY,1,Body Aches,2020-08-12,EUA onset inside positive same-symptom interval (different start)
+US3042090:AE-004,S27,CE:EFFICACY,1,Body Aches,2020-08-12,EUA onset inside positive same-symptom interval (different start)
+US3042111:AE-005,S3,CE:REACTOGENICITY,12,Chills,2020-09-05T12:01,positive same symptom and onset day
+US3042111:AE-005,S27,CE:REACTOGENICITY,34,Chills,2020-09-05T12:01,positive same symptom and onset day
+US3042111:AE-002,S3,CE:REACTOGENICITY,3,Pain,2020-08-07T17:02,positive same symptom and onset day
+US3042111:AE-002,S27,CE:REACTOGENICITY,25,Pain,2020-08-07T17:02,positive same symptom and onset day
+US3042111:AE-004,S3,CE:REACTOGENICITY,4,Pain,2020-09-04T18:28,positive same symptom and onset day
+US3042111:AE-004,S27,CE:REACTOGENICITY,26,Pain,2020-09-04T18:28,positive same symptom and onset day
+US3042111:AE-003,S3,CE:REACTOGENICITY,16,Fever,2020-09-05T12:00,"positive same diary symptom, dose and end day (start not matched)"
+US3042111:AE-003,S27,CE:REACTOGENICITY,38,Fever,2020-09-05T12:00,"positive same diary symptom, dose and end day (start not matched)"
+US3042116:AE-002,S3,CE:REACTOGENICITY,18,Headache,2020-09-05T12:23,positive same symptom and onset day
+US3042116:AE-002,S27,CE:REACTOGENICITY,40,Headache,2020-09-05T12:23,positive same symptom and onset day
+US3042177:AE-007,S3,CE:REACTOGENICITY,28,Arthralgia,2020-09-11T12:01,positive same symptom and onset day
+US3042177:AE-007,S27,CE:REACTOGENICITY,50,Arthralgia,2020-09-11T12:01,positive same symptom and onset day
+US3042177:AE-006,S3,CE:REACTOGENICITY,30,Chills,2020-09-12T12:01,positive same symptom and onset day
+US3042177:AE-006,S27,CE:REACTOGENICITY,52,Chills,2020-09-12T12:01,positive same symptom and onset day
+US3042177:AE-009,S3,CE:REACTOGENICITY,32,Fatigue,2020-09-10T15:46,"positive same diary symptom, dose and end day (start not matched)"
+US3042177:AE-009,S27,CE:REACTOGENICITY,54,Fatigue,2020-09-12T12:01,positive same symptom and onset day
+US3042177:AE-004,S3,CE:REACTOGENICITY,22,Pain,2020-09-11T00:02,positive same symptom and onset day
+US3042177:AE-004,S27,CE:REACTOGENICITY,44,Pain,2020-09-11T00:02,positive same symptom and onset day
+US3042177:AE-008,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-11T12:01,positive same symptom and onset day
+US3042177:AE-008,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-11T12:01,positive same symptom and onset day
+US3042177:AE-002,S3,LB,8,Choriogonadotropin Beta POSITIVE,2020-10-22,positive pregnancy test on onset day
+US3042235:AE-002,S3,CE:REACTOGENICITY,14,Fatigue,2020-09-16T11:32,positive same symptom and onset day
+US3042235:AE-002,S27,CE:REACTOGENICITY,36,Fatigue,2020-09-16T11:32,positive same symptom and onset day
+US3042235:AE-003,S3,MH,2,UMBILICAL HERNIA,2020-02,history term/PT only; prior history is not evidence of transfer
+US3052258:AE-002,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-01,EUA onset inside positive same-symptom interval (different start)
+US3052258:AE-002,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-01,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-004,S3,FA,ADSYMP:44,Fatigue,2020-09-22,positive COVID symptom assessment on EUA onset day
+US3062001:AE-004,S3,CE:EFFICACY,6,Fatigue,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-004,S27,CE:EFFICACY,6,Fatigue,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-005,S3,FA,ADSYMP:49,Headache,2020-09-19,positive COVID symptom assessment on EUA onset day
+US3062001:AE-005,S3,CE:EFFICACY,8,Headache,2020-09-19,positive same symptom and onset day
+US3062001:AE-005,S27,CE:EFFICACY,8,Headache,2020-09-19,positive same symptom and onset day
+US3062001:AE-007,S3,FA,ADSYMP:76,Nausea,2020-09-22,positive COVID symptom assessment on EUA onset day
+US3062001:AE-007,S3,CE:EFFICACY,11,Nausea,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-007,S27,CE:EFFICACY,11,Nausea,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-006,S3,FA,ADSYMP:116,Sore Throat,2020-09-22,positive COVID symptom assessment on EUA onset day
+US3062001:AE-006,S3,CE:EFFICACY,17,Sore Throat,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062001:AE-006,S27,CE:EFFICACY,17,Sore Throat,2020-09-19,EUA onset inside positive same-symptom interval (different start)
+US3062018:AE-004,S3,FA,ADSYMP:247,Headache,2020-07-31,positive COVID symptom assessment on EUA onset day
+US3062018:AE-004,S3,CE:EFFICACY,8,Headache,2020-07-31,positive same symptom and onset day
+US3062018:AE-004,S3,CE:REACTOGENICITY,35,Headache,2020-07-31T20:55,positive same symptom and onset day
+US3062018:AE-004,S27,CE:EFFICACY,8,Headache,2020-07-31,positive same symptom and onset day
+US3062018:AE-004,S27,CE:REACTOGENICITY,57,Headache,2020-07-31T19:00,positive same symptom and onset day
+US3062265:AE-016,S3,PR,1,CHEST X-RAY,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,3,CT ABDOMEN/PELVIS,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,6,CT CERVICAL SPINE WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,8,CT HEAD WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,9,CT LEFT ELBOW,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,10,CT LUMBAR SPINE WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,11,CT LUMBAR SPINE WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,12,CT MAXILLOFACIAL WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,14,CT THORACIC SPINE WITHOUT CONTRAST,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,15,EKG,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,16,EKG,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,18,X-RAY LEFT ELBOW,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,19,X-RAY RIGHT ELBOW,2020-10-13,procedure on same day only
+US3062265:AE-016,S3,PR,20,X-RAY RIGHT HIP,2020-10-13,procedure on same day only
+US3062300:AE-002,S3,CE:REACTOGENICITY,22,Nausea/Vomiting,2020-09-11T20:54,positive same symptom and onset day
+US3062300:AE-002,S27,CE:REACTOGENICITY,44,Nausea/Vomiting,2020-09-11T20:54,positive same symptom and onset day
+US3092022:AE-004,S3,PR,2,SECOND METATARSAL REPLACEMENT,2020-09-22,procedure term and onset day
+US3092022:AE-004,S3,MH,16,RIGHT FOOT FRACTURE,2015,history term/PT only; prior history is not evidence of transfer
+US3092110:AE-007,S3,CE:REACTOGENICITY,18,Headache,2020-09-14T20:57,positive same symptom and onset day
+US3092110:AE-007,S27,CE:REACTOGENICITY,40,Headache,2020-09-14T20:57,positive same symptom and onset day
+US3092110:AE-008,S3,CE:REACTOGENICITY,4,Pain,2020-09-14T20:57,positive same symptom and onset day
+US3092110:AE-008,S27,CE:REACTOGENICITY,26,Pain,2020-09-14T20:57,positive same symptom and onset day
+US3092245:AE-006,S3,CE:REACTOGENICITY,12,Chills,2020-09-01T13:54,positive same symptom and onset day
+US3092245:AE-006,S27,CE:REACTOGENICITY,34,Chills,2020-09-01T13:54,positive same symptom and onset day
+US3092245:AE-005,S3,CE:REACTOGENICITY,14,Fatigue,2020-08-28T15:24,positive same symptom and onset day
+US3092245:AE-005,S27,CE:REACTOGENICITY,35,Fatigue,2020-08-28T15:24,positive same symptom and onset day
+US3092245:AE-004,S3,CE:REACTOGENICITY,18,Headache,2020-09-02T16:01,positive same symptom and onset day
+US3092245:AE-004,S27,CE:REACTOGENICITY,40,Headache,2020-09-02T16:01,positive same symptom and onset day
+US3092297:AE-003,S3,FA,ADSYMP:32,Headache,2020-11-05,positive COVID symptom assessment on EUA onset day
+US3092297:AE-003,S3,CE:EFFICACY,8,Headache,2020-11-05,positive same symptom and onset day
+US3092297:AE-003,S27,CE:EFFICACY,8,Headache,2020-11-05,positive same symptom and onset day
+US3102347:AE-002,S3,CE:REACTOGENICITY,3,Pain,2020-10-09T22:22,positive same symptom and onset day
+US3102347:AE-002,S27,CE:REACTOGENICITY,26,Pain,2020-10-09T22:22,positive same symptom and onset day
+US3122082:AE-002,S27,CE:REACTOGENICITY,40,Headache,2020-08-25T21:01,positive same symptom and onset day
+US3122109:AE-002,S3,MH,9,FIBROMYALGIA - GENERALIZED,2012,history term/PT only; prior history is not evidence of transfer
+US3132012:AE-002,S3,MH,15,RIGHT SIDE SALIVARY GLAND INTERMITTENT INFECTION,2019,history term/PT only; prior history is not evidence of transfer
+US3152011:AE-006,S3,MB,63,Negative,2020-11-25,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3152011:AE-006,S3,MB,80,Not Detected,2020-11-25,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3152059:AE-011,S3,FA,ADSYMP:236,Fatigue,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3152059:AE-011,S3,CE:EFFICACY,6,Fatigue,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152059:AE-011,S27,CE:EFFICACY,6,Fatigue,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152059:AE-014,S3,FA,ADSYMP:236,Fatigue,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3152059:AE-014,S3,CE:EFFICACY,6,Fatigue,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152059:AE-014,S27,CE:EFFICACY,6,Fatigue,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152059:AE-007,S3,CE:EFFICACY,9,Myalgia,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152059:AE-007,S27,CE:EFFICACY,9,Myalgia,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3152297:AE-003,S3,MH,1,AMOXICILLIN ALLERGY,2018,history term/PT only; prior history is not evidence of transfer
+US3152363:AE-004,S3,CE:REACTOGENICITY,11,Chills,2020-09-26T15:12,positive same symptom and onset day
+US3152363:AE-004,S27,CE:REACTOGENICITY,34,Chills,2020-09-26T15:12,positive same symptom and onset day
+US3152430:AE-003,S3,CE:REACTOGENICITY,22,Pain,2020-11-07T11:01,"positive same diary symptom, dose and end day (start not matched)"
+US3152430:AE-003,S27,CE:REACTOGENICITY,44,Pain,2020-11-07T11:01,"positive same diary symptom, dose and end day (start not matched)"
+US3152487:AE-002,S3,CE:EFFICACY,8,Headache,2020-10-18,EUA onset inside positive same-symptom interval (different start)
+US3152487:AE-002,S27,CE:EFFICACY,8,Headache,2020-10-18,EUA onset inside positive same-symptom interval (different start)
+US3152487:AE-002,S27,CE:REACTOGENICITY,58,Headache,2020-10-18,EUA onset inside positive same-symptom interval (different start)
+US3192232:AE-002,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-10T12:14,positive same symptom and onset day
+US3192232:AE-002,S27,CE:IMMEDIATE REACTION,38,Myalgia,2020-09-10T12:14,positive same symptom and onset day
+US3192232:AE-002,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-10T18:20,positive same symptom and onset day
+US3192464:AE-003,S3,PR,1,COLONOSCOPY,2020-11-03,procedure term and onset day
+US3192611:AE-004,S3,CE:REACTOGENICITY,11,Chills,2020-09-28T23:08,positive same symptom and onset day
+US3192611:AE-004,S27,CE:REACTOGENICITY,34,Chills,2020-09-28T23:08,positive same symptom and onset day
+US3192611:AE-002,S3,CE:REACTOGENICITY,13,Fatigue,2020-09-28T23:08,positive same symptom and onset day
+US3192611:AE-002,S27,CE:REACTOGENICITY,36,Fatigue,2020-09-28T23:08,positive same symptom and onset day
+US3202120:AE-003,S3,FA,ADSYMP:241,Runny Nose (Rhinorrhea),2020-10-01,positive COVID symptom assessment on EUA onset day
+US3212394:AE-002,S3,CE:REACTOGENICITY,32,Fatigue,2020-09-12T07:31,positive same symptom and onset day
+US3212394:AE-002,S27,CE:REACTOGENICITY,54,Fatigue,2020-09-12T07:31,positive same symptom and onset day
+US3222048:AE-002,S3,PR,1,DENTAL IMPLANT,2020-11-18,procedure on same day only
+US3222430:AE-002,S3,PR,1,JAW SURGERY,2020-11-05,procedure term and onset day
+US3232152:AE-003,S3,FA,ADSYMP:217,Headache,2020-10-03,positive COVID symptom assessment on EUA onset day
+US3232152:AE-003,S3,CE:EFFICACY,8,Headache,2020-10-03,positive same symptom and onset day
+US3232152:AE-003,S27,CE:EFFICACY,8,Headache,2020-10-03,positive same symptom and onset day
+US3232152:AE-003,S3,MH,6,CHRONIC HEADACHES,2018,history term/PT only; prior history is not evidence of transfer
+US3242357:AE-003,S3,CE:REACTOGENICITY,8,Underarm Gland Swelling or Tenderness,2020-10-28T12:18,positive same symptom and onset day
+US3242357:AE-003,S27,CE:REACTOGENICITY,30,Underarm Gland Swelling or Tenderness,2020-10-28T12:18,positive same symptom and onset day
+US3242365:AE-005,S3,CE:REACTOGENICITY,40,Nausea/Vomiting,2020-10-21T09:57,positive same symptom and onset day
+US3242365:AE-005,S27,CE:REACTOGENICITY,62,Nausea/Vomiting,2020-10-21T09:57,positive same symptom and onset day
+US3262161:AE-003,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-16T08:06,positive same symptom and onset day
+US3262161:AE-003,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-16T08:06,positive same symptom and onset day
+US3262240:AE-002,S3,CE:REACTOGENICITY,17,Headache,2020-09-28T19:45,positive same symptom and onset day
+US3262240:AE-002,S27,CE:REACTOGENICITY,40,Headache,2020-09-28T19:45,positive same symptom and onset day
+US3272005:AE-013,S3,FA,ADSYMP:241,Diarrhea,2020-11-12,positive COVID symptom assessment on EUA onset day
+US3272005:AE-013,S3,CE:EFFICACY,6,Diarrhea,2020-08-18,EUA onset inside positive same-symptom interval (different start)
+US3272005:AE-013,S27,CE:EFFICACY,6,Diarrhea,2020-08-18,EUA onset inside positive same-symptom interval (different start)
+US3272005:AE-014,S3,FA,ADSYMP:864,Sore Throat,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3272005:AE-014,S3,CE:EFFICACY,19,Sore Throat,2020-07-31,EUA onset inside positive same-symptom interval (different start)
+US3272005:AE-014,S27,CE:EFFICACY,19,Sore Throat,2020-07-31,EUA onset inside positive same-symptom interval (different start)
+US3272027:AE-009,S3,CE:EFFICACY,16,Shortness of Breath,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3272027:AE-009,S27,CE:EFFICACY,16,Shortness of Breath,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3272081:AE-004,S3,FA,ADSYMP:24,Chills,2020-09-09,positive COVID symptom assessment on EUA onset day
+US3272081:AE-004,S3,CE:EFFICACY,2,Chills,2020-09-09,positive same symptom and onset day
+US3272081:AE-004,S3,CE:REACTOGENICITY,30,Chills,2020-09-09T19:55,positive same symptom and onset day
+US3272081:AE-004,S27,CE:EFFICACY,2,Chills,2020-09-09,positive same symptom and onset day
+US3272081:AE-004,S27,CE:REACTOGENICITY,52,Chills,2020-09-09T19:55,positive same symptom and onset day
+US3272081:AE-003,S3,FA,ADSYMP:162,Muscle Aches (Myalgia),2020-09-09,positive COVID symptom assessment on EUA onset day
+US3272081:AE-003,S3,CE:EFFICACY,9,Myalgia,2020-09-09,positive same symptom and onset day
+US3272081:AE-003,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-09T19:55,positive same symptom and onset day
+US3272081:AE-003,S27,CE:EFFICACY,9,Myalgia,2020-09-09,positive same symptom and onset day
+US3272081:AE-003,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-09T19:55,positive same symptom and onset day
+US3272081:AE-002,S3,FA,ADSYMP:1,Body Aches,2020-09-09,positive COVID symptom assessment on EUA onset day
+US3272081:AE-002,S3,CE:EFFICACY,1,Body Aches,2020-09-09,positive same symptom and onset day
+US3272081:AE-002,S27,CE:EFFICACY,1,Body Aches,2020-09-09,positive same symptom and onset day
+US3272084:AE-002,S3,FA,ADSYMP:13,Cough,2020-09-16,positive COVID symptom assessment on EUA onset day
+US3272084:AE-002,S3,CE:EFFICACY,3,Cough,2020-09-16,positive same symptom and onset day
+US3272084:AE-002,S27,CE:EFFICACY,3,Cough,2020-09-16,positive same symptom and onset day
+US3272084:AE-003,S3,FA,ADSYMP:25,Difficulty Breathing,2020-09-16,positive COVID symptom assessment on EUA onset day
+US3272084:AE-003,S3,FA,ADSYMP:80,Shortness of Breath,2020-09-16,positive COVID symptom assessment on EUA onset day
+US3272084:AE-003,S3,CE:EFFICACY,5,Difficulty Breathing,2020-09-16,positive same symptom and onset day
+US3272084:AE-003,S3,CE:EFFICACY,16,Shortness of Breath,2020-09-16,positive same symptom and onset day
+US3272084:AE-003,S27,CE:EFFICACY,5,Difficulty Breathing,2020-09-16,positive same symptom and onset day
+US3272084:AE-003,S27,CE:EFFICACY,16,Shortness of Breath,2020-09-16,positive same symptom and onset day
+US3272084:AE-004,S3,FA,ADSYMP:31,Fatigue,2020-09-16,positive COVID symptom assessment on EUA onset day
+US3272084:AE-004,S3,CE:EFFICACY,6,Fatigue,2020-09-16,positive same symptom and onset day
+US3272084:AE-004,S27,CE:EFFICACY,6,Fatigue,2020-09-16,positive same symptom and onset day
+US3272084:AE-005,S3,FA,ADSYMP:37,Headache,2020-09-16,positive COVID symptom assessment on EUA onset day
+US3272084:AE-005,S3,CE:EFFICACY,8,Headache,2020-09-16,positive same symptom and onset day
+US3272084:AE-005,S27,CE:EFFICACY,8,Headache,2020-09-16,positive same symptom and onset day
+US3272125:AE-002,S3,CE:EFFICACY,3,Cough,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-002,S27,CE:EFFICACY,3,Cough,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-007,S3,FA,ADSYMP:140,Headache,2020-10-10,positive COVID symptom assessment on EUA onset day
+US3272125:AE-007,S3,CE:EFFICACY,8,Headache,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-007,S27,CE:EFFICACY,8,Headache,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-003,S3,CE:EFFICACY,9,Myalgia,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-003,S27,CE:EFFICACY,9,Myalgia,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-005,S3,CE:EFFICACY,10,Nasal Congestion,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-005,S27,CE:EFFICACY,10,Nasal Congestion,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-006,S3,CE:EFFICACY,17,Sore Throat,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-006,S27,CE:EFFICACY,17,Sore Throat,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-004,S3,CE:EFFICACY,1,Body Aches,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-004,S27,CE:EFFICACY,1,Body Aches,2020-08-14,EUA onset inside positive same-symptom interval (different start)
+US3272125:AE-004,S3,MH,3,GENREALIZED PAIN,2018,history term/PT only; prior history is not evidence of transfer
+US3272167:AE-006,S3,FA,ADSYMP:89,Cough,2020-11-03,positive COVID symptom assessment on EUA onset day
+US3272167:AE-006,S3,CE:EFFICACY,3,Cough,2020-10-23,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-006,S27,CE:EFFICACY,3,Cough,2020-10-23,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-009,S3,FA,ADSYMP:245,Headache,2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-009,S3,CE:EFFICACY,8,Headache,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-009,S27,CE:EFFICACY,8,Headache,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-007,S3,FA,ADSYMP:283,Muscle Aches (Myalgia),2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-007,S3,CE:EFFICACY,9,Myalgia,2020-11-07,positive same symptom and onset day
+US3272167:AE-007,S27,CE:EFFICACY,9,Myalgia,2020-11-07,positive same symptom and onset day
+US3272167:AE-010,S3,FA,ADSYMP:321,Nasal Congestion,2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-010,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-23,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-010,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-23,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-012,S3,FA,ADSYMP:359,Nausea,2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-012,S3,CE:EFFICACY,11,Nausea,2020-11-07,positive same symptom and onset day
+US3272167:AE-012,S27,CE:EFFICACY,11,Nausea,2020-11-07,positive same symptom and onset day
+US3272167:AE-005,S3,FA,ADSYMP:549,Sore Throat,2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-005,S3,CE:EFFICACY,17,Sore Throat,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-005,S27,CE:EFFICACY,17,Sore Throat,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3272167:AE-008,S3,FA,ADSYMP:17,Body Aches,2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272167:AE-008,S3,CE:EFFICACY,1,Body Aches,2020-11-07,positive same symptom and onset day
+US3272167:AE-008,S27,CE:EFFICACY,1,Body Aches,2020-11-07,positive same symptom and onset day
+US3272167:AE-011,S3,FA,ADSYMP:473,Runny Nose (Rhinorrhea),2020-11-07,positive COVID symptom assessment on EUA onset day
+US3272320:AE-007,S3,FA,ADSYMP:28,Chills,2020-11-14,positive COVID symptom assessment on EUA onset day
+US3272320:AE-007,S3,CE:EFFICACY,2,Chills,2020-11-14,positive same symptom and onset day
+US3272320:AE-007,S27,CE:EFFICACY,2,Chills,2020-11-14,positive same symptom and onset day
+US3272320:AE-006,S3,FA,ADSYMP:76,Fatigue,2020-11-06,positive COVID symptom assessment on EUA onset day
+US3272320:AE-006,S3,CE:EFFICACY,6,Fatigue,2020-11-06,positive same symptom and onset day
+US3272320:AE-006,S27,CE:EFFICACY,6,Fatigue,2020-11-06,positive same symptom and onset day
+US3272320:AE-005,S3,FA,ADSYMP:86,Headache,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3272320:AE-005,S3,CE:EFFICACY,8,Headache,2020-11-02,positive same symptom and onset day
+US3272320:AE-005,S27,CE:EFFICACY,8,Headache,2020-11-02,positive same symptom and onset day
+US3272320:AE-004,S3,FA,ADSYMP:113,Nasal Congestion,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3272320:AE-004,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-01,positive same symptom and onset day
+US3272320:AE-004,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-01,positive same symptom and onset day
+US3272320:AE-003,S3,FA,ADSYMP:198,Sore Throat,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3272320:AE-003,S3,CE:EFFICACY,17,Sore Throat,2020-11-01,positive same symptom and onset day
+US3272320:AE-003,S27,CE:EFFICACY,17,Sore Throat,2020-11-01,positive same symptom and onset day
+US3272320:AE-002,S3,FA,ADSYMP:170,Runny Nose (Rhinorrhea),2020-11-01,positive COVID symptom assessment on EUA onset day
+US3272327:AE-002,S3,FA,ADSYMP:25,Cough,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-002,S3,CE:EFFICACY,3,Cough,2020-10-07,positive same symptom and onset day
+US3272327:AE-002,S27,CE:EFFICACY,3,Cough,2020-10-07,positive same symptom and onset day
+US3272327:AE-010,S3,FA,ADSYMP:37,Diarrhea,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-010,S3,CE:EFFICACY,4,Diarrhea,2020-10-07,positive same symptom and onset day
+US3272327:AE-010,S27,CE:EFFICACY,4,Diarrhea,2020-10-07,positive same symptom and onset day
+US3272327:AE-003,S3,FA,ADSYMP:157,Shortness of Breath,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-003,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-07,positive same symptom and onset day
+US3272327:AE-003,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-07,positive same symptom and onset day
+US3272327:AE-004,S3,FA,ADSYMP:61,Fatigue,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-004,S3,CE:EFFICACY,6,Fatigue,2020-10-07,positive same symptom and onset day
+US3272327:AE-004,S27,CE:EFFICACY,6,Fatigue,2020-10-07,positive same symptom and onset day
+US3272327:AE-012,S3,FA,ADSYMP:75,Headache,2020-10-09,positive COVID symptom assessment on EUA onset day
+US3272327:AE-012,S3,CE:EFFICACY,8,Headache,2020-10-09,positive same symptom and onset day
+US3272327:AE-012,S27,CE:EFFICACY,8,Headache,2020-10-09,positive same symptom and onset day
+US3272327:AE-005,S3,FA,ADSYMP:85,Muscle Aches (Myalgia),2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-005,S3,CE:EFFICACY,9,Myalgia,2020-10-07,positive same symptom and onset day
+US3272327:AE-005,S27,CE:EFFICACY,9,Myalgia,2020-10-07,positive same symptom and onset day
+US3272327:AE-006,S3,FA,ADSYMP:97,Nasal Congestion,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-006,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-07,positive same symptom and onset day
+US3272327:AE-006,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-07,positive same symptom and onset day
+US3272327:AE-008,S3,FA,ADSYMP:109,Nausea,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-008,S3,CE:EFFICACY,11,Nausea,2020-10-07,positive same symptom and onset day
+US3272327:AE-008,S27,CE:EFFICACY,11,Nausea,2020-10-07,positive same symptom and onset day
+US3272327:AE-011,S3,FA,ADSYMP:169,Sore Throat,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272327:AE-011,S3,CE:EFFICACY,17,Sore Throat,2020-10-07,positive same symptom and onset day
+US3272327:AE-011,S27,CE:EFFICACY,17,Sore Throat,2020-10-07,positive same symptom and onset day
+US3272327:AE-009,S3,FA,ADSYMP:3,Body Aches,2020-10-09,positive COVID symptom assessment on EUA onset day
+US3272327:AE-009,S3,CE:EFFICACY,1,Body Aches,2020-10-09,positive same symptom and onset day
+US3272327:AE-009,S27,CE:EFFICACY,1,Body Aches,2020-10-09,positive same symptom and onset day
+US3272327:AE-007,S3,FA,ADSYMP:145,Runny Nose (Rhinorrhea),2020-10-07,positive COVID symptom assessment on EUA onset day
+US3272347:AE-003,S3,FA,ADSYMP:271,Headache,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3272347:AE-003,S3,CE:EFFICACY,9,Headache,2020-11-02,positive same symptom and onset day
+US3272347:AE-003,S27,CE:EFFICACY,9,Headache,2020-11-02,positive same symptom and onset day
+US3272347:AE-004,S3,FA,ADSYMP:353,Nasal Congestion,2020-11-06,positive COVID symptom assessment on EUA onset day
+US3272347:AE-004,S3,CE:EFFICACY,11,Nasal Congestion,2020-11-06,positive same symptom and onset day
+US3272347:AE-004,S27,CE:EFFICACY,11,Nasal Congestion,2020-11-06,positive same symptom and onset day
+US3272347:AE-002,S3,FA,ADSYMP:507,Runny Nose (Rhinorrhea),2020-11-02,positive COVID symptom assessment on EUA onset day
+US3292286:AE-002,S3,FA,ADSYMP:89,Nasal Congestion,2020-11-09,positive COVID symptom assessment on EUA onset day
+US3292286:AE-002,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-09,positive same symptom and onset day
+US3292286:AE-002,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-09,positive same symptom and onset day
+US3292286:AE-002,S3,MH,17,NASAL CONGESTION,2010,history term/PT only; prior history is not evidence of transfer
+US3292320:AE-005,S3,PR,1,CATHETER PLACEMENT,2020-08-30,procedure on same day only
+US3312005:AE-003,S3,FA,ADSYMP:95,Cough,2020-10-26,positive COVID symptom assessment on EUA onset day
+US3312005:AE-003,S3,CE:EFFICACY,5,Cough,2020-10-26,positive same symptom and onset day
+US3312005:AE-003,S27,CE:EFFICACY,5,Cough,2020-10-26,positive same symptom and onset day
+US3312005:AE-005,S3,FA,ADSYMP:258,Headache,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312005:AE-005,S3,CE:EFFICACY,10,Headache,2020-10-29,positive same symptom and onset day
+US3312005:AE-005,S27,CE:EFFICACY,10,Headache,2020-10-29,positive same symptom and onset day
+US3312043:AE-011,S3,CE:REACTOGENICITY,32,Fatigue,2020-09-16T17:02,positive same symptom and onset day
+US3312043:AE-011,S27,CE:REACTOGENICITY,54,Fatigue,2020-09-16T17:02,positive same symptom and onset day
+US3312211:AE-013,S3,FA,ADSYMP:98,Cough,2020-10-31,positive COVID symptom assessment on EUA onset day
+US3312211:AE-013,S3,CE:EFFICACY,3,Cough,2020-10-03,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-013,S27,CE:EFFICACY,3,Cough,2020-10-03,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-020,S3,FA,ADSYMP:144,Diarrhea,2020-11-06,positive COVID symptom assessment on EUA onset day
+US3312211:AE-020,S3,CE:EFFICACY,4,Diarrhea,2020-11-06,positive same symptom and onset day
+US3312211:AE-020,S27,CE:EFFICACY,4,Diarrhea,2020-11-06,positive same symptom and onset day
+US3312211:AE-016,S3,FA,ADSYMP:225,Fatigue,2020-11-05,positive COVID symptom assessment on EUA onset day
+US3312211:AE-016,S3,CE:EFFICACY,6,Fatigue,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-016,S27,CE:EFFICACY,6,Fatigue,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-014,S3,FA,ADSYMP:344,Nasal Congestion,2020-10-31,positive COVID symptom assessment on EUA onset day
+US3312211:AE-014,S3,CE:EFFICACY,10,Nasal Congestion,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-014,S27,CE:EFFICACY,10,Nasal Congestion,2020-09-29,EUA onset inside positive same-symptom interval (different start)
+US3312211:AE-015,S3,FA,ADSYMP:508,Runny Nose (Rhinorrhea),2020-10-31,positive COVID symptom assessment on EUA onset day
+US3312249:AE-004,S3,CE:REACTOGENICITY,9,Arthralgia,2020-09-29T19:41,"positive same diary symptom, dose and end day (start not matched)"
+US3312249:AE-004,S27,CE:REACTOGENICITY,32,Arthralgia,2020-09-29T19:41,"positive same diary symptom, dose and end day (start not matched)"
+US3312249:AE-003,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-03T19:29,positive same symptom and onset day
+US3312249:AE-003,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-03T19:29,positive same symptom and onset day
+US3312289:AE-004,S3,FA,ADSYMP:61,Headache,2020-11-05,positive COVID symptom assessment on EUA onset day
+US3312289:AE-004,S3,CE:EFFICACY,8,Headache,2020-11-05,positive same symptom and onset day
+US3312289:AE-004,S27,CE:EFFICACY,8,Headache,2020-11-05,positive same symptom and onset day
+US3312289:AE-004,S3,MH,8,OCCASIONAL HEADACHES,4/15/2020,history term/PT only; prior history is not evidence of transfer
+US3312291:AE-007,S3,FA,ADSYMP:19,Cough,2020-11-03,positive COVID symptom assessment on EUA onset day
+US3312291:AE-007,S3,CE:EFFICACY,3,Cough,2020-11-03,positive same symptom and onset day
+US3312291:AE-007,S27,CE:EFFICACY,3,Cough,2020-11-03,positive same symptom and onset day
+US3312379:AE-014,S3,FA,ADSYMP:175,New Loss of Taste,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312379:AE-014,S3,CE:EFFICACY,13,New Loss of Taste,2020-10-29,positive same symptom and onset day
+US3312379:AE-014,S27,CE:EFFICACY,13,New Loss of Taste,2020-10-29,positive same symptom and onset day
+US3312379:AE-015,S3,FA,ADSYMP:160,New Loss of Smell,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312379:AE-015,S3,CE:EFFICACY,12,New Loss of Smell,2020-10-29,positive same symptom and onset day
+US3312379:AE-015,S27,CE:EFFICACY,12,New Loss of Smell,2020-10-29,positive same symptom and onset day
+US3312379:AE-006,S3,FA,ADSYMP:35,Cough,2020-09-15,positive COVID symptom assessment on EUA onset day
+US3312379:AE-006,S3,CE:EFFICACY,3,Cough,2020-09-15,positive same symptom and onset day
+US3312379:AE-006,S27,CE:EFFICACY,3,Cough,2020-09-15,positive same symptom and onset day
+US3312379:AE-017,S3,FA,ADSYMP:69,Difficulty Breathing,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312379:AE-017,S3,FA,ADSYMP:206,Shortness of Breath,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312379:AE-017,S3,CE:EFFICACY,5,Difficulty Breathing,2020-10-29,positive same symptom and onset day
+US3312379:AE-017,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-29,positive same symptom and onset day
+US3312379:AE-017,S27,CE:EFFICACY,5,Difficulty Breathing,2020-10-29,positive same symptom and onset day
+US3312379:AE-017,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-29,positive same symptom and onset day
+US3312379:AE-016,S3,FA,ADSYMP:206,Shortness of Breath,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312379:AE-016,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-29,positive same symptom and onset day
+US3312379:AE-016,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-29,positive same symptom and onset day
+US3312379:AE-012,S3,FA,ADSYMP:83,Fatigue,2020-10-28,positive COVID symptom assessment on EUA onset day
+US3312379:AE-012,S3,CE:EFFICACY,6,Fatigue,2020-10-28,positive same symptom and onset day
+US3312379:AE-012,S27,CE:EFFICACY,6,Fatigue,2020-10-28,positive same symptom and onset day
+US3312379:AE-002,S3,FA,ADSYMP:92,Headache,2020-09-11,positive COVID symptom assessment on EUA onset day
+US3312379:AE-002,S3,CE:EFFICACY,8,Headache,2020-09-11,positive same symptom and onset day
+US3312379:AE-002,S27,CE:EFFICACY,8,Headache,2020-09-11,positive same symptom and onset day
+US3312379:AE-013,S3,FA,ADSYMP:99,Headache,2020-10-28,positive COVID symptom assessment on EUA onset day
+US3312379:AE-013,S3,CE:EFFICACY,8,Headache,2020-09-11,EUA onset inside positive same-symptom interval (different start)
+US3312379:AE-013,S27,CE:EFFICACY,8,Headache,2020-09-11,EUA onset inside positive same-symptom interval (different start)
+US3312379:AE-005,S3,FA,ADSYMP:214,Sore Throat,2020-09-12,positive COVID symptom assessment on EUA onset day
+US3312379:AE-005,S3,CE:EFFICACY,17,Sore Throat,2020-09-12,positive same symptom and onset day
+US3312379:AE-005,S27,CE:EFFICACY,17,Sore Throat,2020-09-12,positive same symptom and onset day
+US3312389:AE-005,S3,FA,ADSYMP:76,Runny Nose (Rhinorrhea),2020-09-22,positive COVID symptom assessment on EUA onset day
+US3312463:AE-005,S3,FA,ADSYMP:26,Chills,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-005,S3,CE:EFFICACY,2,Chills,2020-10-01,positive same symptom and onset day
+US3312463:AE-005,S3,CE:REACTOGENICITY,29,Chills,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-005,S27,CE:EFFICACY,2,Chills,2020-10-01,positive same symptom and onset day
+US3312463:AE-005,S27,CE:REACTOGENICITY,52,Chills,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-008,S3,FA,ADSYMP:55,Cough,2020-10-05,positive COVID symptom assessment on EUA onset day
+US3312463:AE-008,S3,CE:EFFICACY,3,Cough,2020-10-05,positive same symptom and onset day
+US3312463:AE-008,S27,CE:EFFICACY,3,Cough,2020-10-05,positive same symptom and onset day
+US3312463:AE-007,S3,FA,ADSYMP:101,Difficulty Breathing,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-007,S3,FA,ADSYMP:326,Shortness of Breath,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-007,S3,CE:EFFICACY,5,Difficulty Breathing,2020-10-01,positive same symptom and onset day
+US3312463:AE-007,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-01,positive same symptom and onset day
+US3312463:AE-007,S27,CE:EFFICACY,5,Difficulty Breathing,2020-10-01,positive same symptom and onset day
+US3312463:AE-007,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-01,positive same symptom and onset day
+US3312463:AE-006,S3,FA,ADSYMP:326,Shortness of Breath,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-006,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-01,positive same symptom and onset day
+US3312463:AE-006,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-01,positive same symptom and onset day
+US3312463:AE-014,S3,FA,ADSYMP:151,Headache,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-014,S3,CE:EFFICACY,8,Headache,2020-10-01,positive same symptom and onset day
+US3312463:AE-014,S3,CE:REACTOGENICITY,35,Headache,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-014,S27,CE:EFFICACY,8,Headache,2020-10-01,positive same symptom and onset day
+US3312463:AE-014,S27,CE:REACTOGENICITY,58,Headache,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-009,S3,FA,ADSYMP:176,Muscle Aches (Myalgia),2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-009,S3,CE:EFFICACY,9,Myalgia,2020-10-01,positive same symptom and onset day
+US3312463:AE-009,S3,CE:REACTOGENICITY,37,Myalgia,2020-09-30T19:44,EUA onset inside positive same-symptom interval (different start)
+US3312463:AE-009,S27,CE:EFFICACY,9,Myalgia,2020-10-01,positive same symptom and onset day
+US3312463:AE-009,S27,CE:REACTOGENICITY,60,Myalgia,2020-09-30T19:44,EUA onset inside positive same-symptom interval (different start)
+US3312463:AE-012,S3,FA,ADSYMP:226,Nausea,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-012,S3,CE:EFFICACY,11,Nausea,2020-10-01,positive same symptom and onset day
+US3312463:AE-012,S3,CE:REACTOGENICITY,39,Nausea/Vomiting,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-012,S27,CE:EFFICACY,11,Nausea,2020-10-01,positive same symptom and onset day
+US3312463:AE-012,S27,CE:REACTOGENICITY,62,Nausea/Vomiting,2020-10-01T12:04,positive same symptom and onset day
+US3312463:AE-010,S3,FA,ADSYMP:1,Body Aches,2020-10-01,positive COVID symptom assessment on EUA onset day
+US3312463:AE-010,S3,CE:EFFICACY,1,Body Aches,2020-10-01,positive same symptom and onset day
+US3312463:AE-010,S27,CE:EFFICACY,1,Body Aches,2020-10-01,positive same symptom and onset day
+US3312463:AE-004,S27,CE:REACTOGENICITY,56,Fever,2020-10-01T12:02,positive same symptom and onset day
+US3312463:AE-011,S3,FA,ADSYMP:305,Runny Nose (Rhinorrhea),2020-10-05,positive COVID symptom assessment on EUA onset day
+US3312463:AE-013,S3,FA,ADSYMP:308,Runny Nose (Rhinorrhea),2020-10-08,positive COVID symptom assessment on EUA onset day
+US3312469:AE-003,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-12T20:55,positive same symptom and onset day
+US3312469:AE-003,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-12T20:55,positive same symptom and onset day
+US3312477:AE-005,S3,FA,ADSYMP:22,Cough,2020-10-29,positive COVID symptom assessment on EUA onset day
+US3312477:AE-005,S3,CE:EFFICACY,3,Cough,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-005,S27,CE:EFFICACY,3,Cough,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-006,S3,FA,ADSYMP:56,Headache,2020-10-27,positive COVID symptom assessment on EUA onset day
+US3312477:AE-006,S3,CE:EFFICACY,8,Headache,2020-10-27,positive same symptom and onset day
+US3312477:AE-006,S27,CE:EFFICACY,8,Headache,2020-10-27,positive same symptom and onset day
+US3312477:AE-007,S3,FA,ADSYMP:74,Nasal Congestion,2020-10-27,positive COVID symptom assessment on EUA onset day
+US3312477:AE-007,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-007,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-008,S3,FA,ADSYMP:128,Sore Throat,2020-10-27,positive COVID symptom assessment on EUA onset day
+US3312477:AE-008,S3,CE:EFFICACY,17,Sore Throat,2020-10-27,positive same symptom and onset day
+US3312477:AE-008,S27,CE:EFFICACY,17,Sore Throat,2020-10-27,positive same symptom and onset day
+US3312477:AE-010,S3,FA,ADSYMP:132,Sore Throat,2020-10-31,positive COVID symptom assessment on EUA onset day
+US3312477:AE-010,S3,CE:EFFICACY,17,Sore Throat,2020-10-27,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-010,S27,CE:EFFICACY,17,Sore Throat,2020-10-27,EUA onset inside positive same-symptom interval (different start)
+US3312477:AE-009,S3,FA,ADSYMP:115,Runny Nose (Rhinorrhea),2020-11-01,positive COVID symptom assessment on EUA onset day
+US3312501:AE-002,S3,FA,ADSYMP:38,Fatigue,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3312501:AE-002,S3,CE:EFFICACY,6,Fatigue,2020-11-02,positive same symptom and onset day
+US3312501:AE-002,S27,CE:EFFICACY,6,Fatigue,2020-11-02,positive same symptom and onset day
+US3312501:AE-004,S3,FA,ADSYMP:44,Headache,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3312501:AE-004,S3,CE:EFFICACY,8,Headache,2020-11-01,positive same symptom and onset day
+US3312501:AE-004,S27,CE:EFFICACY,8,Headache,2020-11-01,positive same symptom and onset day
+US3312501:AE-004,S3,MH,4,MILD OCCASIONAL HEADACHE,2000,history term/PT only; prior history is not evidence of transfer
+US3312501:AE-005,S3,FA,ADSYMP:57,Nasal Congestion,2020-10-31,positive COVID symptom assessment on EUA onset day
+US3312501:AE-005,S3,CE:EFFICACY,10,Nasal Congestion,2020-10-31,positive same symptom and onset day
+US3312501:AE-005,S27,CE:EFFICACY,10,Nasal Congestion,2020-10-31,positive same symptom and onset day
+US3312501:AE-003,S3,FA,ADSYMP:3,Body Aches,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3312501:AE-003,S3,CE:EFFICACY,1,Body Aches,2020-11-02,positive same symptom and onset day
+US3312501:AE-003,S27,CE:EFFICACY,1,Body Aches,2020-11-02,positive same symptom and onset day
+US3312501:AE-006,S3,FA,ADSYMP:85,Runny Nose (Rhinorrhea),2020-10-31,positive COVID symptom assessment on EUA onset day
+US3322344:AE-003,S3,FA,ADSYMP:187,Headache,2020-10-13,positive COVID symptom assessment on EUA onset day
+US3322344:AE-003,S3,CE:EFFICACY,8,Headache,2020-10-13,positive same symptom and onset day
+US3322344:AE-003,S27,CE:EFFICACY,8,Headache,2020-10-13,positive same symptom and onset day
+US3322344:AE-003,S27,CE:REACTOGENICITY,58,Headache,2020-10-13T14:09,positive same symptom and onset day
+US3322400:AE-006,S3,FA,ADSYMP:287,New Loss of Taste,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3322400:AE-006,S3,CE:EFFICACY,14,New Loss of Taste,2020-11-01,positive same symptom and onset day
+US3322400:AE-006,S27,CE:EFFICACY,14,New Loss of Taste,2020-11-01,positive same symptom and onset day
+US3322400:AE-005,S3,FA,ADSYMP:263,New Loss of Smell,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3322400:AE-005,S3,CE:EFFICACY,13,New Loss of Smell,2020-11-01,positive same symptom and onset day
+US3322400:AE-005,S27,CE:EFFICACY,13,New Loss of Smell,2020-11-01,positive same symptom and onset day
+US3322400:AE-004,S3,FA,ADSYMP:68,Cough,2020-11-01,positive COVID symptom assessment on EUA onset day
+US3322400:AE-004,S3,CE:EFFICACY,4,Cough,2020-11-01,positive same symptom and onset day
+US3322400:AE-004,S27,CE:EFFICACY,4,Cough,2020-11-01,positive same symptom and onset day
+US3322400:AE-002,S3,FA,ADSYMP:213,Nasal Congestion,2020-10-30,positive COVID symptom assessment on EUA onset day
+US3322400:AE-002,S3,CE:EFFICACY,11,Nasal Congestion,2020-10-30,positive same symptom and onset day
+US3322400:AE-002,S27,CE:EFFICACY,11,Nasal Congestion,2020-10-30,positive same symptom and onset day
+US3322400:AE-003,S3,FA,ADSYMP:357,Sore Throat,2020-10-30,positive COVID symptom assessment on EUA onset day
+US3322400:AE-003,S3,CE:EFFICACY,18,Sore Throat,2020-10-30,positive same symptom and onset day
+US3322400:AE-003,S27,CE:EFFICACY,18,Sore Throat,2020-10-30,positive same symptom and onset day
+US3342146:AE-004,S3,MH,6,GASTROESOPHAGEAL REFLUX DISEASE,2015,history term/PT only; prior history is not evidence of transfer
+US3362204:AE-003,S3,CE:REACTOGENICITY,3,Pain,2020-10-05T19:08,"positive same diary symptom, dose and end day (start not matched)"
+US3362204:AE-003,S27,CE:REACTOGENICITY,26,Pain,2020-10-05T19:08,"positive same diary symptom, dose and end day (start not matched)"
+US3362284:AE-004,S3,CE:REACTOGENICITY,37,Myalgia,2020-10-20T23:07,"positive same diary symptom, dose and end day (start not matched)"
+US3362284:AE-004,S27,CE:REACTOGENICITY,60,Myalgia,2020-10-20T23:07,"positive same diary symptom, dose and end day (start not matched)"
+US3372078:AE-002,S3,PR,1,BIOPSY LESION RIGHT MANDIBLE,2020-10-22,procedure on same day only
+US3372105:AE-007,S3,FA,ADSYMP:1,Body Aches,2020-10-22,positive COVID symptom assessment on EUA onset day
+US3372105:AE-007,S3,CE:EFFICACY,1,Body Aches,2020-10-22,positive same symptom and onset day
+US3372105:AE-007,S27,CE:EFFICACY,1,Body Aches,2020-10-22,positive same symptom and onset day
+US3372290:AE-009,S3,FA,ADSYMP:130,Fatigue,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3372290:AE-009,S3,CE:EFFICACY,8,Fatigue,2020-11-02,positive same symptom and onset day
+US3372290:AE-009,S27,CE:EFFICACY,8,Fatigue,2020-11-02,positive same symptom and onset day
+US3372290:AE-008,S3,FA,ADSYMP:171,Muscle Aches (Myalgia),2020-10-28,positive COVID symptom assessment on EUA onset day
+US3372290:AE-008,S3,CE:EFFICACY,11,Myalgia,2020-10-28,positive same symptom and onset day
+US3372290:AE-008,S27,CE:EFFICACY,11,Myalgia,2020-10-28,positive same symptom and onset day
+US3372290:AE-010,S3,FA,ADSYMP:222,Nausea,2020-11-02,positive COVID symptom assessment on EUA onset day
+US3372290:AE-010,S3,CE:EFFICACY,13,Nausea,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3372290:AE-010,S27,CE:EFFICACY,13,Nausea,2020-10-28,EUA onset inside positive same-symptom interval (different start)
+US3372290:AE-003,S3,FA,ADSYMP:332,Sore Throat,2020-10-28,positive COVID symptom assessment on EUA onset day
+US3372290:AE-003,S3,CE:EFFICACY,19,Sore Throat,2020-10-28,positive same symptom and onset day
+US3372290:AE-003,S27,CE:EFFICACY,19,Sore Throat,2020-10-28,positive same symptom and onset day
+US3402271:AE-002,S3,CE:REACTOGENICITY,8,Underarm Gland Swelling or Tenderness,2020-09-04T18:22,positive same symptom and onset day
+US3402271:AE-002,S27,CE:REACTOGENICITY,30,Underarm Gland Swelling or Tenderness,2020-09-04,positive same symptom and onset day
+US3432094:AE-004,S3,PR,1,CRANIECTOMY,2020-11-23,procedure on same day only
+US3432094:AE-004,S3,PR,2,CRANIOPLASTY,2020-11-23,procedure on same day only
+US3432094:AE-004,S3,MH,10,MENINGIOMA,2011-11,history term/PT only; prior history is not evidence of transfer
+US3432260:AE-003,S3,PR,1,CERVICAL FUSION C5-C6 WITH BONE GRAFT AND HARDWARE PLACEMENT,2020-11-04,procedure term and onset day
+US3432452:AE-002,S3,MH,5,HYPERTENSION,2005,history term/PT only; prior history is not evidence of transfer
+US3432469:AE-002,S3,CE:REACTOGENICITY,18,Headache,2020-09-12T03:09,EUA onset inside positive same-symptom interval (different start)
+US3432469:AE-002,S27,CE:REACTOGENICITY,39,Headache,2020-09-12T03:09,EUA onset inside positive same-symptom interval (different start)
+US3442163:AE-003,S3,MB,21,Positive,2020-10-21,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3442163:AE-003,S3,MB,24,Detected,2020-10-25,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3442163:AE-003,S3,MB,26,Detected,2020-10-23,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3442163:AE-003,S3,MB,34,Detected,2020-10-21,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3462177:AE-002,S3,CE:REACTOGENICITY,13,Fatigue,2020-08-14T17:17,positive same symptom and onset day
+US3462177:AE-002,S27,CE:REACTOGENICITY,35,Fatigue,2020-08-14T17:17,positive same symptom and onset day
+US3482164:AE-004,S3,FA,ADSYMP:65,Runny Nose (Rhinorrhea),2020-10-11,positive COVID symptom assessment on EUA onset day
+US3482170:AE-002,S3,PR,1,CHOLECYSTECTOMY FOR GALLSTONES,2020-10-19,procedure term and onset day
+US3492071:AE-005,S3,FA,ADSYMP:55,Cough,2020-11-16,positive COVID symptom assessment on EUA onset day
+US3492071:AE-005,S3,CE:EFFICACY,5,Cough,2020-11-15,EUA onset inside positive same-symptom interval (different start)
+US3492071:AE-005,S27,CE:EFFICACY,5,Cough,2020-11-15,EUA onset inside positive same-symptom interval (different start)
+US3492266:AE-002,S3,MH,5,CHRONIC COUGH,2020-06,history term/PT only; prior history is not evidence of transfer
+US3512136:AE-004,S3,FA,ADSYMP:54,Difficulty Breathing,2020-11-09,positive COVID symptom assessment on EUA onset day
+US3512136:AE-004,S3,FA,ADSYMP:172,Shortness of Breath,2020-11-09,positive COVID symptom assessment on EUA onset day
+US3512136:AE-004,S3,CE:EFFICACY,5,Difficulty Breathing,2020-11-09,positive same symptom and onset day
+US3512136:AE-004,S3,CE:EFFICACY,16,Shortness of Breath,2020-11-09,positive same symptom and onset day
+US3512136:AE-004,S27,CE:EFFICACY,5,Difficulty Breathing,2020-11-09,positive same symptom and onset day
+US3512136:AE-004,S27,CE:EFFICACY,16,Shortness of Breath,2020-11-09,positive same symptom and onset day
+US3512136:AE-003,S3,FA,ADSYMP:172,Shortness of Breath,2020-11-09,positive COVID symptom assessment on EUA onset day
+US3512136:AE-003,S3,CE:EFFICACY,16,Shortness of Breath,2020-11-09,positive same symptom and onset day
+US3512136:AE-003,S27,CE:EFFICACY,16,Shortness of Breath,2020-11-09,positive same symptom and onset day
+US3512136:AE-005,S3,FA,ADSYMP:66,Fatigue,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-005,S3,CE:EFFICACY,6,Fatigue,2020-11-08,positive same symptom and onset day
+US3512136:AE-005,S27,CE:EFFICACY,6,Fatigue,2020-11-08,positive same symptom and onset day
+US3512136:AE-008,S3,FA,ADSYMP:79,Headache,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-008,S3,CE:EFFICACY,8,Headache,2020-11-08,positive same symptom and onset day
+US3512136:AE-008,S27,CE:EFFICACY,8,Headache,2020-11-08,positive same symptom and onset day
+US3512136:AE-006,S3,FA,ADSYMP:92,Muscle Aches (Myalgia),2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-006,S3,CE:EFFICACY,9,Myalgia,2020-11-08,positive same symptom and onset day
+US3512136:AE-006,S27,CE:EFFICACY,9,Myalgia,2020-11-08,positive same symptom and onset day
+US3512136:AE-009,S3,FA,ADSYMP:105,Nasal Congestion,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-009,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-08,positive same symptom and onset day
+US3512136:AE-009,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-08,positive same symptom and onset day
+US3512136:AE-010,S3,FA,ADSYMP:118,Nausea,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-010,S3,CE:EFFICACY,11,Nausea,2020-11-08,positive same symptom and onset day
+US3512136:AE-010,S27,CE:EFFICACY,11,Nausea,2020-11-08,positive same symptom and onset day
+US3512136:AE-011,S3,FA,ADSYMP:187,Sore Throat,2020-11-11,positive COVID symptom assessment on EUA onset day
+US3512136:AE-011,S3,CE:EFFICACY,17,Sore Throat,2020-11-11,positive same symptom and onset day
+US3512136:AE-011,S27,CE:EFFICACY,17,Sore Throat,2020-11-11,positive same symptom and onset day
+US3512136:AE-007,S3,FA,ADSYMP:1,Body Aches,2020-11-08,positive COVID symptom assessment on EUA onset day
+US3512136:AE-007,S3,CE:EFFICACY,1,Body Aches,2020-11-08,positive same symptom and onset day
+US3512136:AE-007,S27,CE:EFFICACY,1,Body Aches,2020-11-08,positive same symptom and onset day
+US3512176:AE-008,S27,CE:REACTOGENICITY,36,Fatigue,2020-08-30T10:00,EUA onset inside positive same-symptom interval (different start)
+US3512193:AE-004,S3,FA,ADSYMP:45,Headache,2020-10-22,positive COVID symptom assessment on EUA onset day
+US3512193:AE-004,S3,CE:EFFICACY,8,Headache,2020-10-21,EUA onset inside positive same-symptom interval (different start)
+US3512193:AE-004,S27,CE:EFFICACY,8,Headache,2020-10-21,EUA onset inside positive same-symptom interval (different start)
+US3512193:AE-006,S3,VS,ADSYMP:43,Fever,2020-10-22,positive COVID symptom assessment on EUA onset day
+US3512193:AE-006,S3,CE:EFFICACY,7,Fever,2020-10-22,positive same symptom and onset day
+US3512193:AE-006,S27,CE:EFFICACY,7,Fever,2020-10-22,positive same symptom and onset day
+US3522491:AE-002,S3,MH,2,GENERALIZED JOINT PAIN,,history term/PT only; prior history is not evidence of transfer
+US3522491:AE-005,S3,MH,3,GENERALIZED JOINT STIFFNESS,,history term/PT only; prior history is not evidence of transfer
+US3522523:AE-006,S3,MH,4,FLUID IN THE EARS,,history term/PT only; prior history is not evidence of transfer
+US3522615:AE-002,S3,CE:REACTOGENICITY,17,Headache,2020-10-06T12:17,positive same symptom and onset day
+US3522615:AE-002,S27,CE:IMMEDIATE REACTION,18,Headache,2020-10-06T12:17,positive same symptom and onset day
+US3522615:AE-002,S27,CE:REACTOGENICITY,40,Headache,2020-10-06T23:57,positive same symptom and onset day
+US3522615:AE-002,S3,MH,3,FREQUENT HEADACHES,,history term/PT only; prior history is not evidence of transfer
+US3522615:AE-003,S3,CE:REACTOGENICITY,3,Pain,2020-10-06T12:16,positive same symptom and onset day
+US3522615:AE-003,S27,CE:IMMEDIATE REACTION,4,Pain,2020-10-06T12:16,positive same symptom and onset day
+US3522615:AE-003,S27,CE:REACTOGENICITY,26,Pain,2020-10-06T23:57,positive same symptom and onset day
+US3522615:AE-005,S3,CE:REACTOGENICITY,19,Myalgia,2020-10-08T00:02,"positive same diary symptom, dose and end day (start not matched)"
+US3522615:AE-005,S27,CE:REACTOGENICITY,42,Myalgia,2020-10-08T00:02,"positive same diary symptom, dose and end day (start not matched)"
+US3532093:AE-002,S3,MH,12,OCCASIONAL VERTIGO EPISODES,,history term/PT only; prior history is not evidence of transfer
+US3542030:AE-005,S3,PR,1,DENTAL FILLING REPLACEMENT,2020-09-28,same procedure name; different onset within 7 days
+US3542030:AE-007,S3,PR,3,TOOTH CROWN REPAIR,2020-10-19,procedure term and onset day
+US3542276:AE-012,S3,CE:REACTOGENICITY,28,Arthralgia,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-012,S27,CE:REACTOGENICITY,50,Arthralgia,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-014,S3,CE:REACTOGENICITY,30,Chills,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-014,S27,CE:REACTOGENICITY,52,Chills,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-013,S3,CE:REACTOGENICITY,32,Fatigue,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-013,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-010,S3,CE:REACTOGENICITY,36,Headache,2020-10-30T04:42,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-010,S27,CE:REACTOGENICITY,58,Headache,2020-10-30T04:42,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-011,S3,CE:REACTOGENICITY,38,Myalgia,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-011,S27,CE:REACTOGENICITY,60,Myalgia,2020-10-28T18:04,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-015,S3,CE:REACTOGENICITY,39,Nausea/Vomiting,2020-09-24T21:30,EUA onset inside positive same-symptom interval (different start)
+US3542276:AE-015,S27,CE:REACTOGENICITY,61,Nausea/Vomiting,2020-09-24T21:30,EUA onset inside positive same-symptom interval (different start)
+US3542360:AE-003,S3,CE:REACTOGENICITY,21,Pain,2020-10-23T16:52,positive same symptom and onset day
+US3542360:AE-003,S27,CE:IMMEDIATE REACTION,22,Pain,2020-10-23T16:52,positive same symptom and onset day
+US3552191:AE-008,S3,FA,ADSYMP:172,Shortness of Breath,2020-09-30,positive COVID symptom assessment on EUA onset day
+US3552191:AE-008,S3,CE:EFFICACY,16,Shortness of Breath,2020-09-30,positive same symptom and onset day
+US3552191:AE-008,S27,CE:EFFICACY,16,Shortness of Breath,2020-09-30,positive same symptom and onset day
+US3572248:AE-003,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-07T12:56,positive same symptom and onset day
+US3572248:AE-003,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-07T12:56,positive same symptom and onset day
+US3582042:AE-005,S3,FA,ADSYMP:13,Cough,2020-10-30,positive COVID symptom assessment on EUA onset day
+US3582042:AE-005,S3,CE:EFFICACY,3,Cough,2020-10-30,positive same symptom and onset day
+US3582042:AE-005,S27,CE:EFFICACY,3,Cough,2020-10-30,positive same symptom and onset day
+US3582130:AE-006,S3,MH,4,MIGRAINE,11/5/2016,history term/PT only; prior history is not evidence of transfer
+US3582137:AE-002,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-11T15:20,positive same symptom and onset day
+US3582137:AE-002,S27,CE:REACTOGENICITY,59,Myalgia,2020-09-11T15:20,positive same symptom and onset day
+US3582137:AE-002,S3,MH,10,MUSCLE PAIN,2018,history term/PT only; prior history is not evidence of transfer
+US3592137:AE-004,S3,CE:REACTOGENICITY,30,Chills,2020-09-11T12:02,positive same symptom and onset day
+US3592137:AE-004,S27,CE:REACTOGENICITY,52,Chills,2020-09-11T12:02,positive same symptom and onset day
+US3602015:AE-004,S27,CE:REACTOGENICITY,53,Fatigue,2020-09-05T16:11,EUA onset inside positive same-symptom interval (different start)
+US3602015:AE-003,S3,CE:REACTOGENICITY,40,Nausea/Vomiting,2020-09-05T16:11,EUA onset inside positive same-symptom interval (different start)
+US3602015:AE-003,S27,CE:REACTOGENICITY,62,Nausea/Vomiting,2020-09-05T16:11,EUA onset inside positive same-symptom interval (different start)
+US3602015:AE-010,S3,VS,ADSYMP:55,Fever,2020-10-06,positive COVID symptom assessment on EUA onset day
+US3602015:AE-010,S3,CE:EFFICACY,7,Fever,2020-10-06,positive same symptom and onset day
+US3602015:AE-010,S27,CE:EFFICACY,7,Fever,2020-10-06,positive same symptom and onset day
+US3602022:AE-002,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-09T12:52,"positive same diary symptom, dose and end day (start not matched)"
+US3602022:AE-002,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-09T12:52,"positive same diary symptom, dose and end day (start not matched)"
+US3602022:AE-003,S3,CE:REACTOGENICITY,17,Headache,2020-10-14T22:56,"positive same diary symptom, dose and end day (start not matched)"
+US3602022:AE-003,S27,CE:REACTOGENICITY,40,Headache,2020-10-13T20:34,"positive same diary symptom, dose and end day (start not matched)"
+US3602033:AE-007,S3,FA,ADSYMP:93,Shortness of Breath,2020-10-25,positive COVID symptom assessment on EUA onset day
+US3602033:AE-007,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3602033:AE-007,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-24,EUA onset inside positive same-symptom interval (different start)
+US3602033:AE-005,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-005,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-003,S3,CE:REACTOGENICITY,35,Headache,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-003,S27,CE:REACTOGENICITY,58,Headache,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-006,S3,CE:REACTOGENICITY,37,Myalgia,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-006,S27,CE:REACTOGENICITY,60,Myalgia,2020-10-17T10:32,positive same symptom and onset day
+US3602033:AE-002,S3,CE:REACTOGENICITY,33,Fever,2020-10-17T10:31,positive same symptom and onset day
+US3602033:AE-002,S27,CE:REACTOGENICITY,56,Fever,2020-10-17T10:31,positive same symptom and onset day
+US3602039:AE-002,S3,FA,ADSYMP:31,Diarrhea,2020-10-14,positive COVID symptom assessment on EUA onset day
+US3602039:AE-002,S3,CE:EFFICACY,4,Diarrhea,2020-10-14,positive same symptom and onset day
+US3602039:AE-002,S27,CE:EFFICACY,4,Diarrhea,2020-10-14,positive same symptom and onset day
+US3602084:AE-011,S3,FA,ADSYMP:31,Headache,2020-11-03,positive COVID symptom assessment on EUA onset day
+US3602084:AE-011,S3,CE:EFFICACY,8,Headache,2020-11-03,positive same symptom and onset day
+US3602084:AE-011,S27,CE:EFFICACY,8,Headache,2020-11-03,positive same symptom and onset day
+US3602084:AE-012,S3,FA,ADSYMP:41,Nasal Congestion,2020-11-03,positive COVID symptom assessment on EUA onset day
+US3602084:AE-012,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-03,positive same symptom and onset day
+US3602084:AE-012,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-03,positive same symptom and onset day
+US3602084:AE-013,S3,FA,ADSYMP:61,Runny Nose (Rhinorrhea),2020-11-03,positive COVID symptom assessment on EUA onset day
+US3602131:AE-002,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-06T17:22,positive same symptom and onset day
+US3602131:AE-002,S27,CE:REACTOGENICITY,53,Fatigue,2020-10-06T17:22,positive same symptom and onset day
+US3622050:AE-003,S27,CE:REACTOGENICITY,31,Arthralgia,2020-08-21,EUA onset inside positive same-symptom interval (different start)
+US3622067:AE-004,S3,MH,3,OCCASIONAL HEADACHE,2019,history term/PT only; prior history is not evidence of transfer
+US3622088:AE-002,S3,CE:REACTOGENICITY,14,Fatigue,2020-08-27T22:35,EUA onset inside positive same-symptom interval (different start)
+US3622088:AE-002,S27,CE:REACTOGENICITY,35,Fatigue,2020-08-27T22:35,EUA onset inside positive same-symptom interval (different start)
+US3622192:AE-004,S27,CE:REACTOGENICITY,63,Arthralgia,2020-10-15T20:23,"positive same diary symptom, dose and end day (start not matched)"
+US3622192:AE-004,S3,MH,4,KNEE PAIN,2016,history term/PT only; prior history is not evidence of transfer
+US3622192:AE-005,S27,CE:REACTOGENICITY,67,Fatigue,2020-10-15T20:23,"positive same diary symptom, dose and end day (start not matched)"
+US3622192:AE-003,S27,CE:REACTOGENICITY,73,Myalgia,2020-10-15T20:23,"positive same diary symptom, dose and end day (start not matched)"
+US3632070:AE-003,S3,PR,2,BIOPSY FOR LESION ON LEFT WRIST,2020-09-23,procedure on same day only
+US3632083:AE-002,S3,CE:REACTOGENICITY,21,Nausea/Vomiting,2020-10-10T19:45,positive same symptom and onset day
+US3632083:AE-002,S27,CE:REACTOGENICITY,44,Nausea/Vomiting,2020-10-10T19:45,positive same symptom and onset day
+US3632113:AE-002,S3,FA,ADSYMP:9,Cough,2020-10-24,positive COVID symptom assessment on EUA onset day
+US3632113:AE-002,S3,CE:EFFICACY,3,Cough,2020-10-24,positive same symptom and onset day
+US3632113:AE-002,S27,CE:EFFICACY,3,Cough,2020-10-24,positive same symptom and onset day
+US3632146:AE-006,S3,FA,ADSYMP:115,Headache,2020-10-20,positive COVID symptom assessment on EUA onset day
+US3632146:AE-006,S3,CE:EFFICACY,8,Headache,2020-10-20,positive same symptom and onset day
+US3632146:AE-006,S3,CE:REACTOGENICITY,35,Headache,2020-10-20T17:23,positive same symptom and onset day
+US3632146:AE-006,S27,CE:EFFICACY,8,Headache,2020-10-20,positive same symptom and onset day
+US3632146:AE-006,S27,CE:IMMEDIATE REACTION,36,Headache,2020-10-20T17:23,positive same symptom and onset day
+US3632146:AE-006,S27,CE:REACTOGENICITY,57,Headache,2020-10-20T21:40,positive same symptom and onset day
+US3652037:AE-003,S3,MH,11,DIARRHEA (INTERMITTENT),2010,history term/PT only; prior history is not evidence of transfer
+US3662025:AE-009,S3,MH,3,CHRONIC RECURRENT UTI,1/11/2016,history term/PT only; prior history is not evidence of transfer
+US3662025:AE-004,S3,PR,1,EKG,2020-10-26,procedure on same day only
+US3662025:AE-004,S3,PR,2,NM MYOCARDIAL PERF STRESS AND REST SPECT,2020-10-26,procedure on same day only
+US3662025:AE-004,S3,PR,4,XRAY-PORTABLE CHEST,2020-10-26,procedure on same day only
+US3662025:AE-004,S3,MH,3,CHRONIC RECURRENT UTI,1/11/2016,history term/PT only; prior history is not evidence of transfer
+US3662038:AE-002,S3,MH,8,MIGRAINE,1/15/2019,history term/PT only; prior history is not evidence of transfer
+US3662060:AE-004,S3,FA,ADSYMP:92,Muscle Aches (Myalgia),2020-10-23,positive COVID symptom assessment on EUA onset day
+US3662060:AE-004,S3,CE:EFFICACY,9,Myalgia,2020-10-23,positive same symptom and onset day
+US3662060:AE-004,S27,CE:EFFICACY,9,Myalgia,2020-10-23,positive same symptom and onset day
+US3662075:AE-011,S3,CE:REACTOGENICITY,27,Arthralgia,2020-10-13T16:52,EUA onset inside positive same-symptom interval (different start)
+US3662075:AE-011,S27,CE:REACTOGENICITY,50,Arthralgia,2020-10-13T16:52,EUA onset inside positive same-symptom interval (different start)
+US3662091:AE-017,S3,FA,ADSYMP:267,Shortness of Breath,2020-10-02,positive COVID symptom assessment on EUA onset day
+US3662091:AE-017,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-02,positive same symptom and onset day
+US3662091:AE-017,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-02,positive same symptom and onset day
+US3662091:AE-012,S3,FA,ADSYMP:107,Fatigue,2020-10-02,positive COVID symptom assessment on EUA onset day
+US3662091:AE-012,S3,CE:EFFICACY,6,Fatigue,2020-10-02,positive same symptom and onset day
+US3662091:AE-012,S27,CE:EFFICACY,6,Fatigue,2020-10-02,positive same symptom and onset day
+US3662091:AE-012,S3,MH,8,FATIGUE,3/26/2010,history term/PT only; prior history is not evidence of transfer
+US3662091:AE-019,S3,CE:EFFICACY,6,Fatigue,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3662091:AE-019,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-12T20:51,positive same symptom and onset day
+US3662091:AE-019,S27,CE:EFFICACY,6,Fatigue,2020-10-02,EUA onset inside positive same-symptom interval (different start)
+US3662091:AE-019,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-12T20:51,positive same symptom and onset day
+US3662091:AE-019,S3,MH,8,FATIGUE,3/26/2010,history term/PT only; prior history is not evidence of transfer
+US3662091:AE-018,S3,CE:EFFICACY,8,Headache,2020-10-03,EUA onset inside positive same-symptom interval (different start)
+US3662091:AE-018,S3,CE:REACTOGENICITY,35,Headache,2020-10-12T20:51,positive same symptom and onset day
+US3662091:AE-018,S27,CE:EFFICACY,8,Headache,2020-10-03,EUA onset inside positive same-symptom interval (different start)
+US3662091:AE-018,S27,CE:REACTOGENICITY,58,Headache,2020-10-12T20:51,positive same symptom and onset day
+US3662091:AE-011,S3,FA,ADSYMP:147,Muscle Aches (Myalgia),2020-10-02,positive COVID symptom assessment on EUA onset day
+US3662091:AE-011,S3,CE:EFFICACY,9,Myalgia,2020-10-02,positive same symptom and onset day
+US3662091:AE-011,S27,CE:EFFICACY,9,Myalgia,2020-10-02,positive same symptom and onset day
+US3662091:AE-013,S3,FA,ADSYMP:187,Nausea,2020-10-02,positive COVID symptom assessment on EUA onset day
+US3662091:AE-013,S3,CE:EFFICACY,11,Nausea,2020-10-02,positive same symptom and onset day
+US3662091:AE-013,S27,CE:EFFICACY,11,Nausea,2020-10-02,positive same symptom and onset day
+US3662091:AE-008,S3,MH,7,CONGESTION SINUS,8/22/2016,history term/PT only; prior history is not evidence of transfer
+US3662096:AE-005,S3,FA,ADSYMP:23,Chills,2020-10-14,positive COVID symptom assessment on EUA onset day
+US3662096:AE-005,S3,CE:EFFICACY,2,Chills,2020-10-14,positive same symptom and onset day
+US3662096:AE-005,S3,CE:REACTOGENICITY,29,Chills,2020-10-13T23:15,EUA onset inside positive same-symptom interval (different start)
+US3662096:AE-005,S27,CE:EFFICACY,2,Chills,2020-10-14,positive same symptom and onset day
+US3662096:AE-005,S27,CE:REACTOGENICITY,52,Chills,2020-10-13T23:15,EUA onset inside positive same-symptom interval (different start)
+US3662096:AE-008,S3,FA,ADSYMP:39,Cough,2020-10-11,positive COVID symptom assessment on EUA onset day
+US3662096:AE-008,S3,CE:EFFICACY,3,Cough,2020-10-11,positive same symptom and onset day
+US3662096:AE-008,S27,CE:EFFICACY,3,Cough,2020-10-11,positive same symptom and onset day
+US3662107:AE-011,S3,FA,ADSYMP:292,New Loss of Taste,2020-10-15,positive COVID symptom assessment on EUA onset day
+US3662107:AE-011,S3,CE:EFFICACY,13,New Loss of Taste,2020-10-15,positive same symptom and onset day
+US3662107:AE-011,S27,CE:EFFICACY,13,New Loss of Taste,2020-10-15,positive same symptom and onset day
+US3662107:AE-016,S3,FA,ADSYMP:151,Headache,2020-09-17,positive COVID symptom assessment on EUA onset day
+US3662107:AE-016,S3,CE:EFFICACY,8,Headache,2020-09-17,positive same symptom and onset day
+US3662107:AE-016,S3,CE:REACTOGENICITY,36,Headache,2020-09-17T19:42,positive same symptom and onset day
+US3662107:AE-016,S27,CE:EFFICACY,8,Headache,2020-09-17,positive same symptom and onset day
+US3662107:AE-016,S27,CE:REACTOGENICITY,57,Headache,2020-09-17T19:42,positive same symptom and onset day
+US3662107:AE-017,S3,FA,ADSYMP:153,Headache,2020-09-19,positive COVID symptom assessment on EUA onset day
+US3662107:AE-017,S3,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-017,S3,CE:REACTOGENICITY,36,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-017,S27,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-017,S27,CE:REACTOGENICITY,57,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-018,S3,FA,ADSYMP:155,Headache,2020-09-21,positive COVID symptom assessment on EUA onset day
+US3662107:AE-018,S3,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-018,S3,CE:REACTOGENICITY,36,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-018,S27,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-018,S27,CE:REACTOGENICITY,57,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-005,S3,FA,ADSYMP:159,Headache,2020-09-25,positive COVID symptom assessment on EUA onset day
+US3662107:AE-005,S3,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-005,S3,CE:REACTOGENICITY,36,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-005,S27,CE:EFFICACY,8,Headache,2020-09-17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-005,S27,CE:REACTOGENICITY,57,Headache,2020-09-17T19:42,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-006,S3,FA,ADSYMP:233,Nausea,2020-09-24,positive COVID symptom assessment on EUA onset day
+US3662107:AE-006,S3,CE:EFFICACY,11,Nausea,2020-09-18,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-006,S3,CE:REACTOGENICITY,40,Nausea/Vomiting,2020-09-18T22:17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-006,S27,CE:EFFICACY,11,Nausea,2020-09-18,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-006,S27,CE:REACTOGENICITY,61,Nausea/Vomiting,2020-09-18T22:17,EUA onset inside positive same-symptom interval (different start)
+US3662107:AE-014,S3,FA,ADSYMP:5,Body Aches,2020-09-21,positive COVID symptom assessment on EUA onset day
+US3662107:AE-014,S3,CE:EFFICACY,1,Body Aches,2020-09-21,positive same symptom and onset day
+US3662107:AE-014,S27,CE:EFFICACY,1,Body Aches,2020-09-21,positive same symptom and onset day
+US3662111:AE-005,S3,CE:REACTOGENICITY,3,Pain,2020-10-15T15:02,EUA onset inside positive same-symptom interval (different start)
+US3662111:AE-005,S27,CE:REACTOGENICITY,26,Pain,2020-10-15T15:02,EUA onset inside positive same-symptom interval (different start)
+US3662156:AE-017,S3,FA,ADSYMP:1027,Nausea,2020-11-19,positive COVID symptom assessment on EUA onset day
+US3662156:AE-017,S3,CE:EFFICACY,15,Nausea,2020-10-09,EUA onset inside positive same-symptom interval (different start)
+US3662156:AE-017,S27,CE:EFFICACY,15,Nausea,2020-10-09,EUA onset inside positive same-symptom interval (different start)
+US3672300:AE-012,S3,CE:REACTOGENICITY,27,Arthralgia,2020-10-04T12:41,positive same symptom and onset day
+US3672300:AE-012,S27,CE:REACTOGENICITY,50,Arthralgia,2020-10-04T12:41,positive same symptom and onset day
+US3672300:AE-014,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-04T12:41,positive same symptom and onset day
+US3672300:AE-014,S27,CE:REACTOGENICITY,53,Fatigue,2020-08-29,EUA onset inside positive same-symptom interval (different start)
+US3672300:AE-014,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-04T12:41,positive same symptom and onset day
+US3672300:AE-011,S3,CE:REACTOGENICITY,37,Myalgia,2020-10-04T12:41,positive same symptom and onset day
+US3672300:AE-011,S27,CE:REACTOGENICITY,59,Myalgia,2020-08-26T12:25,EUA onset inside positive same-symptom interval (different start)
+US3672300:AE-011,S27,CE:REACTOGENICITY,60,Myalgia,2020-10-04T12:41,positive same symptom and onset day
+US3672356:AE-002,S3,CE:REACTOGENICITY,23,Swelling,2020-09-29T12:06,positive same symptom and onset day
+US3672356:AE-002,S27,CE:REACTOGENICITY,46,Swelling,2020-09-29T12:06,positive same symptom and onset day
+US3672377:AE-009,S3,CE:REACTOGENICITY,9,Headache,2020-08-28T20:48,positive same symptom and onset day
+US3672377:AE-009,S27,CE:IMMEDIATE REACTION,9,Headache,2020-08-28T13:29,positive same symptom and onset day
+US3672377:AE-009,S27,CE:REACTOGENICITY,20,Headache,2020-08-28T20:48,positive same symptom and onset day
+US3692074:AE-004,S3,MH,4,SEASONAL ALLERGIES,1990,history term/PT only; prior history is not evidence of transfer
+US3692153:AE-002,S27,CE:REACTOGENICITY,53,Fatigue,2020-09-27,EUA onset inside positive same-symptom interval (different start)
+US3692157:AE-003,S3,CE:REACTOGENICITY,17,Headache,2020-09-29T21:49,EUA onset inside positive same-symptom interval (different start)
+US3692157:AE-003,S27,CE:REACTOGENICITY,39,Headache,2020-09-29T21:49,EUA onset inside positive same-symptom interval (different start)
+US3692157:AE-003,S3,MH,2,"HEADACHES, NOS",2010,history term/PT only; prior history is not evidence of transfer
+US3692157:AE-004,S3,CE:REACTOGENICITY,18,Headache,2020-10-20T21:25,positive same symptom and onset day
+US3692157:AE-004,S27,CE:REACTOGENICITY,40,Headache,2020-10-20T21:25,positive same symptom and onset day
+US3692157:AE-004,S3,MH,2,"HEADACHES, NOS",2010,history term/PT only; prior history is not evidence of transfer
+US3692192:AE-002,S3,MH,2,HYPERTENSION,2015,history term/PT only; prior history is not evidence of transfer
+US3702030:AE-004,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-12T19:59,EUA onset inside positive same-symptom interval (different start)
+US3702030:AE-004,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-12T19:59,EUA onset inside positive same-symptom interval (different start)
+US3702030:AE-005,S3,CE:REACTOGENICITY,17,Headache,2020-10-14T07:47,positive same symptom and onset day
+US3702030:AE-005,S27,CE:REACTOGENICITY,40,Headache,2020-10-14T07:47,positive same symptom and onset day
+US3722034:AE-007,S3,PR,2,COLONOSCOPY WITH POLYPS REMOVAL,2020-09-01,procedure on same day only
+US3722034:AE-007,S3,PR,7,X-RAY OF THE ABDOMEN,2020-09-01,procedure on same day only
+US3722070:AE-003,S3,CE:REACTOGENICITY,13,Fatigue,2020-08-07T21:20,positive same symptom and onset day
+US3722070:AE-003,S27,CE:REACTOGENICITY,35,Fatigue,2020-08-07T21:20,positive same symptom and onset day
+US3722195:AE-002,S3,CE:REACTOGENICITY,13,Fatigue,2020-08-13T20:51,positive same symptom and onset day
+US3722195:AE-002,S27,CE:REACTOGENICITY,35,Fatigue,2020-08-13T20:51,positive same symptom and onset day
+US3732387:AE-006,S3,MH,9,LEFT LEG VARICOSE VEINS,2001,history term/PT only; prior history is not evidence of transfer
+US3742176:AE-003,S3,PR,2,EXISION OF MUCUS CYST RIGHT INDEX FINGER,2020-10-28,procedure on same day only
+US3742208:AE-011,S3,FA,ADSYMP:234,Nasal Congestion,2020-11-09,positive COVID symptom assessment on EUA onset day
+US3742208:AE-011,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-09,positive same symptom and onset day
+US3742208:AE-011,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-09,positive same symptom and onset day
+US3742429:AE-002,S3,CE:REACTOGENICITY,14,Fatigue,2020-10-18T13:22,positive same symptom and onset day
+US3742429:AE-002,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-18T13:22,positive same symptom and onset day
+US3742450:AE-002,S3,CE:REACTOGENICITY,22,Pain,2020-10-23T21:34,positive same symptom and onset day
+US3742450:AE-002,S27,CE:REACTOGENICITY,44,Pain,2020-10-23T21:34,positive same symptom and onset day
+US3752034:AE-002,S3,CE:REACTOGENICITY,20,Myalgia,2020-09-11T08:40,positive same symptom and onset day
+US3752034:AE-002,S27,CE:REACTOGENICITY,42,Myalgia,2020-09-11T08:40,positive same symptom and onset day
+US3752082:AE-002,S3,CE:REACTOGENICITY,36,Headache,2020-09-13T07:32,positive same symptom and onset day
+US3752082:AE-002,S27,CE:REACTOGENICITY,58,Headache,2020-09-13T07:32,positive same symptom and onset day
+US3752087:AE-003,S3,CE:REACTOGENICITY,20,Erythema,2020-09-13T12:43,positive same symptom and onset day
+US3752087:AE-003,S27,CE:REACTOGENICITY,42,Erythema,2020-09-13T12:43,positive same symptom and onset day
+US3752129:AE-002,S3,PR,4,TOTAL THYROIDECTOMY,2020-10-02,procedure term and onset day
+US3752156:AE-005,S3,CE:REACTOGENICITY,14,Fatigue,2020-09-15T20:39,positive same symptom and onset day
+US3752156:AE-005,S27,CE:REACTOGENICITY,36,Fatigue,2020-09-15T20:39,positive same symptom and onset day
+US3752156:AE-010,S3,CE:REACTOGENICITY,3,Pain,2020-08-19T14:40,positive same symptom and onset day
+US3752156:AE-010,S27,CE:IMMEDIATE REACTION,3,Pain,2020-08-19T14:40,positive same symptom and onset day
+US3752156:AE-010,S27,CE:REACTOGENICITY,25,Pain,2020-08-19T21:15,positive same symptom and onset day
+US3752161:AE-002,S3,PR,1,CT W/ IV CONTRAST,2020-09-16,procedure on same day only
+US3752163:AE-005,S27,CE:REACTOGENICITY,30,Underarm Gland Swelling or Tenderness,2020-09-16,positive same symptom and onset day
+US3752195:AE-005,S3,CE:REACTOGENICITY,10,Arthralgia,2020-08-27T19:03,positive same symptom and onset day
+US3752195:AE-005,S27,CE:REACTOGENICITY,31,Arthralgia,2020-08-27T19:03,positive same symptom and onset day
+US3752217:AE-004,S3,CE:REACTOGENICITY,11,Chills,2020-09-29T12:05,positive same symptom and onset day
+US3752217:AE-004,S27,CE:REACTOGENICITY,34,Chills,2020-09-29T12:05,positive same symptom and onset day
+US3752217:AE-003,S3,CE:REACTOGENICITY,3,Pain,2020-09-28T09:45,EUA onset inside positive same-symptom interval (different start)
+US3752217:AE-003,S27,CE:REACTOGENICITY,26,Pain,2020-09-28T17:16,EUA onset inside positive same-symptom interval (different start)
+US3752251:AE-008,S3,CE:REACTOGENICITY,25,Underarm Gland Swelling or Tenderness,2020-09-24T22:00,positive same symptom and onset day
+US3752251:AE-008,S27,CE:REACTOGENICITY,48,Underarm Gland Swelling or Tenderness,2020-09-24T22:00,positive same symptom and onset day
+US3752251:AE-003,S3,CE:REACTOGENICITY,22,Pain,2020-08-28T22:20,EUA onset inside positive same-symptom interval (different start)
+US3752251:AE-003,S27,CE:REACTOGENICITY,43,Pain,2020-08-28T22:20,EUA onset inside positive same-symptom interval (different start)
+US3762161:AE-008,S3,PR,1,CT CHEST SCAN WITHOUT CONTRAST,2020-11-10,procedure on same day only
+US3772017:AE-004,S3,MH,4,RIGHT TEMPORAL PAIN,2018,history term/PT only; prior history is not evidence of transfer
+US3772057:AE-004,S3,CE:REACTOGENICITY,9,Arthralgia,2020-08-19T20:04,positive same symptom and onset day
+US3772057:AE-004,S27,CE:REACTOGENICITY,31,Arthralgia,2020-08-19T20:04,positive same symptom and onset day
+US3802108:AE-004,S3,CE:REACTOGENICITY,17,Headache,2020-09-30T08:08,positive same symptom and onset day
+US3802108:AE-004,S27,CE:REACTOGENICITY,40,Headache,2020-09-30T08:08,positive same symptom and onset day
+US3802127:AE-002,S3,MH,2,ACID INDIGESTION,,history term/PT only; prior history is not evidence of transfer
+US3812002:AE-007,S3,CE:EFFICACY,8,Headache,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3812002:AE-007,S27,CE:EFFICACY,8,Headache,2020-08-03,EUA onset inside positive same-symptom interval (different start)
+US3812002:AE-007,S3,MH,2,HEADACHES,2007,history term/PT only; prior history is not evidence of transfer
+US3812229:AE-003,S3,MH,13,CONSTIPATION,1945,history term/PT only; prior history is not evidence of transfer
+US3812280:AE-005,S3,PR,1,URINE DRUG SCREEN,2020-11-13,procedure on same day only
+US3812280:AE-005,S3,MB,62,Negative,2020-11-19,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3812280:AE-005,S3,MB,82,Not Detected,2020-11-19,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3812346:AE-002,S3,MB,4,Detected,2020-10-29T14:15,SARS-CoV-2 test within 7 days; not proof of AE disposition
+US3832250:AE-002,S3,LB,6,Choriogonadotropin Beta POSITIVE,2020-09-21,positive pregnancy test on onset day
+US3852069:AE-002,S3,FA,ADSYMP:91,Headache,2020-09-23,positive COVID symptom assessment on EUA onset day
+US3852069:AE-002,S3,CE:EFFICACY,8,Headache,2020-09-23,positive same symptom and onset day
+US3852069:AE-002,S27,CE:EFFICACY,8,Headache,2020-09-23,positive same symptom and onset day
+US3852069:AE-003,S3,FA,ADSYMP:181,Runny Nose (Rhinorrhea),2020-09-23,positive COVID symptom assessment on EUA onset day
+US3862092:AE-003,S3,MH,15,HYPOTHYROIDISM,2004,history term/PT only; prior history is not evidence of transfer
+US3872031:AE-006,S3,FA,ADSYMP:56,Fatigue,2020-08-14,positive COVID symptom assessment on EUA onset day
+US3872031:AE-006,S3,CE:EFFICACY,6,Fatigue,2020-08-14,positive same symptom and onset day
+US3872031:AE-006,S27,CE:EFFICACY,6,Fatigue,2020-08-14,positive same symptom and onset day
+US3872031:AE-005,S27,CE:REACTOGENICITY,54,Fatigue,2020-09-07T12:58,EUA onset inside positive same-symptom interval (different start)
+US3872031:AE-007,S3,FA,ADSYMP:67,Headache,2020-08-14,positive COVID symptom assessment on EUA onset day
+US3872031:AE-007,S3,CE:EFFICACY,8,Headache,2020-08-14,positive same symptom and onset day
+US3872031:AE-007,S27,CE:EFFICACY,8,Headache,2020-08-14,positive same symptom and onset day
+US3872031:AE-007,S3,MH,3,HEADACHE,2000,history term/PT only; prior history is not evidence of transfer
+US3872031:AE-011,S3,MH,3,HEADACHE,2000,history term/PT only; prior history is not evidence of transfer
+US3872062:AE-008,S3,FA,ADSYMP:119,Difficulty Breathing,2020-10-12,positive COVID symptom assessment on EUA onset day
+US3872062:AE-008,S3,FA,ADSYMP:380,Shortness of Breath,2020-10-12,positive COVID symptom assessment on EUA onset day
+US3872062:AE-008,S3,CE:EFFICACY,5,Difficulty Breathing,2020-10-12,positive same symptom and onset day
+US3872062:AE-008,S3,CE:EFFICACY,16,Shortness of Breath,2020-10-12,positive same symptom and onset day
+US3872062:AE-008,S27,CE:EFFICACY,5,Difficulty Breathing,2020-10-12,positive same symptom and onset day
+US3872062:AE-008,S27,CE:EFFICACY,16,Shortness of Breath,2020-10-12,positive same symptom and onset day
+US3872062:AE-015,S3,PR,6,GALL BLADDER ULTRA SOUND,2020-10-18,procedure on same day only
+US3872062:AE-015,S3,PR,7,LIVER ULTRASOUND,2020-10-18,procedure on same day only
+US3872118:AE-006,S27,CE:REACTOGENICITY,42,Myalgia,2020-09-09T10:33,EUA onset inside positive same-symptom interval (different start)
+US3872180:AE-005,S3,FA,ADSYMP:55,Cough,2020-11-04,positive COVID symptom assessment on EUA onset day
+US3872180:AE-005,S3,CE:EFFICACY,3,Cough,2020-11-04,positive same symptom and onset day
+US3872180:AE-005,S27,CE:EFFICACY,3,Cough,2020-11-04,positive same symptom and onset day
+US3872180:AE-003,S3,FA,ADSYMP:217,Nasal Congestion,2020-11-04,positive COVID symptom assessment on EUA onset day
+US3872180:AE-003,S3,CE:EFFICACY,10,Nasal Congestion,2020-11-04,positive same symptom and onset day
+US3872180:AE-003,S27,CE:EFFICACY,10,Nasal Congestion,2020-11-04,positive same symptom and onset day
+US3872180:AE-004,S3,FA,ADSYMP:325,Runny Nose (Rhinorrhea),2020-11-04,positive COVID symptom assessment on EUA onset day
+US3872512:AE-004,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-10T19:23,positive same symptom and onset day
+US3872512:AE-004,S27,CE:REACTOGENICITY,59,Myalgia,2020-09-10T19:23,positive same symptom and onset day
+US3882034:AE-002,S3,MH,3,CHROMIC LOW BACK PAIN,,history term/PT only; prior history is not evidence of transfer
+US3912099:AE-007,S3,CE:REACTOGENICITY,28,Arthralgia,2020-09-03T17:45,positive same symptom and onset day
+US3912099:AE-007,S27,CE:IMMEDIATE REACTION,28,Arthralgia,2020-09-03T17:45,positive same symptom and onset day
+US3912099:AE-007,S27,CE:REACTOGENICITY,49,Arthralgia,2020-09-03T21:51,positive same symptom and onset day
+US3912099:AE-007,S3,MH,4,BILATERAL ANKLE PAIN,1970,history term/PT only; prior history is not evidence of transfer
+US3912099:AE-003,S3,CE:REACTOGENICITY,27,Arthralgia,2020-10-05T22:16,positive same symptom and onset day
+US3912099:AE-003,S27,CE:REACTOGENICITY,50,Arthralgia,2020-10-05T22:16,positive same symptom and onset day
+US3912099:AE-003,S3,MH,4,BILATERAL ANKLE PAIN,1970,history term/PT only; prior history is not evidence of transfer
+US3912099:AE-002,S3,CE:REACTOGENICITY,31,Fatigue,2020-10-05T22:16,positive same symptom and onset day
+US3912099:AE-002,S27,CE:REACTOGENICITY,54,Fatigue,2020-10-05T22:16,positive same symptom and onset day
+US3912099:AE-005,S3,FA,ADSYMP:29,Headache,2020-10-07,positive COVID symptom assessment on EUA onset day
+US3912099:AE-005,S3,CE:EFFICACY,8,Headache,2020-10-05,EUA onset inside positive same-symptom interval (different start)
+US3912099:AE-005,S27,CE:EFFICACY,8,Headache,2020-10-05,EUA onset inside positive same-symptom interval (different start)
+US3912099:AE-008,S3,CE:REACTOGENICITY,38,Myalgia,2020-09-07T22:27,positive same symptom and onset day
+US3912099:AE-008,S27,CE:REACTOGENICITY,59,Myalgia,2020-09-07T22:27,positive same symptom and onset day
+US3912165:AE-009,S3,CE:REACTOGENICITY,40,Nausea/Vomiting,2020-09-17T18:55,EUA onset inside positive same-symptom interval (different start)
+US3912165:AE-009,S27,CE:REACTOGENICITY,61,Nausea/Vomiting,2020-09-17T18:55,EUA onset inside positive same-symptom interval (different start)
+US3932117:AE-007,S3,CE:REACTOGENICITY,13,Fatigue,2020-10-15T18:48,positive same symptom and onset day
+US3932117:AE-007,S27,CE:REACTOGENICITY,36,Fatigue,2020-10-15T18:48,positive same symptom and onset day
+US3932117:AE-009,S3,CE:REACTOGENICITY,3,Pain,2020-10-15T18:46,"positive same diary symptom, dose and end day (start not matched)"
+US3932117:AE-009,S27,CE:REACTOGENICITY,26,Pain,2020-10-15T18:46,"positive same diary symptom, dose and end day (start not matched)"
+US3932117:AE-006,S3,CE:REACTOGENICITY,21,Nausea/Vomiting,2020-10-15T10:55,positive same symptom and onset day
+US3932117:AE-006,S27,CE:IMMEDIATE REACTION,22,Nausea/Vomiting,2020-10-15T10:55,positive same symptom and onset day
+US3932117:AE-006,S27,CE:REACTOGENICITY,44,Nausea/Vomiting,2020-10-15T18:48,positive same symptom and onset day
+US3932182:AE-002,S3,PR,2,CHEST CT WITHOUT CONTRAST,2020-10-26,procedure on same day only
+US3932182:AE-002,S3,PR,5,CT T-SPINE WITHOUT CONTRAST,2020-10-26,procedure on same day only
+US3932182:AE-002,S3,PR,7,MRI L-SPINE WITHOUT CONTRAST,2020-10-26,procedure on same day only
+US3932182:AE-002,S3,PR,10,X-RAY C-SPINE,2020-10-26,procedure on same day only
+US3952033:AE-005,S3,PR,1,12 LEAD EKG FOR PERICARDITIS,2020-10-31,procedure on same day only
+US3952033:AE-005,S3,PR,4,CTA PE PROTOCOL W WO IV CONTRAST FOR PERICARDITIS,2020-10-31,procedure on same day only
+US3972036:AE-003,S3,CE:REACTOGENICITY,15,Fever,2020-09-24T13:55,positive same symptom and onset day
+US3972036:AE-003,S27,CE:REACTOGENICITY,38,Fever,2020-09-24T13:55,positive same symptom and onset day
+US3992016:AE-005,S3,MH,9,HEADACHES,,history term/PT only; prior history is not evidence of transfer

@@ -1,0 +1,7 @@
+measure,n,unit
+EUA S5 all serious AE records,419,records
+EUA S5 participants with any serious AE,301,participants
+S5 serious participants with no AE row in either S3 or S27,3,participants
+Serious records on those three participants,3,records
+EUA S5 serious prostate cancer incl metastatic,7,participants
+Same persons with serious prostate cancer in both S3 and S27,6,participants

@@ -1,0 +1,8 @@
+Full R replay: official archived numerical summaries matched.
+Original XPTs verified: 1,118 + 4,362 + 4,362 AE transcription comparisons, 566 original form keys, and exposure/ADSL values on all 1,071 unblinding form observations. PCR comparator: 640 dated comparisons, 55 focused rows verified.
+44 page references for reviewed cases and 23 serious EUA forms verified; 0 documents missing.
+illness_DV 24 rows verified
+dv_links 5 rows verified
+Six-PDF raw extraction: arm_checkbox: 5 rows, -0/+0; dose2_flags: 2 rows, -0/+0; contact_lags: 7 rows, -0/+0; AE_term_onset_checks: 67 rows, -0/+0; pcr_comparison: 7 rows, -0/+0; illness_visit_search_hits: 2 rows, -0/+0.
+Two qualifying sample participants: all checked visit-history and eligibility fields matched.
+See CRF_EVIDENCE.md for input scope and limitations.

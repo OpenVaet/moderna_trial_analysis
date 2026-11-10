@@ -1,0 +1,37 @@
+key,S3_MBSEQ,test,collection,result
+US3032035:AE-003,21.0,Severe Acute Resp Syndrome Coronavirus 2,2020-11-16,Positive
+US3032035:AE-003,26.0,Severe Acute Resp Syndrome Coronavirus 2,2020-11-20,Detected
+US3032035:AE-003,33.0,Severe Acute Resp Syndrome Coronavirus 2,2020-11-16,Detected
+US3032046:AE-002,41.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-19,Positive
+US3032046:AE-002,45.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-23,Detected
+US3032046:AE-002,48.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-25,Detected
+US3032046:AE-002,50.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-21,Detected
+US3032046:AE-002,54.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-19,Detected
+US3312389:AE-003,16.0,Human Rhinovirus/Enterovirus,2020-09-22,Detected
+US3312389:AE-004,16.0,Human Rhinovirus/Enterovirus,2020-09-22,Detected
+US3312389:AE-005,16.0,Human Rhinovirus/Enterovirus,2020-09-22,Detected
+US3312389:AE-006,16.0,Human Rhinovirus/Enterovirus,2020-09-22,Detected
+US3442163:AE-002,21.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-21,Positive
+US3442163:AE-002,24.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-25,Detected
+US3442163:AE-002,26.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-23,Detected
+US3442163:AE-002,28.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-27,Detected
+US3442163:AE-002,34.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-21,Detected
+US3442163:AE-003,21.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-21,Positive
+US3442163:AE-003,24.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-25,Detected
+US3442163:AE-003,26.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-23,Detected
+US3442163:AE-003,34.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-21,Detected
+US3622124:AE-005,16.0,Human Rhinovirus/Enterovirus,2020-10-16,Detected
+US3622124:AE-006,16.0,Human Rhinovirus/Enterovirus,2020-10-16,Detected
+US3622124:AE-007,16.0,Human Rhinovirus/Enterovirus,2020-10-16,Detected
+US3622161:AE-002,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-003,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-004,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-005,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-006,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-007,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-008,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-009,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3622161:AE-010,16.0,Human Rhinovirus/Enterovirus,2020-10-23,Detected
+US3732176:AE-003,34.0,Severe Acute Resp Syndrome Coronavirus 2,2020-11-22,Positive
+US3732176:AE-003,35.0,Severe Acute Resp Syndrome Coronavirus 2,2020-11-22,Detected
+US3812346:AE-002,4.0,Severe Acute Resp Syndrome Coronavirus 2,2020-10-29T14:15,Detected

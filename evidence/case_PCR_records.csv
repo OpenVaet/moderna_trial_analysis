@@ -1,0 +1,56 @@
+subject,date,visits,MBSEQ,raw_result,route,usable_dated,illness_labelled,baseline
+US3162078,2020-08-19, |  | Illness Visit,21,Positive,LOCAL_SOURCE,True,True,False
+US3162078,2020-09-08,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,23,Not Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-08-27,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,24,Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-08-23,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,25,Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-08-25,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,26,Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-09-18,Convalescence Visit Day 28 | Convalescence Visit Day 28 | Illness Visit,27,Not Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-08-21,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,28,Not Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-09-01,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,29,Detected,CENTRAL_SOURCE,True,True,False
+US3162078,2020-08-07,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,30,Not Detected,CENTRAL_SOURCE,True,False,True
+US3162078,2020-08-19,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit,32,Detected,CENTRAL_SOURCE,True,True,False
+US3222189,2020-09-18,Visit 2 Day 29 | Visit 2 Day 29 | Day 29,3,Not Detected,CENTRAL_SOURCE,True,False,False
+US3222189,2020-08-17,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,5,Not Detected,CENTRAL_SOURCE,True,False,True
+US3242397,2020-10-07, |  | Illness Visit,21,Negative,LOCAL_SOURCE,True,True,False
+US3242397,2020-11-01, |  | Illness Visit,22,Positive,LOCAL_SOURCE,True,True,False
+US3242397,2020-11-07,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,32,Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-10-09,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,33,Not Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-11-05,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,34,Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-11-23,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,35,Not Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-11-09,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,36,Not Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-11-15,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,37,Not Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2020-12-02,Convalescence Visit Day 28 | Convalescence Visit Day 28 | Illness Visit,38,Not Detected,CENTRAL_SOURCE,True,True,False
+US3242397,2021-01-13,Participant Decision Visit / OL-D1 | Participant Decision Visit / OL-D1 | Participant Decision Visit / OL-D1,39,Not Detected,CENTRAL_SOURCE,True,False,False
+US3242397,2020-10-27,Visit 2 Day 29 | Visit 2 Day 29 | Day 29,40,Not Detected,CENTRAL_SOURCE,True,False,False
+US3242397,2020-09-29,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,41,Not Detected,CENTRAL_SOURCE,True,False,True
+US3242397,2020-10-07,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit,42,Not Detected,CENTRAL_SOURCE,True,True,False
+US3572076,2020-09-01, |  | ,1,Negative,LOCAL_SOURCE,True,False,False
+US3572076,2020-09-01,Illness Visit Day 1 Unscheduled 1 | Illness Visit Day 1 Unscheduled 1 | Illness Visit,11,Not Detected,CENTRAL_SOURCE,True,True,False
+US3572076,2020-08-24,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,12,Not Detected,CENTRAL_SOURCE,True,False,True
+US3572076,2020-09-01,Illness Visit Day 1 Unscheduled 1 | Illness Visit Day 1 Unscheduled 1 | Illness Visit,13,Not Detected,CENTRAL_SOURCE,True,True,False
+US3572076,2020-09-22,Visit 2 Day 29 | Visit 2 Day 29 | Day 29,14,Not Detected,CENTRAL_SOURCE,True,False,False
+US3632127,2020-11-30, |  | Illness Visit,21,Negative,LOCAL_SOURCE,True,True,False
+US3632127,2020-12-11, |  | Illness Visit 2,22,Negative,LOCAL_SOURCE,True,True,False
+US3632127,2020-12-02,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,31,Not Detected,CENTRAL_SOURCE,True,True,False
+US3632127,2020-12-13,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit 2,32,Not Detected,CENTRAL_SOURCE,True,True,False
+US3632127,2020-11-11,Visit 2 Day 29 | Visit 2 Day 29 | Day 29,33,Not Detected,CENTRAL_SOURCE,True,False,False
+US3632127,2020-12-11,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit 2,34,Not Detected,CENTRAL_SOURCE,True,True,False
+US3632127,2020-10-13,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,35,Not Detected,CENTRAL_SOURCE,True,False,True
+US3632127,2021-01-15,Participant Decision Visit / OL-D1 | Participant Decision Visit / OL-D1 | Participant Decision Visit / OL-D1,36,Not Detected,CENTRAL_SOURCE,True,False,False
+US3632127,2020-11-30,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit,37,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-09-25, |  | Illness Visit,22,Positive,LOCAL_SOURCE,True,True,False
+US3742253,2020-10-08,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,26,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-10-03,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,27,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-10-16,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,28,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-10-30,Convalescence Visit Day 28 | Convalescence Visit Day 28 | Illness Visit,29,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-09-27,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,30,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-10-01,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,31,Not Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-09-29,Illness Visit Day 3 - Day 21 | Illness Visit Day 3 - Day 21 | Illness Visit,32,Detected,CENTRAL_SOURCE,True,True,False
+US3742253,2020-09-04,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,33,Not Detected,CENTRAL_SOURCE,True,False,True
+US3742253,2020-09-25,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit,34,Detected,CENTRAL_SOURCE,True,True,False
+US3932018,2020-09-24,Visit 2 Day 29 | Visit 2 Day 29 | Day 29,3,Not Detected,CENTRAL_SOURCE,True,False,False
+US3932018,2020-08-28,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,4,Not Detected,CENTRAL_SOURCE,True,False,True
+US3932147,2020-12-17, |  | ,2,Positive,LOCAL_SOURCE,True,False,False
+US3932147,2021-01-06, |  | Illness Visit,3,Positive,LOCAL_SOURCE,True,True,False
+US3932147,2020-09-16,Visit 1 Day 1 | Visit 1 Day 1 | Baseline,14,Not Detected,CENTRAL_SOURCE,True,False,True
+US3932147,2020-12-18,Illness Visit Day 1 | Illness Visit Day 1 | Illness Visit,15,Not Detected,CENTRAL_SOURCE,True,True,False
