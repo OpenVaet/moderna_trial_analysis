@@ -1,0 +1,5 @@
+"release","period","people","no_schedule","planned_mismatches","as_used_stratum_mismatches","verified_stratum_changes","actual_opposite","blank_actual"
+"BLA","Before first gap proxy",429,0,0,0,109,0,1
+"EUA","Before first gap proxy",429,0,0,0,109,0,1
+"BLA","On/after first gap proxy",29986,0,0,0,864,10,68
+"EUA","On/after first gap proxy",29991,0,0,0,907,10,68

@@ -1,0 +1,3 @@
+"SUBJID","SITEID","RANDFL","RANDNUM","RANDDT","TRT01P","TRT01A","STRATAR","STRATARN","STRATAV","STRATAVN","AGE","release","block","slot","sched_stratum","sched_arm","pdf_page","on_schedule","planned_match","stratum_match","verified_stratum_diff","actual_diff","period"
+"US3692054","US369","Y",146067,"2020-09-14","mRNA-1273","",">=18 and <65 Years and at Risk","2",">=18 and <65 Years and at Risk","2","60","BLA",7678,5,3,"mRNA-1273",1773,TRUE,TRUE,TRUE,FALSE,,"On/after first gap proxy"
+"US3272156","US327","Y",144930,"2020-08-25","Placebo","",">=18 and <65 Years and at Risk","2",">=18 and <65 Years and Not at Risk","1","38","BLA",7489,2,3,"Placebo",1730,TRUE,TRUE,TRUE,TRUE,,"On/after first gap proxy"
