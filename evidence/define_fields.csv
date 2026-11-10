@@ -1,0 +1,23 @@
+snapshot,field,origin,annotated_CRF_page,method_or_comment
+S3,AE.AESPID,CRF,25,
+S3,AE.AEGRPID,Assigned,,Record position on CRF in z3 format
+S3,AE.AESEQ,Derived,,"For each USUBJID starting with 1 and incremented by 1, sorted by dataset key variables."
+S3,MB.MBSEQ,Derived,,"For each USUBJID starting with 1 and incremented by 1, sorted by dataset key variables."
+S3,MB.MBREFID,Assigned,,
+S3,MH.MHSPID,Assigned,,
+S3,CM.CMSPID,Assigned,,Row ID Number in the format of '0xx'
+S3,PR.PRSPID,Assigned,,
+S3,HO.HOSPID,CRF,25,
+S3,DV.DVSPID,Assigned,,
+S3,CE.CESPID,Assigned,,"concatenate INSTANCEID ||""-""||RECORDPOSITION; For Adjudication, assigned from CLINICAL_ID"
+S5,AE.AESPID,CRF,23,
+S5,AE.AEGRPID,Assigned,,Record position on CRF in z3 format
+S5,AE.AESEQ,Derived,,"For each USUBJID starting with 1 and incremented by 1, sorted by dataset key variables."
+S5,MB.MBSEQ,Derived,,"For each USUBJID starting with 1 and incremented by 1, sorted by dataset key variables."
+S5,MB.MBREFID,Assigned,,
+S5,MH.MHSPID,Assigned,,
+S5,CM.CMSPID,Assigned,,Row ID Number in the format of '0xx'
+S5,PR.PRSPID,Assigned,,
+S5,HO.HOSPID,CRF,23,
+S5,DV.DVSPID,Assigned,,
+S5,CE.CESPID,Assigned,,"concatenate INSTANCEID ||""-""||RECORDPOSITION; For Adjudication, assigned from CLINICAL_ID"

@@ -1,0 +1,10 @@
+snapshot,measure,count,denominator
+S27,AEGRPID equals AESPID numeric suffix,39215,39215
+S3,AEGRPID equals AESPID numeric suffix,39215,39215
+S3,PCR rows with nonblank MBREFID,108407,114693
+S5,AEGRPID equals AESPID numeric suffix,16942,16942
+S5,PCR rows with nonblank MBREFID,65588,68105
+S3→S27,same subject/AESPID in both,39215,39215
+S3→S27,same numbered form with changed AESEQ,23667,39215
+S3→S27,same numbered form with identical term/date/seriousness,39158,39215
+S5→S3,same unique subject/reference/date PCR row with changed MBSEQ,35863,64620
