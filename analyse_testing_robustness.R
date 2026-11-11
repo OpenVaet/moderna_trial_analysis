@@ -2,7 +2,7 @@
 # options(phmpt.followup_autorun=FALSE) loads functions only.
 local({r<-getOption('phmpt.followup_root',getwd());source(file.path(r,'audit_followup_helpers.R'),local=FALSE)})
 analyse_testing_robustness <- function(root=audit_root()) {
- out<-file.path(root,'results','testing');assets<-file.path(root,'audit_assets');dir.create(assets,recursive=TRUE,showWarnings=FALSE);set.seed(4301)
+ out<-file.path(root,'results','testing');assets<-audit_asset_path(root);dir.create(assets,recursive=TRUE,showWarnings=FALSE);set.seed(4301)
  e<-rd(root,'episodes');q<-rd(root,'required_evaluation_episodes');f<-rd(root,'subject_followup');ck(!anyDuplicated(e$episode_id),'Duplicate episode IDs')
  main<-e[yes(e$incident)&e$classification=='MANDATORY'&yes(e$complete3),];seven<-main[yes(main$complete7)&yes(main$orig_eligible),]
  sets<-list(All_required_evaluations=q,All_mandatory_swab_episodes=main,Complete_seven_day_opportunity=seven,No_linked_positive_PCR_D0_7=seven[text0(seven$pcr_result_d0_7)!='POSITIVE',],PP_D2plus14_complete7=seven[yes(seven$pp14),],PP_D2plus14_no_linked_positive=seven[yes(seven$pp14)&text0(seven$pcr_result_d0_7)!='POSITIVE',])
@@ -45,14 +45,15 @@ analyse_testing_robustness <- function(root=audit_root()) {
  wr(do.call(rbind,matched_bounds),out,'matched_boundary_sensitivity');bsout<-do.call(rbind,sens);wr(bsout,out,'boundary_sensitivity');wr(do.call(rbind,lost),out,'boundary_population')
  core<-a[a$scope%in%c('All_required_evaluations','All_mandatory_swab_episodes','Complete_seven_day_opportunity','No_linked_positive_PCR_D0_7') & ((a$scope=='All_required_evaluations'&a$endpoint=='form_by_d3')|(a$scope=='All_mandatory_swab_episodes'&a$endpoint=='swab_d0_3')|(a$scope%in%c('Complete_seven_day_opportunity','No_linked_positive_PCR_D0_7')&a$endpoint=='swab_d0_7')),]
  labels<-c('Checklist by day 3: all required evaluations','Swab by day 3: all mandatory swab episodes','Swab by day 7: all episodes with full follow-up','Swab by day 7: excluding linked PCR-positive episodes')
- v<-data.frame(Comparison=labels,'mRNA-1273'=rate(core$vaccine_x,core$vaccine_n),Placebo=rate(core$placebo_x,core$placebo_n),check.names=FALSE);wr(v,assets,'V47_complete_episode_comparison');print_table_png(v,file.path(assets,'V47_complete_episode_comparison.png'),'V47 All qualifying episodes and positivity-restricted sensitivity','Day 3 is a calendar-date proxy; rows 3 and 4 share the same follow-up rule.')
+ v<-data.frame(Comparison=labels,'mRNA-1273'=rate(core$vaccine_x,core$vaccine_n),Placebo=rate(core$placebo_x,core$placebo_n),check.names=FALSE);wr(v,assets,'V21_complete_episode_comparison');print_table_png(v,file.path(assets,'V21_complete_episode_comparison.png'),'V21 All qualifying episodes and positivity-restricted sensitivity','Day 3 is a calendar-date proxy; rows 3 and 4 share the same follow-up rule.')
 
  v<-data.frame(Population=c('All eligible episodes: checklist by day 3','Episodes in common support (% of all eligible)','Common support: raw checklist coverage','Common support: standardized checklist coverage','Outside common support: checklist by day 3'),
  'mRNA-1273'=c(rate(ms$forms3[1],ms$episodes[1]),rate(nrow(c1),ms$episodes[1]),rate(ms$forms3[3],ms$episodes[3]),sprintf('%.1f%%',100*weighted.mean(z$yes.x/z$n.x,z$w)),rate(ms$forms3[5],ms$episodes[5])),
  'Placebo'=c(rate(ms$forms3[2],ms$episodes[2]),rate(nrow(c0),ms$episodes[2]),rate(ms$forms3[4],ms$episodes[4]),sprintf('%.1f%%',100*weighted.mean(z$yes.y/z$n.y,z$w)),rate(ms$forms3[6],ms$episodes[6])),check.names=FALSE)
- wr(v,assets,'V48_common_support');print_table_png(v,file.path(assets,'V48_common_support.png'),'V48 Checklist coverage inside and outside the matched subset','Standardization gives both arms the same distribution across 365 shared clinical/site/month strata.')
+ wr(v,assets,'V20_common_support');print_table_png(v,file.path(assets,'V20_common_support.png'),'V20 Checklist coverage inside and outside the matched subset','Standardization gives both arms the same distribution across 365 shared clinical/site/month strata.')
 
  html_report(file.path(out,'testing_results.html'),'Testing coverage, selection and common support',c('<p>Complete eligible episodes estimate documented investigation or swabbing among recorded illnesses warranting it. Excluding detected positives conditions on an event downstream of testing. That sensitivity describes the remaining recorded episodes; it cannot establish equal ascertainment. No efficacy estimate is calculated.</p>',html_table(a),'<h2>Common support</h2>',html_table(ms),'<p>Exact matching uses site, month and seven recorded clinical/timing descriptors. Missing grades remain an explicit category. Unmatched episodes have no counterpart under these rules; this is not evidence of clinical misconduct. Source and PCR result do not enter the matching variables.</p>','<h2>Blinding-boundary sensitivity</h2>',html_table(bsout),'<p>The 17 December cap is a deliberately conservative calendar scenario, not an imputed personal unblinding date. All analyses remain conditional on recorded complaints and the original trigger reconstruction.</p>'))
+ print_asset_manifest(assets,c('V20','V21'),'V20_V21_testing_followup')
  invisible(a)
 }
 if(isTRUE(getOption('phmpt.followup_autorun',TRUE)))analyse_testing_robustness()

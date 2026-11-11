@@ -1609,7 +1609,7 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   nominal<-screen[is.finite(screen$fisher_p)&screen$fisher_p<.05,,drop=FALSE];nominal<-nominal[order(nominal$fisher_p),]
   corrected<-sum(screen$fisher_p_bonferroni<.05,na.rm=TRUE)
   addp(paste0('For the site-level screen, each participant contributes only their first eligible episode during higher-positivity periods. This avoids treating repeated episodes from the same person as independent observations in the Fisher exact tests. ',nrow(nominal),' of ',M,' sites had a nominal two-sided p-value below 0.05. After Bonferroni adjustment across all ',M,' sites, ',if(corrected==0)'none remained below 0.05' else paste(corrected,'remained below 0.05'),'. The individual signals therefore identify records for further review rather than establish site-specific differential treatment.'))
-  body<-c(body,'__V22_SITE_PLOT__');plain<-c(plain,'[V22: Site recruitment and relative testing coverage]','')
+  body<-c(body,'__V24_SITE_PLOT__');plain<-c(plain,'[V24: Site recruitment and relative testing coverage]','')
   if(nrow(nominal)) {
     rows<-cbind(region(nominal$SITEID),mapply(rate,nominal$v_y,nominal$v_n),mapply(rate,nominal$p_y,nominal$p_n),vapply(nominal$fisher_p,pf,character(1)),num(nominal$fisher_p_bonferroni,3))
     addtable('Sites with nominal testing imbalances during higher positivity',c('Site / county','mRNA-1273','Placebo','Fisher p','Bonferroni p'),rows,paste0('First eligible higher-positivity episode per participant. Multiplicity correction includes all ',M,' sites. Small denominators, including US313, limit interpretation.'))
@@ -1650,8 +1650,8 @@ phmpt_report_insert <- function(data_dir, output_dir, start_paragraph=25L,
   refs<-paste0('<h3>References to add</h3><div class="references">',paste0('<p id="ref-',notes$number,'">',notes$number,'. <a href="',esc(notes$url),'">',esc(notes$url),'</a></p>',collapse=''),'</div>')
   body<-c(body,refs);plain<-c(plain,'References to add',paste0(notes$number,'. ',notes$url))
   phmpt_export_audit_assets(audit_root,output_dir,data_dir,audit_tables)
-  vp<-file.path(output_dir,"audit_assets","V22_site_recruitment_testing_ratio.png")
-  body[body=="__V22_SITE_PLOT__"]<-paste0('<figure><img src="data:image/png;base64,',b64(vp),'" alt="Site recruitment and vaccine-to-placebo testing rate ratio"><figcaption>',v17_caption(),'</figcaption></figure>')
+  vp<-file.path(output_dir,"audit_assets","V24_site_recruitment_testing_ratio.png")
+  body[body=="__V24_SITE_PLOT__"]<-paste0('<figure><img src="data:image/png;base64,',b64(vp),'" alt="Site recruitment and vaccine-to-placebo testing rate ratio"><figcaption>',v17_caption(),'</figcaption></figure>')
   article<-paste(body,collapse='\n')
   css<-'body{margin:28px auto;padding:0 24px;max-width:980px;color:#171717;font:19px/1.6 Georgia,serif}h1,h2,h3{font-family:Arial,sans-serif;line-height:1.2}h1{font-size:28px}h2{font-size:27px;margin:36px 0 20px}h3{font-size:20px}.numbered{padding-left:2.6em;position:relative}.number{position:absolute;left:0}table{border-collapse:collapse;width:100%;font:14px/1.4 Arial,sans-serif;margin:24px 0 8px}caption{text-align:left;font-weight:bold;margin-bottom:10px}th,td{padding:9px 7px;border-bottom:1px solid #ccc;text-align:left;vertical-align:top}th{background:#eee}tbody tr:nth-child(even){background:#fafafa}.table-note,figcaption{font:14px/1.45 Arial,sans-serif;color:#444}.references{font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}figure{margin:26px 0}img{max-width:100%;height:auto}.editor{font:15px/1.45 Arial,sans-serif;background:#f2f5f7;padding:18px;border:1px solid #d5dce1;margin-bottom:30px}.editor p{margin:8px 0}button{font:inherit;padding:8px 12px;margin:5px 8px 5px 0;cursor:pointer}a{color:#155fa0}.status{font-size:14px}sup{font-size:12px}@media print{.editor{display:none}body{margin:0;padding:0;font-size:12pt;max-width:none}table{font-size:9pt}h2{font-size:18pt}h2,h3{break-after:avoid}tr,figure{break-inside:avoid}a{color:inherit}}'
   status<-if(!is.null(ma)&&cut==10)'Adjusted comparisons are included and their input hashes match this export.' else 'This insert contains descriptive and site-level comparisons. Run analyse_site_testing_imbalance.R to add the adjusted models; no earlier-run estimates have been substituted.'
@@ -1892,7 +1892,7 @@ ws_candidates <- function(root,release,domain) {
 PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 
-# ---- Standalone audit-asset renderer (V12-V41), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V12-V44), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
@@ -2075,27 +2075,27 @@ ax_finish <- function(a,notes=character()) {
   invisible(list(directory=a$dest,manifest=manifest))
 }
 
-# New V22: same participant-level high-positivity screen as the following table.
+# New V24: same participant-level high-positivity screen as the following table.
 v17_site_data <- function(data_dir,out) {
   roster<-ax_read(data_dir,"subject_followup.csv")
   screen<-ax_read(file.path(out,"anomaly_examples"),"first_high_episode_site_screen.csv")
   map<-ax_read(data_dir,"site_region_coverage.csv")
-  needed<-function(d,n)if(!all(n%in%names(d)))stop("V22 missing fields: ",paste(setdiff(n,names(d)),collapse=", "))
+  needed<-function(d,n)if(!all(n%in%names(d)))stop("V24 missing fields: ",paste(setdiff(n,names(d)),collapse=", "))
   needed(roster,c("subject","SITEID","RANDFL","arm"));needed(screen,c("SITEID","v_y","v_n","p_y","p_n"))
   clean<-function(x)trimws(as.character(x))
   roster<-roster[!is.na(roster$RANDFL)&toupper(clean(roster$RANDFL))=="Y",,drop=FALSE]
   roster$SITEID<-clean(roster$SITEID);roster$subject<-clean(roster$subject)
   if(!nrow(roster)||anyNA(roster[c("subject","SITEID","arm")])||any(!nzchar(roster$subject)|!nzchar(roster$SITEID))||
-     anyDuplicated(roster$subject)||any(!roster$arm%in%c("mRNA-1273","Placebo")))stop("V22: invalid or duplicated randomized roster.")
+     anyDuplicated(roster$subject)||any(!roster$arm%in%c("mRNA-1273","Placebo")))stop("V24: invalid or duplicated randomized roster.")
   sites<-sort(unique(roster$SITEID));screen$SITEID<-clean(screen$SITEID)
-  if(anyDuplicated(screen$SITEID)||!setequal(sites,screen$SITEID))stop("V22: site screen and randomized roster do not cover identical sites.")
+  if(anyDuplicated(screen$SITEID)||!setequal(sites,screen$SITEID))stop("V24: site screen and randomized roster do not cover identical sites.")
   m<-screen[match(sites,screen$SITEID),c("SITEID","v_y","v_n","p_y","p_n")]
   if(anyNA(m)||any(vapply(m[-1],function(x)!is.numeric(x)||any(!is.finite(x)|x<0|x!=floor(x)),logical(1)))||
-     any(m$v_y>m$v_n|m$p_y>m$p_n))stop("V22: invalid arm counts in site screen.")
+     any(m$v_y>m$v_n|m$p_y>m$p_n))stop("V24: invalid arm counts in site screen.")
   n<-function(arm)tabulate(match(roster$SITEID[roster$arm==arm],sites),length(sites))
   m$vaccine_randomized<-n("mRNA-1273");m$placebo_randomized<-n("Placebo")
   m$randomized_total<-m$vaccine_randomized+m$placebo_randomized
-  if(any(m$v_n>m$vaccine_randomized|m$p_n>m$placebo_randomized) || sum(m$randomized_total)!=nrow(roster))stop("V22: participant counts exceed the roster.")
+  if(any(m$v_n>m$vaccine_randomized|m$p_n>m$placebo_randomized) || sum(m$randomized_total)!=nrow(roster))stop("V24: participant counts exceed the roster.")
   m$region_name<-map$region_name[match(m$SITEID,map$SITEID)]
   m$vaccine_testing_rate<-ifelse(m$v_n>0,m$v_y/m$v_n,NA_real_)
   m$placebo_testing_rate<-ifelse(m$p_n>0,m$p_y/m$p_n,NA_real_)
@@ -2106,11 +2106,11 @@ v17_site_data <- function(data_dir,out) {
   m
 }
 # Fix each site's arm denominators and its pooled number with a qualifying test.
-# Enumerate attainable tables, using precisely the two-sided test used for V23.
+# Enumerate attainable tables, using precisely the two-sided test used for V25.
 v17_fisher_ranges <- function(m,alpha=.05,adjustment="nominal") {
   adjustment<-match.arg(adjustment,c("nominal","bonferroni"))
   M<-nrow(m)
-  if(!M||anyDuplicated(m$SITEID))stop("V22 requires one row for each roster site.")
+  if(!M||anyDuplicated(m$SITEID))stop("V24 requires one row for each roster site.")
   stopifnot(length(alpha)==1,is.finite(alpha),alpha>0,alpha<1)
   m$fisher_status<-rep("TESTABLE",M);m$fisher_p<-m$bonferroni_p<-NA_real_
   m$nominal_low<-m$nominal_high<-m$bonferroni_low<-m$bonferroni_high<-NA_real_
@@ -2123,12 +2123,12 @@ v17_fisher_ranges <- function(m,alpha=.05,adjustment="nominal") {
     f<-vapply(k,function(j)stats::fisher.test(matrix(c(j,nv-j,T-j,np-(T-j)),nrow=2L,byrow=TRUE),
                                                 alternative="two.sided")$p.value,numeric(1))
     rr<-(k/nv)/((T-k)/np)
-    o<-match(m$v_y[i],k);if(is.na(o))stop("V22 observed table outside support.")
+    o<-match(m$v_y[i],k);if(is.na(o))stop("V24 observed table outside support.")
     m$fisher_p[i]<-f[o];m$bonferroni_p[i]<-min(1,M*f[o])
     for(method in c("nominal","bonferroni")) {
       accepted<-if(method=="nominal")f>=alpha else pmin(1,M*f)>=alpha
       ii<-which(accepted)
-      if(!length(ii)||length(ii)!=max(ii)-min(ii)+1L)stop("V22: noncontiguous Fisher acceptance set.")
+      if(!length(ii)||length(ii)!=max(ii)-min(ii)+1L)stop("V24: noncontiguous Fisher acceptance set.")
       m[[paste0(method,"_low")]][i]<-rr[min(ii)]
       m[[paste0(method,"_high")]][i]<-rr[max(ii)]
     }
@@ -2197,14 +2197,14 @@ v17_plot_fisher <- function(a,data_dir,out,window,cut,horizon,adjustment="nomina
   }
   m$plot_x<-site_x
   trend<-v17_loess_fit(m);curve<-trend$curve
-  if(trend$info$status!="AVAILABLE")message("V22 LOESS omitted: ",trend$info$reason)
-  ax_data(a,"V22",curve,"loess_curve");ax_data(a,"V22",trend$info,"loess_method")
+  if(trend$info$status!="AVAILABLE")message("V24 LOESS omitted: ",trend$info$reason)
+  ax_data(a,"V24",curve,"loess_curve");ax_data(a,"V24",trend$info,"loess_method")
   top<-max(pretty(c(0,1,m$testing_rate_ratio[ok],curve$fitted_ratio),n=5));cap<-1.055*top
   m$above_plot_limit<-ifelse(testable,m$reference_high>cap,NA)
   csv<-m;names(csv)[match(c("v_y","v_n","p_y","p_n"),names(csv))]<-c("vaccine_tested","vaccine_eligible","placebo_tested","placebo_eligible")
-  ax_data(a,"V22",csv);ax_data(a,"V22",ran$tables,"attainable_tables")
+  ax_data(a,"V24",csv);ax_data(a,"V24",ran$tables,"attainable_tables")
   files<-c(file.path(data_dir,"subject_followup.csv"),file.path(out,"anomaly_examples","first_high_episode_site_screen.csv"))
-  ax_data(a,"V22",data.frame(input=basename(files),md5=unname(tools::md5sum(files))),"inputs")
+  ax_data(a,"V24",data.frame(input=basename(files),md5=unname(tools::md5sum(files))),"inputs")
   if(tables_only)return(invisible(NULL))
   mode<-m$reference_method[1];method<-if(mode=="nominal")"Nominal two-sided Fisher test" else paste0("Bonferroni adjustment over ",nrow(m)," sites")
   fill<-"#D2E7EF";edge<-"#90B6C5";navy<-"#285867";red<-"#A13D25"
@@ -2252,7 +2252,7 @@ v17_plot_fisher <- function(a,data_dir,out,window,cut,horizon,adjustment="nomina
       text(tx,yl,lab,adj=c(if(right)0 else 1,.5),cex=.70,col=red)
     }
     grid::pushViewport(grid::viewport());on.exit(grid::popViewport(),add=TRUE)
-    ax_text("V22  Site recruitment and relative testing coverage",.35,.20,17,TRUE,col="#17384B")
+    ax_text("V24  Site recruitment and relative testing coverage",.35,.20,17,TRUE,col="#17384B")
     ax_text(paste0(window," follow-up | County positivity >= ",cut,"% | ",sum(ok)," of ",nrow(m)," ratios finite"),.35,.61,11.1)
     sw<-function(x,y,colour,label){grid::grid.rect(x=grid::unit(x+.065,"in"),y=grid::unit(1,"npc")-grid::unit(y+.065,"in"),
       width=grid::unit(.13,"in"),height=grid::unit(.13,"in"),gp=grid::gpar(fill=colour,col=NA));ax_text(label,x+.20,y-.025,10.2)}
@@ -2267,7 +2267,7 @@ v17_plot_fisher <- function(a,data_dir,out,window,cut,horizon,adjustment="nomina
     ax_text(ax_wrap(paste0("Dots use the first eligible symptomatic episode per participant and a visit plus qualifying PCR within ",horizon," days. The dashed line is equal coverage. Hollow dots have no outcome variation; N/A diamonds have no finite ratio. ",
       sum(!is.na(m$bonferroni_p)&m$bonferroni_p<.05)," sites meet the Bonferroni criterion across ",nrow(m)," sites."),7.8,10.15),.35,6.57,10.15,col="#354854")
   }
-  ax_png(a,"V22","site_recruitment_testing_ratio",draw,7.50,rows=nrow(m))
+  ax_png(a,"V24","site_recruitment_testing_ratio",draw,7.50,rows=nrow(m))
 }
 
 # Null risk in each arm is p0. Pool participants (sum(tested)/sum(denominators)),
@@ -2278,13 +2278,13 @@ v17_funnel <- function(m, population, p0=NULL) {
   nv<-if(population=="randomized")m$vaccine_randomized else m$v_n
   np<-if(population=="randomized")m$placebo_randomized else m$p_n
   yv<-m$v_y;yp<-m$p_y; N<-nv+np
-  if(!nrow(m)||anyNA(c(nv,np,yv,yp))||any(yv>nv|yp>np|yv<0|yp<0))stop("Invalid V22 counts.")
+  if(!nrow(m)||anyNA(c(nv,np,yv,yp))||any(yv>nv|yp>np|yv<0|yp<0))stop("Invalid V24 counts.")
   pv<-if(sum(nv)>0)sum(yv)/sum(nv) else NA_real_
   pp<-if(sum(np)>0)sum(yp)/sum(np) else NA_real_
   source<-if(is.null(p0))"pooled_placebo" else "specified"
   if(is.null(p0))p0<-pp
   if(length(p0)!=1L||!is.numeric(p0)||!is.finite(p0)||p0<=0||p0>=1)
-    stop("V22: a benchmark strictly between 0 and 1 is required for ",population,".")
+    stop("V24: a benchmark strictly between 0 and 1 is required for ",population,".")
   use<-nv>0 & np>0;ne<-rep(NA_real_,nrow(m));ne[use]<-4/(1/nv[use]+1/np[use])
   # Preserve the actual site recruitment on A. On B use balanced-equivalent
   # volume so a single funnel is exact for the actual (unequal) arm sizes.
@@ -2334,7 +2334,7 @@ v17_funnel <- function(m, population, p0=NULL) {
 }
 
 v17_caption <- function(){
-  paste0("V22. Testing during higher county positivity. Panel A uses all randomized participants; panel B uses only participants with an eligible symptomatic episode. The numerator is identical: a documented COVID visit plus qualifying PCR on the first eligible episode. The shaded areas are approximate, pointwise 95% limits under equal arm rates; each panel identifies its placebo benchmark. The dark blue LOESS lines describe the finite site ratios. The exact conditional site comparisons follow in V23.")
+  paste0("V24. Testing during higher county positivity. Panel A uses all randomized participants; panel B uses only participants with an eligible symptomatic episode. The numerator is identical: a documented COVID visit plus qualifying PCR on the first eligible episode. The shaded areas are approximate, pointwise 95% limits under equal arm rates; each panel identifies its placebo benchmark. The dark blue LOESS lines describe the finite site ratios. The exact conditional site comparisons follow in V25.")
 }
 
 v17_plot <- function(a,data_dir,out,window,cut,horizon) {
@@ -2346,8 +2346,8 @@ v17_plot <- function(a,data_dir,out,window,cut,horizon) {
   panels<-lapply(c("randomized","eligible"),function(pop) v17_funnel(m,pop,getOption(paste0("phmpt.v17_p0_",pop))))
   tab<-function(k)do.call(rbind,lapply(panels,'[[',k))
   s<-tab("summary");s$window<-window;s$minimum_county_positivity_pct<-cut;s$onset_to_pcr_days<-horizon
-  ax_data(a,"V22",tab("sites"),"funnel_sites");ax_data(a,"V22",s,"funnel_summary")
-  ax_data(a,"V22",tab("curve"),"funnel_limits");ax_data(a,"V22",tab("loess"),"funnel_loess")
+  ax_data(a,"V24",tab("sites"),"funnel_sites");ax_data(a,"V24",s,"funnel_summary")
+  ax_data(a,"V24",tab("curve"),"funnel_limits");ax_data(a,"V24",tab("loess"),"funnel_loess")
   draw<-function(){
     op<-par(no.readonly=TRUE);on.exit(par(op))
     # Grid text is placed in inches, measured from the top; both panels use
@@ -2356,7 +2356,7 @@ v17_plot <- function(a,data_dir,out,window,cut,horizon) {
     H<-9.70;cap<-max(2.5,ceiling(2*max(c(1,unlist(lapply(panels,function(z)
       z$sites$RR[is.finite(z$sites$RR)])))))/2)
     dark<-"#123D78";ink<-"#17384B";rust<-"#9E402A";dot<-"#286577";fill<-"#DCEBF0";edge<-"#7294A0"
-    ax_text("V22  Relative testing during weeks of higher positivity",.40,.23,18,TRUE,col=ink)
+    ax_text("V24  Relative testing during weeks of higher positivity",.40,.23,18,TRUE,col=ink)
     ax_text(paste0(window," follow-up   |   County positivity ",intToUtf8(0x2265)," ",cut,"%   |   One first eligible episode per participant"),.40,.65,11)
     ax_text("Shading: pointwise 95% limits       Dashed: equal testing (RR = 1)       Dark blue: LOESS",.40,.99,11,col=dark)
     for(j in seq_along(panels)){
@@ -2394,14 +2394,14 @@ v17_plot <- function(a,data_dir,out,window,cut,horizon) {
     }
     ax_text(ax_wrap(paste0("Counted as tested: a documented COVID visit and qualifying PCR within ",horizon,
       " days of symptom onset, on the first eligible episode in a higher-positivity week. Panel A also reflects which participants had a recorded eligible episode. Panel B compares testing conditional on that episode."),7.72,10.35),.4,8.40,10.35)
-    ax_text(ax_wrap("Diamonds fall outside the approximate 95% limits. These are screening signals, particularly with sparse counts or zero events. Exact Fisher results for the eligible participants are reported in V23.",7.72,10.15),.4,9.00,10.15,col="#4A616D")
+    ax_text(ax_wrap("Diamonds fall outside the approximate 95% limits. These are screening signals, particularly with sparse counts or zero events. Exact Fisher results for the eligible participants are reported in V25.",7.72,10.15),.4,9.00,10.15,col="#4A616D")
     for(args in text_queue)do.call(put_text,args)
   }
-  ax_png(a,"V22","site_recruitment_testing_ratio",draw,9.70,rows=nrow(m))
+  ax_png(a,"V24","site_recruitment_testing_ratio",draw,9.70,rows=nrow(m))
 }
 
 phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
-  a<-ax_begin(root,out,"V20_V29_episodes")
+  a<-ax_begin(root,out,"V22_V31_episodes")
   fp<-ax_read(file.path(out,"anomaly_examples"),"figure_parameters.csv")
   setting<-function(key,default){z<-fp$value[fp$parameter==key];if(length(z)==1)as.character(z) else default}
   cut<-as.numeric(setting("high_positivity_threshold","10"));horizon<-as.numeric(setting("onset_to_pcr_days","7"))
@@ -2409,24 +2409,24 @@ phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
   high_label<-paste0("High positivity >=",cut,"% | Low <",cut,"%")
   gettab<-function(name)if(name%in%names(audit_tables))audit_tables[[name]] else NULL
   specs<-list(
-    V20=c("Documented testing after symptomatic episodes","episode_testing_overview"),
-    V21=c("Adjusted comparisons during higher background positivity","adjusted_testing_models"),
-    V23=c("Sites with nominal testing imbalances during higher positivity","site_testing_screen"),
-    V28=c("Sites with opposing changes across positivity periods","site_positivity_interactions"))
+    V22=c("Documented testing after symptomatic episodes","episode_testing_overview"),
+    V23=c("Adjusted comparisons during higher background positivity","adjusted_testing_models"),
+    V25=c("Sites with nominal testing imbalances during higher positivity","site_testing_screen"),
+    V30=c("Sites with opposing changes across positivity periods","site_positivity_interactions"))
   for(id in names(specs)) {
-    if(id=="V23")v17_plot(a,data_dir,out,window,cut,horizon)
+    if(id=="V25")v17_plot(a,data_dir,out,window,cut,horizon)
     s<-specs[[id]];d<-gettab(s[1])
-    if(is.null(d)){ax_unavailable(a,id,s[2],s[1],if(id=="V21")"No converged, input-hash-matched adjusted models. Run analyse_site_testing_imbalance.R on this export." else "No matching comparison in this run.");next}
-    if(id=="V28") {
+    if(is.null(d)){ax_unavailable(a,id,s[2],s[1],if(id=="V23")"No converged, input-hash-matched adjusted models. Run analyse_site_testing_imbalance.R on this export." else "No matching comparison in this run.");next}
+    if(id=="V30") {
       d<-do.call(rbind,lapply(seq_len(nrow(d)),function(i)data.frame(Site=d[i,1],Arm=c("mRNA-1273","Placebo"),
         `Low positivity`=c(d[i,2],d[i,4]),`High positivity`=c(d[i,3],d[i,5]),`Interaction p`=c(d[i,6],""),check.names=FALSE)))
     }
-    note<-switch(id,V20="Endpoint: documented COVID visit plus qualifying PCR in the configured linkage window. Repeated episodes can contribute. Differences are vaccine minus placebo; missing background remains in overall totals.",
-      V21="Site-clustered uncertainty. Odds ratios compare testing in vaccine versus placebo episodes. Onset recording source is a sensitivity adjustment. Early post-dose symptoms remain in the main comparison.",
-      V23="First eligible high-positivity episode per participant. Fisher tests are two-sided; Bonferroni p uses the complete site family. Nominal signals select records for review.",
-      V28="Low/high are pooled positivity categories, not consecutive weeks. Every arm-period cell has at least ten episodes. Interaction p values account for repeated participants and are nominal.")
+    note<-switch(id,V22="Endpoint: documented COVID visit plus qualifying PCR in the configured linkage window. Repeated episodes can contribute. Differences are vaccine minus placebo; missing background remains in overall totals.",
+      V23="Site-clustered uncertainty. Odds ratios compare testing in vaccine versus placebo episodes. Onset recording source is a sensitivity adjustment. Early post-dose symptoms remain in the main comparison.",
+      V25="First eligible high-positivity episode per participant. Fisher tests are two-sided; Bonferroni p uses the complete site family. Nominal signals select records for review.",
+      V30="Low/high are pooled positivity categories, not consecutive weeks. Every arm-period cell has at least ten episodes. Interaction p values account for repeated participants and are nominal.")
     ax_table(a,id,s[2],s[1],d,paste0("COVID forms plus matched AEs | ",window," | ",high_label),note,
-      widths=switch(id,V20=c(.30,.25,.25,.20),V21=c(.45,.16,.23,.16),V23=c(.30,.22,.22,.13,.13),V28=c(.15,.20,.25,.25,.15)))
+      widths=switch(id,V22=c(.30,.25,.25,.20),V23=c(.45,.16,.23,.16),V25=c(.30,.22,.22,.13,.13),V30=c(.15,.20,.25,.25,.15)))
   }
   ex<-file.path(out,"anomaly_examples");sel<-ax_read(ex,"example_selection.csv",FALSE)
   if(!nrow(sel))sel<-ax_read(ex,"selected_examples.csv",FALSE)
@@ -2446,15 +2446,15 @@ phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
     if(nzchar(main))mtext(main,3,adj=0,line=.6,cex=.9);invisible(x)
   }
   z<-ax_read(ex,"first_high_episode_site_screen.csv");z$fisher_p_bonferroni<-p.adjust(ifelse(is.finite(z$fisher_p),z$fisher_p,1),"bonferroni");s<-site("coverage","US372");z<-z[z$SITEID==s,]
-  if(nrow(z)==1){chart("V24","site_testing_example",paste(s,"Documented testing after symptoms"),paste0("First eligible high-positivity episode per participant | ",high_label),
+  if(nrow(z)==1){chart("V26","site_testing_example",paste(s,"Documented testing after symptoms"),paste0("First eligible high-positivity episode per participant | ",high_label),
     paste0("Visit-plus-PCR endpoint. Two-sided Fisher p ",ax_p(z$fisher_p),"; Bonferroni p ",ax_p(z$fisher_p_bonferroni)," across the complete site family."),
-    function()bars(c(z$v_y,z$p_y),c(z$v_n,z$p_n),c("mRNA-1273","Placebo")));ax_data(a,"V24",z)
-  }else ax_unavailable(a,"V24","site_testing_example","Site testing example","Selected site not available.")
+    function()bars(c(z$v_y,z$p_y),c(z$v_n,z$p_n),c("mRNA-1273","Placebo")));ax_data(a,"V26",z)
+  }else ax_unavailable(a,"V26","site_testing_example","Site testing example","Selected site not available.")
   z<-ax_read(ex,"pcr_episode_review.csv");s<-site("pcr","US325")
   if(nrow(z)) {
     zz<-ax_read(ex,"selected_site_episodes.csv");zz<-zz[zz$SITEID==s & zz$high==1 & zz$onset_source=="COVID_FORM",,drop=FALSE]
     armcount<-function(ar){u<-zz[zz$arm==ar,,drop=FALSE];paste0(sum(u$tested),"/",nrow(u))}
-    chart("V25","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("High-positivity form-onset episodes meeting the ",horizon,"-day endpoint: vaccine ",armcount("mRNA-1273"),", placebo ",armcount("Placebo"),". Vaccine-arm exceptions shown."),
+    chart("V27","delayed_pcr_example",paste(s,"PCR timing after COVID-form symptoms"),paste0("High-positivity form-onset episodes meeting the ",horizon,"-day endpoint: vaccine ",armcount("mRNA-1273"),", placebo ",armcount("Placebo"),". Vaccine-arm exceptions shown."),
       paste0("Blue spans: reconstructed symptom interval. Circle: later completed PCR (labelled result). Cross: NOT DONE within ",horizon," days. Shading: audit linkage interval. Missing later tests remain explicitly labelled."),function(){
       nn<-nrow(z);late<-z$days_to_later_pcr;duration<-as.numeric(as.Date(z$last_symptom)-as.Date(z$start));limit<-max(c(22,late,duration),na.rm=TRUE)+2
       par(mai=c(.65,1.65,.3,.45));plot(c(-1,limit),c(.3,nn+.8),type="n",axes=FALSE,xlab="",ylab="")
@@ -2466,34 +2466,34 @@ phmpt_export_audit_assets <- function(root,out,data_dir,audit_tables) {
         else text(8,yy[i]+.23,"No later completed PCR",adj=c(0,0),cex=.76)
         if(isTRUE(z$not_done_in_horizon[i])){nd<-suppressWarnings(as.numeric(z$first_not_done_day[i]));if(is.finite(nd))points(nd,yy[i],pch=4,lwd=1.8,cex=1.2)}
       }
-    },height=max(6.6,3.5+.7*nrow(z)));ax_data(a,"V25",z)
-  }else ax_unavailable(a,"V25","delayed_pcr_example","PCR timing review","No selected episodes.")
+    },height=max(6.6,3.5+.7*nrow(z)));ax_data(a,"V27",z)
+  }else ax_unavailable(a,"V27","delayed_pcr_example","PCR timing review","No selected episodes.")
   z<-ax_read(ex,"recording_source_counts.csv");s<-site("source","US352")
   d<-data.frame(Arm=z$arm,`Onset source`=z$source,`Share of episodes`=paste0(z$episodes," (",sprintf("%.1f%%",z$share_pct),")"),
     `Tested within source`=ax_rate(z$tested,z$episodes),check.names=FALSE)
   # A compact table gives both the composition and the within-source denominator.
-  ax_table(a,"V26","source_composition_example",paste(s,"Recording source and documented testing"),d,
+  ax_table(a,"V28","source_composition_example",paste(s,"Recording source and documented testing"),d,
     paste0("All eligible episodes | Source at first symptom date | ",high_label),
     "AE = AE records only; COVID_FORM = COVID forms only; AE; COVID_FORM = both on the first symptom date. The share column describes source composition; the final column describes visit-plus-PCR testing within that source.",widths=c(.19,.24,.27,.30))
   z<-ax_read(ex,"postdose_timing_counts.csv");s<-site("timing","US372")
   if(nrow(z)) {
-    chart("V27","postdose_timing_example",paste(s,"Testing by post-dose symptom timing"),paste0("All eligible episodes | Repeated episodes retained | ",high_label),
+    chart("V29","postdose_timing_example",paste(s,"Testing by post-dose symptom timing"),paste0("All eligible episodes | Repeated episodes retained | ",high_label),
       "Each pair shows mRNA-1273 (blue) and placebo (brown). Post-dose days 0-6 remain in the main comparison. The partition localizes the difference without identifying its cause.",function(){
       labs<-rep(c("Vaccine","Placebo"),nrow(z));k<-as.vector(rbind(z$v_y,z$p_y));n<-as.vector(rbind(z$v_n,z$p_n));x<-bars(k,n,labs)
       for(i in seq_len(nrow(z)))mtext(z$group[i],1,at=mean(x[(2*i-1):(2*i)]),line=2.2,cex=.82)
-    });ax_data(a,"V27",z)
-  }else ax_unavailable(a,"V27","postdose_timing_example","Testing by post-dose timing","No selected episodes.")
+    });ax_data(a,"V29",z)
+  }else ax_unavailable(a,"V29","postdose_timing_example","Testing by post-dose timing","No selected episodes.")
   z<-ax_read(ex,"site_high_low_interactions.csv");s<-site("waves","US302");z<-z[z$subset=="ALL_EPISODES"&z$SITEID==s,]
   if(nrow(z)==1) {
-    chart("V29","positivity_testing_example",paste(s,"Testing in lower and higher positivity"),paste0("All eligible episodes | Pooled categories | ",high_label),
+    chart("V31","positivity_testing_example",paste(s,"Testing in lower and higher positivity"),paste0("All eligible episodes | Pooled categories | ",high_label),
       paste0("Vaccine change minus placebo change: ",sprintf("%+.1f",z$difference_in_changes_pp)," percentage points. Participant-clustered interaction p ",ax_p(z$interaction_p)," (nominal). Lines connect pooled categories, not successive calendar weeks."),function(){
       plot(c(.65,2.35),c(0,106),type="n",axes=FALSE,xlab="",ylab="");abline(h=seq(0,100,20),col="#E1E7EB")
       axis(2,at=seq(0,100,20),labels=paste0(seq(0,100,20),"%"),tick=FALSE,cex.axis=.85);axis(1,at=1:2,labels=c("Lower positivity","Higher positivity"),tick=FALSE,cex.axis=.85)
       for(i in 1:2){p<-if(i==1)"v" else "p";k<-unlist(z[paste0(p,c("_low_y","_high_y"))],use.names=FALSE);n<-unlist(z[paste0(p,c("_low_n","_high_n"))],use.names=FALSE)
         y<-100*k/n;lines(1:2,y,col=col[i],lwd=2);points(1:2,y,pch=16,col=col[i]);other<-if(i==1)100*c(z$p_low_y/z$p_low_n,z$p_high_y/z$p_high_n) else 100*c(z$v_low_y/z$v_low_n,z$v_high_y/z$v_high_n);text(1:2,y+ifelse(y>=other,8,-8),ax_rate(k,n),col=col[i],cex=.87,font=2)}
       legend("topright",c("mRNA-1273","Placebo"),col=col,lwd=2,bty="n",cex=.86)
-    });ax_data(a,"V29",z)
-  }else ax_unavailable(a,"V29","positivity_testing_example","Testing across positivity periods","Selected site unavailable.")
+    });ax_data(a,"V31",z)
+  }else ax_unavailable(a,"V31","positivity_testing_example","Testing across positivity periods","Selected site unavailable.")
   ax_finish(a)
 }
 

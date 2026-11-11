@@ -1,4 +1,4 @@
-# Moderna COVE audit V01–V46 | standalone launcher | two introductory graphics
+# Moderna COVE audit V01–V49 | standalone launcher | two introductory graphics
 # Extract the script bundle into your project root, open the project in RStudio,
 # select this entire file and Run, or: Rscript run_audit_visualizations.R
 # Include four unnumbered supplemental charts/maps: options(phmpt.figures_include_supplementary=TRUE).
@@ -8,12 +8,12 @@
 figure_plan <- function(include_supplementary=FALSE) {
   numbered<-data.frame(script=paste0(c("analyse_intro_figures","analyse_moderna_demographics","analyse_dose_timeline","analyse_deviations","analyse_audit_tables",
     "analyse_ae_covid_symptoms","analyse_weekly_symptoms_ae","analyse_background_covid",
-    "analyse_site_symptom_recording","analyse_pcr_testing_by_lab","analyse_audit_tables","analyse_symptom_testing_heatmaps",
+    "analyse_site_symptom_recording","analyse_pcr_testing_by_lab","analyse_audit_tables","analyse_testing_robustness","analyse_symptom_testing_heatmaps",
     "analyse_site_testing_imbalance","analyse_anti_n_seroconversion","analyse_day57_anti_n_sensitivity",
-    "analyse_eua_bla_changes","analyse_efficacy_cases","analyse_death_reporting","analyse_subject_numbering"),".R"),
-    ids=c("V01–V02","V03–V05","V06","V07, V10, V11","V08–V09","V12","V13–V14","background prerequisite","V15","V16–V18","V19",
-    "V20–V29: episode data and descriptive plots","V20–V29: final models and plots","V30","V31–V33",
-    "V34–V38","V39–V41","V42","V43–V46"),stringsAsFactors=FALSE)
+    "analyse_eua_bla_changes","analyse_safety_summary_reconciliation","analyse_efficacy_cases","analyse_death_reporting","analyse_subject_numbering"),".R"),
+    ids=c("V01–V02","V03–V05","V06","V07, V10, V11","V08–V09","V12","V13–V14","background prerequisite","V15","V16–V18","V19","V20–V21",
+    "V22–V31: episode data and descriptive plots","V22–V31: final models and plots","V32","V33–V35",
+    "V36–V40","V41","V42–V44","V45","V46–V49"),stringsAsFactors=FALSE)
   if(!include_supplementary)return(numbered)
   rbind(numbered,data.frame(script=c("analyse_anti_n_testing.R","analyse_us_weekly_covid_tests.R",
     "analyse_background_covid_map_sites_only.R","analyse_background_covid_map.R"),
@@ -64,19 +64,28 @@ figure_manifest <- function(dir) {
 # Same suffix, older figure ID. Recognize both the immediately preceding
 # 44-figure edition and the earlier 41-figure edition. New figures have no predecessor.
 figure_previous_name <- function(n) {
-  convert<-function(x,older){
-    m<-gregexpr("V[0-9]{2}(?![0-9])",x,perl=TRUE); tags<-regmatches(x,m)[[1L]]
-    if(!length(tags))return(character())
-    i<-as.integer(substring(tags,2))-2L
-    if(any(i<1L))return(character())
-    if(older){
-      if(any(i %in% c(6L,7L,17L)))return(character())
-      i<-ifelse(i>=18L,i-3L,ifelse(i>=8L,i-2L,i))
+  previous <- c(setNames(1:19,sprintf("V%02d",1:19)),V20=48L,V21=47L,
+                setNames(20:38,sprintf("V%02d",22:40)),V41=49L,
+                setNames(39:46,sprintf("V%02d",42:49)))
+  convert <- function(x,edition=0L) {
+    hits <- gregexpr("V[0-9]{2}(?![0-9])",x,perl=TRUE)
+    tags <- regmatches(x,hits)[[1]]
+    if(!length(tags)||any(!tags%in%names(previous)))return(character())
+    ids <- unname(previous[tags])
+    if(edition>0L) {
+      if(any(ids>46L))return(character())
+      ids <- ids-2L
+      if(any(ids<1L))return(character())
+      if(edition==2L) {
+        if(any(ids%in%c(6L,7L,17L)))return(character())
+        ids <- ifelse(ids>=18L,ids-3L,ifelse(ids>=8L,ids-2L,ids))
+      }
     }
-    regmatches(x,m)<-list(sprintf("V%02d",i));x
+    regmatches(x,hits)<-list(sprintf("V%02d",ids));x
   }
-  unique(unlist(lapply(n,function(x)c(convert(x,FALSE),convert(x,TRUE))),use.names=FALSE))
+  unique(unlist(lapply(n,function(x)c(convert(x),convert(x,1L),convert(x,2L))),use.names=FALSE))
 }
+
 figure_publish <- function(stage,dest,run) {
   backup<-file.path(run,"previous_audit_assets")
   if(dir.exists(dest)) {
@@ -136,6 +145,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   # No command-line arguments are passed through to the child generator (the
   # site-audit script historically interprets any such arguments as input paths).
   opts<-list(phmpt.root=root,phmpt.autorun=TRUE,phmpt.audit_asset_dir=stage,
+    phmpt.followup_root=getOption("phmpt.followup_root",scripts_dir),phmpt.followup_autorun=TRUE,
     phmpt.weekly_output=weekly,phmpt.weekly_dir=weekly,phmpt.heatmap_output=heat,
     phmpt.audit_data_dir=heat,phmpt.audit_output_dir=site,phmpt.report_only=FALSE,
     phmpt.background_file=bg,
@@ -183,7 +193,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
     }
     state$status[i]<-"DONE";save_state()
   }
-  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:46)
+  mf<-figure_manifest(stage);expected<-sprintf("V%02d",1:49)
   if(!nrow(mf)||!setequal(expected,unique(mf$visual))||anyDuplicated(mf$file))
     stop("Final figure inventory incomplete or duplicated: ",paste(setdiff(expected,mf$visual),collapse=", "),". Inspect ",run)
   files<-file.path(stage,mf$file)
@@ -194,7 +204,7 @@ run_audit_visualizations <- function(root=getOption("phmpt.root",getwd()),
   if(any(flagged)&&!allow_flagged)stop("Flagged output(s): ",paste(unique(mf$visual[flagged]),collapse=", "),
     ". See ",file.path(run,"figure_inventory.csv"),". Previous audit_assets remains active. Set options(phmpt.figures_allow_flagged=TRUE) only to publish explicitly flagged figures.")
   dest<-file.path(root,"audit_assets");figure_publish(stage,dest,run)
-  message("Published V01–V46 in ",dest,". Status, checksums and logs: ",run)
+  message("Published V01–V49 in ",dest,". Status, checksums and logs: ",run)
   invisible(list(directory=dest,run=run,inventory=mf))
 }
 if(isTRUE(getOption("phmpt.launcher_autorun",TRUE)))run_audit_visualizations()

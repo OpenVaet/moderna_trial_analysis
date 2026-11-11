@@ -1,7 +1,7 @@
 # AE -> S3 ADAE -> released CSR Tables 7-12/7-13. Base R, standalone bundle.
 local({r<-getOption('phmpt.followup_root',getwd());source(file.path(r,'audit_followup_helpers.R'),local=FALSE)})
 analyse_safety_summary_reconciliation <- function(root=audit_root()) {
- out<-file.path(root,'results','safety');assets<-file.path(root,'audit_assets');dir.create(assets,recursive=TRUE,showWarnings=FALSE)
+ out<-file.path(root,'results','safety');assets<-audit_asset_path(root);dir.create(assets,recursive=TRUE,showWarnings=FALSE)
  ae<-rd(root,'S3_AE');ae27<-rd(root,'S27_AE');a<-rd(root,'S3_ADAE');sl<-rd(root,'S3_ADSL');f<-rd(root,'subject_followup');ar<-rd(root,'new_flag_case_ledger');changes<-rd(root,'seriousness_changes');set.seed(4302)
  for(nm in c('ae','ae27','a')){d<-get(nm);d$key<-key(d$SUBJID,d$AESPID);ck(!anyDuplicated(d$key),paste('Nonunique subject/form in',nm));assign(nm,d)}
  j<-match(ae$key,a$key);j27<-match(ae$key,ae27$key);ck(!anyNA(j27),'S3 AE keys not all retained in S27; inspect before proceeding')
@@ -62,8 +62,9 @@ analyse_safety_summary_reconciliation <- function(root=audit_root()) {
  }
  wr(status,out,'completion_status');wr(data.frame(rows_AE=nrow(ae),rows_ADAE=nrow(a),source_rows_absent=sum(!global$in_S3_ADAE),ADAE_keys_without_AE=sum(!a$key%in%ae$key),seriousness_matches=sum(common),seriousness_mismatches=sum(text0(ae$AESER[common])!=text0(a$AESER[j[common]]))),out,'global_bridge_counts')
  v<-data.frame(Trace=c('Newly flagged reaction records','Marked ongoing at Day 7','Present and selected in S3 ADAE for 28-day table','Participants whose only selected event is one of these records'),'mRNA-1273'=c(arsum$flagged[1],arsum$ongoing_day7[1],arsum$D28_selected[1],arsum$only_D28_event_subjects[1]),Placebo=c(arsum$flagged[2],arsum$ongoing_day7[2],arsum$D28_selected[2],arsum$only_D28_event_subjects[2]),check.names=FALSE)
- wr(v,assets,'V49_AR_flag_analysis_trace');print_table_png(v,file.path(assets,'V49_AR_flag_analysis_trace.png'),'V49 Reaction records retained in the S3 safety analysis','These counts establish S3 treatment; later S27 table treatment remains unresolved.')
+ wr(v,assets,'V41_AR_flag_analysis_trace');print_table_png(v,file.path(assets,'V41_AR_flag_analysis_trace.png'),'V41 Reaction records retained in the S3 safety analysis','These counts establish S3 treatment; later S27 table treatment remains unresolved.')
  html_report(file.path(out,'safety_results.html'),'Source events, analysis records and safety summaries',c('<p>The comparison uses subject plus sponsor form ID within each submission, not AESEQ across submissions. Exact matches to released S3 table totals establish aggregate reproducibility and record eligibility under the table program. They do not independently validate every source event or establish later S27 treatment.</p>',html_table(status),'<h2>New reaction flags</h2>',html_table(arsum),'<h2>Participants without licensing event rows</h2>',html_table(missing),'<h2>CSR Tables 7-12 and 7-13</h2>',html_table(tab),'<p>The explicit-unblinding-only subset excludes deaths or withdrawals before formal unblinding and is a selection diagnostic, not a preferred safety analysis. Missing onset dates are exported separately with counts if they were included. These censored-onset sensitivity counts do not replace the reproduced CSR population or table windows.</p>','<p>Fatal-event counts use event onset in Part A and final AE outcome; they are not counts of deaths occurring during Part A. CSR p291 explicitly explains this distinction.</p>'))
+ print_asset_manifest(assets,c('V41'),'V41_safety_followup')
  invisible(status)
 }
 if(isTRUE(getOption('phmpt.followup_autorun',TRUE)))analyse_safety_summary_reconciliation()

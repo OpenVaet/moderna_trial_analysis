@@ -12,7 +12,7 @@ run_audit_followup <- function(root=getOption('phmpt.followup_root',getwd())) {
  message('[3/5] PCR specimen records and serology follow-up');analyse_specimen_followup(root)
  message('[4/5] Masked respiratory-review workflow (no clinical adjudication implied)');prepare_masked_respiratory_review(root)
  message('[5/5] V02 interpretation and print layout');source(file.path(root,'analyse_intro_figures.R'),local=FALSE);render_intro_figures(root=root,selected='V02',out=file.path(root,'audit_assets'),inputs=file.path(root,'table_inputs_intro'))
- writeLines(capture.output(sessionInfo()),file.path(root,'results','sessionInfo.txt'));message('Complete. See results/, audit_assets/ and audit_edits.html. Independent source review and unavailable later analysis files remain explicitly pending.')
+ writeLines(capture.output(sessionInfo()),file.path(root,'results','sessionInfo.txt'));message('Complete. See results/ and audit_assets/. Independent source review and unavailable later analysis files remain explicitly pending.')
  invisible(root)
 }
 if(isTRUE(getOption('phmpt.followup_launcher_autorun',TRUE)))run_audit_followup()

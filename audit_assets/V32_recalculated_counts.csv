@@ -1,0 +1,3 @@
+﻿"source","arm","positive","negative","evaluable","proportion","ci_lower","ci_upper","ci_method"
+"Recalculated from published counts","mRNA-1273",21,31,52,0.403846153846154,0.270059739591689,0.548984229698449,"Clopper-Pearson exact binomial"
+"Recalculated from published counts","Placebo",605,43,648,0.933641975308642,0.911654010914891,0.951563664003094,"Clopper-Pearson exact binomial"

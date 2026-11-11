@@ -34,3 +34,19 @@ print_table_png <- function(x,file,title,subtitle='',width=2400,row_height=115) 
  top<-.77;bottom<-.04;rh<-(top-bottom)/(nrow(x)+1);widths<-if(ncol(x)==3)c(.52,.24,.24)else rep(1/ncol(x),ncol(x));xs<-cumsum(c(0,widths));cols<-names(x)
  for(i in 0:nrow(x)){y<-top-i*rh;rect(0,y-rh,1,y,col=if(i==0)'#e7eef4'else if(i%%2)'#f5f7f9'else'white',border=NA);vals<-if(i==0)cols else as.character(x[i,]);for(j in seq_along(vals))text(xs[j]+.012,y-rh/2,paste(strwrap(vals[j],width=if(j==1&&ncol(x)==3)53 else 29),collapse='\n'),adj=c(0,.5),cex=.82,font=if(i==0)2 else 1);segments(0,y-rh,1,y-rh,col='#d4dce4')}
 }
+
+# Numbered assets use the same staging option as the main visualization launcher.
+audit_asset_path <- function(root) {
+ p <- getOption('phmpt.audit_asset_dir', file.path(root, 'audit_assets'))
+ if (!grepl('^(/|[A-Za-z]:[/\\])', p)) p <- file.path(root, p)
+ p
+}
+print_asset_manifest <- function(assets, ids, owner) {
+ files <- list.files(assets, pattern='[.]png$', full.names=TRUE)
+ files <- files[substr(basename(files),1,3) %in% ids]
+ if (!setequal(substr(basename(files),1,3), ids)) stop('Missing printed assets for ',owner)
+ d <- data.frame(visual=substr(basename(files),1,3),file=basename(files),status='AVAILABLE',
+                 md5=unname(tools::md5sum(files)),stringsAsFactors=FALSE)
+ write.csv(d,file.path(assets,paste0(owner,'_manifest.csv')),row.names=FALSE)
+ invisible(d)
+}

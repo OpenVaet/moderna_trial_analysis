@@ -1,0 +1,4 @@
+"role","file","md5","use"
+"Current screening index","/workspace/scratch/d47edd6295bd/renumber045/bundle/figure_inputs/P301_subject_screening_index.csv","4285008d5b9bdbd4b6fea19f921e0e9d","ADSL plus screening-SV union; complete original screening dates only"
+"Fixed reference EUA ADSL","FDA-CBER-2022-1614-6328950-6329713_27073_S5_M5_mrna-1273-p301_A_adsl.jmp","4a6830e7875e6a853a3123ca46a28e0a","Full embedded membership and RANDFL, 30,571 IDs"
+"Fixed reference BLA DM","FDA-CBER-2022-1614-3825109-3825910_125752_S3_M5_mrna-1273-p301_S_dm.xpt","e22e3bfcc741c460652658eb5e761f1b","Full embedded membership, 32,102 IDs"

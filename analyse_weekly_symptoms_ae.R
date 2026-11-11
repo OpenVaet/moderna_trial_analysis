@@ -1210,7 +1210,7 @@ PHMPT_AUDIT_ASSET_DIR <- getOption("phmpt.audit_asset_dir", "audit_assets")
 PHMPT_AUDIT_DPI <- getOption("phmpt.audit_dpi", 300L)
 PHMPT_AUDIT_WINDOW <- getOption("phmpt.audit_window", "FULL")
 
-# ---- Standalone audit-asset renderer (V12-V40), version 1.0.0 ----
+# ---- Standalone audit-asset renderer (V12-V43), version 1.0.0 ----
 # Embedded in each script: no shared R file or browser is required.
 ax_clean <- function(x) {
   x<-as.character(x);x[is.na(x)]<-"Unavailable"
