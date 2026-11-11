@@ -1,0 +1,13 @@
+"boundary","arm","original_due","retained_due","binary_draw","antiN_positive","positive_without_recorded_PCR","PCR_positive_lag14_denominator","PCR_positive_lag14_antiN_positive","draws_censored"
+"recorded","mRNA-1273",14745,14745,13622,37,24,21,12,0
+"recorded","Placebo",14743,14743,13344,113,47,79,61,0
+"explicit_unblinding_only","mRNA-1273",14745,14182,13364,35,23,20,11,258
+"explicit_unblinding_only","Placebo",14743,13934,12916,98,42,70,53,428
+"recorded_boundary_only","mRNA-1273",14745,14602,13517,35,23,20,11,105
+"recorded_boundary_only","Placebo",14743,14603,13238,109,45,76,59,106
+"uncertain_capped_17Dec2020","mRNA-1273",14745,14745,13618,37,24,21,12,4
+"uncertain_capped_17Dec2020","Placebo",14743,14743,13338,113,47,79,61,6
+"unresolved_end_capped_17Dec2020","mRNA-1273",14745,14745,13619,37,24,21,12,3
+"unresolved_end_capped_17Dec2020","Placebo",14743,14743,13338,113,47,79,61,6
+"all_capped_17Dec2020","mRNA-1273",14745,14745,13440,34,22,19,11,182
+"all_capped_17Dec2020","Placebo",14743,14743,13179,110,47,76,58,165

@@ -1,0 +1,13 @@
+"boundary","arm","subjects","missing_UBLDDT","no_recorded_boundary","excluded","earlier_end"
+"recorded","mRNA-1273",15209,646,153,0,0
+"recorded","Placebo",15206,896,159,0,0
+"explicit_unblinding_only","mRNA-1273",15209,646,153,646,0
+"explicit_unblinding_only","Placebo",15206,896,159,896,0
+"recorded_boundary_only","mRNA-1273",15209,646,153,153,0
+"recorded_boundary_only","Placebo",15206,896,159,159,0
+"uncertain_capped_17Dec2020","mRNA-1273",15209,646,153,0,318
+"uncertain_capped_17Dec2020","Placebo",15206,896,159,0,483
+"unresolved_end_capped_17Dec2020","mRNA-1273",15209,646,153,0,153
+"unresolved_end_capped_17Dec2020","Placebo",15206,896,159,0,159
+"all_capped_17Dec2020","mRNA-1273",15209,646,153,0,14627
+"all_capped_17Dec2020","Placebo",15206,896,159,0,14383

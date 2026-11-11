@@ -1,0 +1,4 @@
+Give reviewers only reviewers_only/ after source masking is checked. Do not distribute inputs/ or custodian_only/.
+Existing excerpts are coded/limited descriptions, not a substitute for complete source narratives. Obtain relevant source pages and contact logs; remove arm, PCR/serology results, site, subject identifiers and outcome-revealing commentary. Preserve relative timing and required clinical context.
+Each reviewer independently uses YES / NO / INDETERMINATE for evaluation_warranted and swab_warranted. Record a reason, source locator, protocol version confirmation, source availability and completion time. Do not treat missing source material as evidence that a swab was unnecessary.
+Original-source completion and coded-record completion are reported separately. Resolve disagreements before unmasking. No automated rating is supplied.

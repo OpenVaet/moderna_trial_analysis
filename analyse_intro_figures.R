@@ -109,8 +109,8 @@ render_intro_figures <- function(root=getOption("phmpt.root",getwd()),
     csv(data.frame(input=names(files),file=basename(files),md5=unname(tools::md5sum(files))),"V02_inputs.csv")
     fmt<-function(x)formatC(as.integer(x),format="d",big.mark=",");signpc<-function(x)sprintf("%+.1f",x)
     draw("V02","testing_gap_per_protocol_window",7.20,function(){
-      txt(.25,6.88,"V02  The testing gap narrowed in the per-protocol window",17,TRUE)
-      txt(.25,6.51,"Diagnostic PCR coverage in the blinded licensing data",12,FALSE,muted)
+      txt(.25,6.88,"V02  Testing coverage in selected populations",17,TRUE)
+      txt(.25,6.51,"Blinded licensing data | Positive-excluded rows are descriptive sensitivities",12,FALSE,muted)
       rect(.25,5.97,8.0,.36,"#dce8ed")
       txt(.37,6.15,"Comparison",11,TRUE);txt(4.25,6.15,"mRNA-1273",11,TRUE);txt(6.28,6.15,"Placebo",11,TRUE)
       labels<-list("Symptoms on either record","Symptoms on a COVID checklist",
@@ -140,7 +140,8 @@ render_intro_figures <- function(root=getOption("phmpt.root",getwd()),
       txt(.30,1.04,"Rows 1-5 count participants; row 6 counts illnesses, from the swab trigger. Untested participants remain",10,FALSE,muted)
       txt(.30,.83,"eligible. Row 4 removes symptom dates, not people with later symptoms; the no-positive rule applies",10,FALSE,muted)
       txt(.30,.62,"across the entire blinded period. Row 5 assesses linked positives within the per-protocol window.",10,FALSE,muted)
-      txt(.30,.36,paste0("Intervals resample whole sites, keeping both arms together (",fmt(headline$bootstrap_draws[1])," draws; ",headline$n_sites_in_resampling_frame[1]," sites)."),10,FALSE,muted)
+      txt(.30,.38,paste0("Intervals resample whole sites, keeping both arms together (",fmt(headline$bootstrap_draws[1])," draws; ",headline$n_sites_in_resampling_frame[1]," sites)."),10,FALSE,muted)
+      txt(.30,.16,"Excluding detected positives selects on testing and detection; similar coverage does not establish equal ascertainment.",9.4,FALSE,muted)
     })
   }
   message("Wrote ",paste(selected,collapse=", ")," in ",normalizePath(out,winslash="/"));invisible(out)

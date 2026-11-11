@@ -1,0 +1,9 @@
+"arm","PCR_positive","later_sample14","Freq"
+"mRNA-1273","FALSE","FALSE",14649
+"Placebo","FALSE","FALSE",13784
+"mRNA-1273","TRUE","FALSE",71
+"Placebo","TRUE","FALSE",838
+"mRNA-1273","FALSE","TRUE",0
+"Placebo","FALSE","TRUE",0
+"mRNA-1273","TRUE","TRUE",25
+"Placebo","TRUE","TRUE",121
