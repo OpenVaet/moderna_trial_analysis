@@ -1,9 +1,0 @@
-﻿"scope_id","scope","vaccine","placebo","crossover","placebo_original","total","source","url","definition"
-"EUA_PAPER_28D","Initial EUA publication
-28-day fatal-AE window",2,3,0,3,5,"Baden et al.; safety results and supplementary Table S8, p. 33","https://www.nejm.org/doi/full/10.1056/NEJMoa2035389","Fatal AEs in the 28-day post-injection window; not all deaths known at publication."
-"EUA_FDA_DEC03","FDA EUA review
-Reports through 3 Dec 2020",6,7,0,7,13,"FDA EUA final review memorandum, 18 December 2020, printed p. 44","https://www.fda.gov/media/144673/download","Death reports through 3 December; not a count based only on retrospective death dates."
-"BLA_BLINDED","Blinded-phase publication
-Blinded follow-up",16,16,0,16,32,"El Sahly et al.; safety results and Tables S19/S26","https://www.nejm.org/doi/full/10.1056/NEJMoa2113017","Blinded follow-up, with the 26 March 2021 analysis boundary."
-"BLA_EXTENDED","FDA BLA review
-Follow-up through 4 May 2021",24,17,3,20,44,"FDA BLA clinical review, 28 January 2022, pp. 36, 60, 79-81; Table 37","https://www.fda.gov/media/156342/download","Original randomized arms: 24 vaccine, 17 placebo plus 3 after crossover = 20 original placebo. Extended death surveillance through database lock."
